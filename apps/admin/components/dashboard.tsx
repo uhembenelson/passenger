@@ -129,6 +129,8 @@ const [composer, setComposer] = useState("");
   const [presenceBanner, setPresenceBanner] = useState<string | null>(null);
   const supportActivity = useQuery(api.support.supportActivity, {});
   const scoreboard = useQuery(api.support.agentScoreboard, {});
+  const [sweep, setSweep] = useState<{ step: number } | null>(null);
+  const sweepTimer = useRef<number | null>(null);
 
   const selectChat = async (chatId: string) => {
     if (selectedChatId && onReleaseView) {
@@ -157,6 +159,7 @@ const [composer, setComposer] = useState("");
   const { shipments, people, trips, disputes, events } = snapshot;
   const viewerIsCompliance = snapshot.viewer?.role === "compliance";
   const sidebarItems = figmaSidebarNav.filter(item => item.id !== "compliance" || viewerIsCompliance);
+  const sweepActiveId = sweep ? sidebarItems[sweep.step]?.id : null;
   const offers = snapshot.offers ?? [];
   const notifications = snapshot.notifications ?? [];
   const supportChats = snapshot.supportChats ?? [];
@@ -181,7 +184,30 @@ const [composer, setComposer] = useState("");
     window.addEventListener("click", closeMenus);
     return () => window.removeEventListener("click", closeMenus);
   }, []);
-  function navigate(next: View) { setView(next); setQuery(""); setFilter("all"); setPage(0); setMobileNav(false); requestAnimationFrame(() => headingRef.current?.focus()); }
+  useEffect(() => () => {
+    if (sweepTimer.current !== null) window.clearTimeout(sweepTimer.current);
+  }, []);
+  const SWEEP_MS = 50;
+  function navigate(next: View) {
+    const fromIndex = sweepTimer.current !== null && sweep ? sweep.step : sidebarItems.findIndex(item => item.id === view);
+    const toIndex = sidebarItems.findIndex(item => item.id === next);
+    setView(next); setQuery(""); setFilter("all"); setPage(0); setMobileNav(false);
+    if (sweepTimer.current !== null) window.clearTimeout(sweepTimer.current);
+    sweepTimer.current = null;
+    setSweep(null);
+    if (toIndex !== -1 && fromIndex !== -1 && fromIndex !== toIndex) {
+      const dir = toIndex > fromIndex ? 1 : -1;
+      let step = fromIndex;
+      setSweep({ step });
+      sweepTimer.current = window.setTimeout(function tick() {
+        step += dir;
+        if (step === toIndex) { setSweep(null); sweepTimer.current = null; return; }
+        setSweep({ step });
+        sweepTimer.current = window.setTimeout(tick, SWEEP_MS);
+      }, SWEEP_MS);
+    }
+    requestAnimationFrame(() => headingRef.current?.focus());
+  }
   async function submit(action: AdminAction) { await onAction(action); setToast("Server acknowledged the operation. Current records and audit history show its outcome."); }
   function exportUsersReport() {
     const rows = [["Name", "Email address", "Phone number", "Status"]].concat(peopleShown.map(person => [person.name, person.email ?? "", person.phone, person.suspended ? "Suspended" : person.verification === "verified" ? "Active" : humanize(person.verification)]));
@@ -253,7 +279,9 @@ const [composer, setComposer] = useState("");
           })} */}
           {sidebarItems.map((item, index) => {
             const count = item.count === "pendingUsers" ? pendingUsers.length : item.count === "openDisputes" ? openDisputes.length : item.count === "unread" ? unread : 0;
-            return <button key={`${item.title}-${index}`} className={`sidebar-figma-item ${view === item.id ? "active" : ""}`} onClick={() => navigate(item.id)} aria-current={view === item.id ? "page" : undefined}>
+            const sweeping = sweepActiveId != null;
+            const displayClass = sweeping ? (item.id === sweepActiveId ? "sweep-pass" : "") : view === item.id ? "active" : "";
+            return <button key={`${item.title}-${index}`} className={`sidebar-figma-item ${displayClass}`} onClick={() => navigate(item.id)} aria-current={view === item.id ? "page" : undefined}>
               <item.icon size={24} />
               <span>{item.title}</span>
               {count > 0 && <i className="sidebar-figma-count">{count}</i>}
