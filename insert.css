@@ -1,0 +1,21 @@
+/* Figma Real-time Monitoring */
+.figma-monitoring-header h1 {margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:24px;line-height:31px;font-weight:500;letter-spacing:-.02em;color:#1F2937}
+.figma-monitoring-stats {display:flex;gap:24px;width:100%}
+.figma-monitoring-stat-card {flex:1;background:#FFFFFF;border-radius:12px;padding:24px;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;box-shadow:0px 1px 2px rgba(0,0,0,0.05)}
+.figma-monitoring-stat-card .stat-label {font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:500;color:#6B7280}
+.figma-monitoring-stat-card .stat-value {font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:32px;line-height:40px;font-weight:600;color:#1F2937}
+.figma-monitoring-section {display:flex;flex-direction:column;gap:16px;margin-top:24px}
+.figma-monitoring-section h2 {margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:20px;line-height:26px;font-weight:500;color:#1F2937}
+.figma-monitoring-table-container {background:#FFFFFF;border-radius:12px;overflow:hidden;border:1px solid #F3F4F6}
+.figma-monitoring-table {width:100%;border-collapse:collapse}
+.figma-monitoring-table th {background:#FFFFFF;padding:16px 24px;text-align:left;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;font-weight:500;color:#1F2937;border-bottom:1px solid #F3F4F6;white-space:nowrap}
+.figma-monitoring-table td {padding:16px 24px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;font-weight:400;color:#6B7280;border-bottom:1px solid #F3F4F6}
+.figma-monitoring-table tr:last-child td {border-bottom:none}
+.table-cell-with-action {display:flex;align-items:center;justify-content:space-between;position:relative}
+.table-cell-with-action .action-btn {background:transparent;border:none;padding:4px;cursor:pointer;color:#9CA3AF;border-radius:4px;display:flex;align-items:center;justify-content:center}
+.table-cell-with-action .action-btn:hover {background:#F3F4F6;color:#1F2937}
+.action-menu {position:absolute;top:100%;right:0;margin-top:4px;background:#FFFFFF;border:1px solid #F3F4F6;border-radius:8px;box-shadow:0px 4px 6px -1px rgba(0,0,0,0.1), 0px 2px 4px -1px rgba(0,0,0,0.06);padding:4px;z-index:10;min-width:160px}
+.action-menu.action-menu-right {right:0}
+.action-menu button {display:flex;width:100%;text-align:left;background:transparent;border:none;padding:8px 12px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;font-weight:400;color:#374151;cursor:pointer;border-radius:4px}
+.action-menu button:hover {background:#F9FAFB}
+

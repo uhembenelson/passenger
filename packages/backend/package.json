@@ -1,0 +1,10 @@
+{
+  "name": "@passenger/backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { "./convex/_generated/api": "./convex/_generated/api.ts", "./convex/_generated/dataModel": "./convex/_generated/dataModel.ts" },
+  "scripts": { "dev": "convex dev", "deploy": "convex deploy", "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": { "@auth/core": "0.41.1", "@convex-dev/auth": "^0.0.90", "@passenger/core": "workspace:*", "convex": "1.45.0" },
+  "devDependencies": { "@edge-runtime/vm": "^5.0.0", "@types/node": "^22.0.0", "convex-test": "^0.0.41", "typescript": "~6.0.3", "vitest": "^3.2.4" }
+}

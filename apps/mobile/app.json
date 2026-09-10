@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "Passenger",
+    "slug": "passenger",
+    "scheme": "passenger",
+    "version": "1.0.0",
+    "icon": "./assets/icon.png",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F7F6F0",
+    "ios": { "supportsTablet": true, "bundleIdentifier": "app.passenger.mobile" },
+    "android": { "package": "app.passenger.mobile" },
+    "web": { "bundler": "metro", "name": "Passenger · Good things, going places", "shortName": "Passenger", "favicon": "./assets/favicon.png" },
+    "plugins": ["expo-secure-store", "expo-web-browser", ["expo-location", { "locationWhenInUsePermission": "Passenger uses your location only when you tap Update parcel location, so the sender can see the parcel's latest check-in." }]]
+  }
+}
