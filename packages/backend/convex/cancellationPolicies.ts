@@ -1,6 +1,7 @@
 import { v } from "convex/values";
+import { PERMISSIONS } from "@passenger/core";
 import { query, mutation } from "./_generated/server";
-import { requireUser, isAdmin, audit } from "./lib";
+import { requireUser, requirePermission, audit } from "./lib";
 
 export const list = query({
   args: {},
@@ -21,7 +22,7 @@ export const create = mutation({
   args: { ruleName: v.string(), refundType: v.string(), refundPercent: v.number(), window: v.string() },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    isAdmin(user);
+    await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     if (!args.ruleName.trim()) throw new Error("Rule name is required.");
     if (!args.refundType.trim()) throw new Error("Refund type is required.");
     if (args.refundPercent < 0 || args.refundPercent > 100) throw new Error("Refund percent must be between 0 and 100.");
@@ -43,7 +44,7 @@ export const update = mutation({
   args: { id: v.id("cancellationPolicies"), ruleName: v.string(), refundType: v.string(), refundPercent: v.number(), window: v.string() },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    isAdmin(user);
+    await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     const existing = await ctx.db.get(args.id);
     if (!existing) throw new Error("Cancellation policy not found.");
     if (!args.ruleName.trim()) throw new Error("Rule name is required.");
@@ -63,7 +64,7 @@ export const remove = mutation({
   args: { id: v.id("cancellationPolicies") },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    isAdmin(user);
+    await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     const existing = await ctx.db.get(args.id);
     if (!existing) throw new Error("Cancellation policy not found.");
     await ctx.db.delete(args.id);

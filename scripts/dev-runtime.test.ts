@@ -6,6 +6,7 @@ describe("shared dev supervisor", () => {
   test("defaults to all three business workspaces", () => expect(selectedWorkspaces([])).toEqual(["admin", "mobile", "backend"]));
   test("all alias selects same services", () => expect(selectedWorkspaces(["all"])).toEqual(selectedWorkspaces([])));
   test("supports isolated service checks", () => expect(selectedWorkspaces(["mobile", "--check"])).toEqual(["mobile"]));
+  test("supports website workspace check", () => expect(selectedWorkspaces(["website", "--check"])).toEqual(["website"]));
   test("rejects an unknown surface rather than silently omitting backend", () => expect(() => selectedWorkspaces(["unknown"])).toThrow("Usage"));
   test("rejects conflicting selections", () => expect(() => selectedWorkspaces(["mobile", "backend"])).toThrow("Usage"));
   for (const version of ["v20.19.0", "v22.13.1", "v24.1.0"]) test(`accepts ${version}`, () => expect(supportedNode(version)).toBe(true));

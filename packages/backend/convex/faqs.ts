@@ -1,6 +1,7 @@
 import { v } from "convex/values";
+import { PERMISSIONS } from "@passenger/core";
 import { query, mutation } from "./_generated/server";
-import { isAdmin, requireUser } from "./lib";
+import { requireUser, requirePermission } from "./lib";
 
 export const list = query({
   args: {},
@@ -15,7 +16,7 @@ export const create = mutation({
   args: { question: v.string(), answer: v.string() },
   handler: async (ctx, args) => {
     const viewer = await requireUser(ctx);
-    if (!isAdmin(viewer)) throw new Error("Only admins can create FAQs");
+    await requirePermission(ctx, viewer, PERMISSIONS.SETTINGS_MANAGE);
     const now = Date.now();
     const id = await ctx.db.insert("faqs", { question: args.question, answer: args.answer, createdAt: now, updatedAt: now });
     return id;
@@ -26,7 +27,7 @@ export const update = mutation({
   args: { id: v.id("faqs"), question: v.string(), answer: v.string() },
   handler: async (ctx, args) => {
     const viewer = await requireUser(ctx);
-    if (!isAdmin(viewer)) throw new Error("Only admins can update FAQs");
+    await requirePermission(ctx, viewer, PERMISSIONS.SETTINGS_MANAGE);
     await ctx.db.patch(args.id, { question: args.question, answer: args.answer, updatedAt: Date.now() });
   },
 });
@@ -35,7 +36,7 @@ export const remove = mutation({
   args: { id: v.id("faqs") },
   handler: async (ctx, args) => {
     const viewer = await requireUser(ctx);
-    if (!isAdmin(viewer)) throw new Error("Only admins can delete FAQs");
+    await requirePermission(ctx, viewer, PERMISSIONS.SETTINGS_MANAGE);
     await ctx.db.delete(args.id);
   },
 });

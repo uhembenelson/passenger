@@ -1,5 +1,5 @@
 import { ConvexError } from "convex/values";
-import type { Offer, Person, Shipment, ShipmentStatus, Trip, FeeConfig } from "@passenger/core";
+import type { Offer, Person, Shipment, ShipmentStatus, Trip, FeeConfig, PermissionKey } from "@passenger/core";
 import { assertTransition, quoteFee, routeSegment, tripRoute } from "@passenger/core";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
@@ -104,6 +104,25 @@ export async function requireCompliance(ctx: QueryCtx | MutationCtx) {
   const user = await requireUser(ctx);
   if (!isCompliance(user) || user.suspended) fail("Compliance officer access required. Identity review is restricted to compliance staff.");
   return user;
+}
+
+export async function hasPermission(ctx: QueryCtx | MutationCtx, user: Doc<"users">, permissionName: PermissionKey): Promise<boolean> {
+  if (isAdmin(user)) return true;
+  const viewerEmail = (user.email ?? "").toLowerCase();
+  if (!viewerEmail) return false;
+  const teamMembers = await ctx.db.query("teamMembers").collect();
+  const member = teamMembers.find(m => m.email.toLowerCase() === viewerEmail);
+  if (!member) return false;
+  const permissions = await ctx.db.query("permissions").collect();
+  const permission = permissions.find(p => p.name === permissionName);
+  if (!permission) return false;
+  const grants = await ctx.db.query("permissionGrants").withIndex("by_permission", q => q.eq("permissionId", permission._id)).collect();
+  return grants.some(g => g.adminRoleId === member.adminRoleId && g.roleTitle === member.roleTitle && g.granted);
+}
+
+export async function requirePermission(ctx: QueryCtx | MutationCtx, user: Doc<"users">, permissionName: PermissionKey) {
+  if (await hasPermission(ctx, user, permissionName)) return;
+  fail(`You don't have permission to perform this action: ${permissionName}`);
 }
 
 export function requireActive(user: Doc<"users">) {

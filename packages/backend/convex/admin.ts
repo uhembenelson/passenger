@@ -1,8 +1,9 @@
 import { v } from "convex/values";
+import { PERMISSIONS } from "@passenger/core";
 import { mutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { audit, fail, noOpenDispute, note, releaseCapacity, requireAdmin, requireCompliance, shipment, transition } from "./lib";
+import { audit, fail, noOpenDispute, note, releaseCapacity, requireAdmin, requirePermission, requireUser, shipment, transition } from "./lib";
 import { stripLegacyTripPricePerKg } from "./maintenance";
 
 export const reviewUser = mutation({
@@ -13,7 +14,8 @@ export const reviewUser = mutation({
     note: v.string(),
   },
   handler: async (ctx, args) => {
-    const admin = await requireCompliance(ctx);
+    const admin = await requireUser(ctx);
+    await requirePermission(ctx, admin, PERMISSIONS.COMPLIANCE_MANAGE);
     const user = await ctx.db.get(args.userId);
     if (!user) fail("Member not found.");
     if (user._id === admin._id) fail("An administrator cannot review their own identity.");
@@ -37,7 +39,8 @@ export const updateUserTier = mutation({
     tier: v.union(v.literal("Tier 1"), v.literal("Tier 2"), v.literal("Tier 3")),
   },
   handler: async (ctx, args) => {
-    const admin = await requireCompliance(ctx);
+    const admin = await requireUser(ctx);
+    await requirePermission(ctx, admin, PERMISSIONS.COMPLIANCE_MANAGE);
     const user = await ctx.db.get(args.userId);
     if (!user) fail("Member not found.");
     if (user.verification !== "verified") fail("Only verified members can be assigned a tier.");
@@ -54,7 +57,8 @@ export const reviewShipment = mutation({
     note: v.string(),
   },
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
+    const admin = await requireUser(ctx);
+    await requirePermission(ctx, admin, PERMISSIONS.DELIVERIES_MANAGE);
     const s = await shipment(ctx, args.shipmentId);
     const detail = note(args.note, "Review note", 5);
 
@@ -99,7 +103,8 @@ export const resolveDispute = mutation({
     externalReference: v.string(),
   },
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
+    const admin = await requireUser(ctx);
+    await requirePermission(ctx, admin, PERMISSIONS.PAYMENTS_MANAGE);
     const dispute = await ctx.db.get(args.disputeId);
     if (!dispute || dispute.status !== "open") fail("Open dispute not found.");
 
@@ -125,7 +130,8 @@ export const resolveDispute = mutation({
 export const recordPayout = mutation({
   args: { shipmentId: v.id("shipments"), externalReference: v.string(), note: v.string() },
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
+    const admin = await requireUser(ctx);
+    await requirePermission(ctx, admin, PERMISSIONS.PAYMENTS_MANAGE);
     const s = await shipment(ctx, args.shipmentId);
     const detail = note(args.note, "Reconciliation note", 5);
 

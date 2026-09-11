@@ -7,7 +7,7 @@ export type LocationCheckInState = "up_to_date" | "due_soon" | "overdue" | "comp
 export type WalletTransactionKind = "top_up" | "parcel_hold" | "parcel_refund" | "payout";
 
 export interface WalletTransaction { id: string; userId: string; kind: WalletTransactionKind; amountNaira: number; reference: string; shipmentId?: string; createdAt: number; note: string; }
-export interface Person { id: string; name: string; phone: string; email?: string; image?: string; tier?: string; phoneVerificationTime?: number; verification: VerificationStatus; role: "member" | "admin" | "compliance"; joinedAt: number; suspended?: boolean; suspensionReason?: string; identityNote?: string; identitySubmittedAt?: number; documentType?: DocumentType; identityEvidenceIds?: string[]; rating?: number; reviewCount?: number; successfulDeliveries?: number; walletBalanceNaira?: number; bvn?: string; residenceState?: string; residenceLga?: string; residenceAddress?: string; streetPhotoUrl?: string; housePhotoUrl?: string; }
+export interface Person { id: string; name: string; phone: string; email?: string; image?: string; tier?: string; phoneVerificationTime?: number; verification: VerificationStatus; role: "member" | "admin" | "compliance"; joinedAt: number; suspended?: boolean; suspensionReason?: string; mustChangePassword?: boolean; identityNote?: string; identitySubmittedAt?: number; documentType?: DocumentType; identityEvidenceIds?: string[]; rating?: number; reviewCount?: number; successfulDeliveries?: number; walletBalanceNaira?: number; bvn?: string; residenceState?: string; residenceLga?: string; residenceAddress?: string; streetPhotoUrl?: string; housePhotoUrl?: string; }
 export interface Trip { id: string; travellerId: string; travellerName: string; origin: string; destination: string; stops?: string[]; departureAt: number; arrivalAt?: number; capacityKg: number; reservedKg?: number; legReservedKg?: number[]; acceptedCategories?: string[]; maxParcelWeightKg?: number; handlingNotes?: string; verified: boolean; status?: "active" | "cancelled" | "completed"; }
 export interface FeeQuote { grossNaira: number; grossKobo: number; platformFeeKobo: number; travellerNetKobo: number; platformFeePercent: 10; }
 export interface Shipment { id: string; reference: string; senderId: string; senderName: string; travellerId?: string; travellerName?: string; origin: string; destination: string; description: string; category: string; weightKg: number; valueNaira: number; feeNaira: number; receiverName: string; receiverPhone: string; status: ShipmentStatus; paymentStatus: PaymentStatus; createdAt: number; updatedAt: number; tripId?: string; pickupInstructions?: string; dropoffInstructions?: string; readyAt?: number; preferredPickupAt?: number; pickupFlexBeforeMinutes?: number; pickupFlexAfterMinutes?: number; deliveryDeadline?: number; evidenceIds?: string[]; safetyConsent?: boolean; reviewNote?: string; payByAt?: number; handoverAt?: number; deliveredAt?: number; latestLatitude?: number; latestLongitude?: number; latestLocationLabel?: string; latestLocationAt?: number; locationCheckInCount?: number; locationCheckInTarget?: number; locationCheckInRemaining?: number; missedLocationCheckIns?: number; nextLocationCheckInAt?: number; locationCheckInState?: LocationCheckInState; disputeUntil?: number; exception?: string; cancellationReason?: string; refundApproved?: boolean; releaseApproved?: boolean; quote?: FeeQuote; }
@@ -27,16 +27,45 @@ export interface Faq { id: string; question: string; answer: string; createdAt: 
 export interface EscrowPolicy { id: string; policyName: string; type: string; releaseTime: string; createdAt: number; updatedAt: number; }
 export interface CancellationPolicy { id: string; ruleName: string; refundType: string; refundPercent: number; window: string; createdAt: number; updatedAt: number; }
 export interface KycTier { id: string; tierName: string; requirements: string[]; maxShipmentValueNaira: number; maxCapacityKg?: number; description?: string; createdAt: number; updatedAt: number; }
+export interface AdminRole { id: string; name: string; memberCount: number; }
+export interface TeamMember { id: string; adminRoleId: string; name: string; email: string; roleTitle: string; }
+export interface Permission { id: string; name: string; }
+export interface PermissionGrant { id: string; permissionId: string; adminRoleId: string; roleTitle: string; granted: boolean; }
+export interface SuspiciousAccount { id: string; name: string; email?: string; phone?: string; attempts: number; }
+export interface AdminLoginRecord { id: string; name: string; dateTime: string; ipAddress?: string; deviceInfo?: string; location?: string; }
+export interface AdminActionRecord { id: string; name: string; dateTime: string; actionTaken: string; affectedSection?: string; ipAddress?: string; }
 export interface SystemSetting { id: string; key: string; title: string; body: string; createdAt: number; updatedAt: number; }
 export interface FeeConfig { platformFeePercent: number; baseFeeNaira: number; distanceRateNairaPerKm: number; minFeeNaira: number; categoryMultipliers?: Record<string, number>; weightMultipliers?: { minKg: number; maxKg: number; multiplier: number }[]; updatedAt: number; }
 export interface SupportUserStats { shipmentsSent: number; shipmentsCarried: number; activeShipments: number; trips: number; activeTrips: number; openDisputes: number; openChats: number; walletBalanceNaira: number; }
 export interface SupportUserDetails { user: Person; stats: SupportUserStats; shipments: Shipment[]; trips: Trip[]; walletTransactions: WalletTransaction[]; reviewsReceived: Review[]; reviewsGiven: Review[]; disputes: Dispute[]; events: AuditEntry[]; notifications: Notification[]; }
-export interface DashboardSnapshot { viewer: Person | null; people: Person[]; trips: Trip[]; shipments: Shipment[]; events: AuditEntry[]; disputes: Dispute[]; offers?: Offer[]; notifications?: Notification[]; serviceArea?: ServiceAreaConfig; walletTransactions?: WalletTransaction[]; reviews?: Review[]; supportChats?: SupportChat[]; supportMessages?: SupportMessage[]; faqs?: Faq[]; settings?: SystemSetting[]; feeConfig?: FeeConfig; escrowPolicies?: EscrowPolicy[]; cancellationPolicies?: CancellationPolicy[]; kycTiers?: KycTier[]; }
+export interface DashboardSnapshot { viewer: Person | null; people: Person[]; trips: Trip[]; shipments: Shipment[]; events: AuditEntry[]; disputes: Dispute[]; offers?: Offer[]; notifications?: Notification[]; serviceArea?: ServiceAreaConfig; walletTransactions?: WalletTransaction[]; reviews?: Review[]; supportChats?: SupportChat[]; supportMessages?: SupportMessage[]; faqs?: Faq[]; settings?: SystemSetting[]; feeConfig?: FeeConfig; escrowPolicies?: EscrowPolicy[]; cancellationPolicies?: CancellationPolicy[]; kycTiers?: KycTier[]; adminRoles?: AdminRole[]; teamMembers?: TeamMember[]; permissions?: Permission[]; permissionGrants?: PermissionGrant[]; suspiciousAccounts?: SuspiciousAccount[]; adminLogins?: AdminLoginRecord[]; adminActions?: AdminActionRecord[]; viewerPermissions?: PermissionKey[]; }
 export interface CreateShipmentInput { origin: string; destination: string; description: string; category: string; weightKg: number; valueNaira: number; receiverName: string; receiverPhone: string; pickupInstructions: string; dropoffInstructions: string; readyAt: number; preferredPickupAt?: number; pickupFlexBeforeMinutes?: number; pickupFlexAfterMinutes?: number; deliveryDeadline: number; evidenceIds: string[]; safetyConsent: boolean; }
 export interface CreateTripInput { origin: string; destination: string; stops: string[]; departureAt: number; arrivalAt: number; capacityKg: number; acceptedCategories?: string[]; maxParcelWeightKg?: number; handlingNotes?: string; }
 
 export const CITIES = ["Jos", "Abuja", "Lagos", "Kaduna", "Kano", "Ibadan", "Enugu", "Port Harcourt"] as const;
 export const CATEGORIES = ["Documents", "Clothing", "Electronics", "Books", "Household items", "Other"] as const;
+
+export const PERMISSIONS = {
+  USERS_VIEW: "users.view",
+  USERS_MANAGE: "users.manage",
+  DELIVERIES_VIEW: "deliveries.view",
+  DELIVERIES_MANAGE: "deliveries.manage",
+  TRIPS_VIEW: "trips.view",
+  TRIPS_MANAGE: "trips.manage",
+  PAYMENTS_VIEW: "payments.view",
+  PAYMENTS_MANAGE: "payments.manage",
+  SUPPORT_VIEW: "support.view",
+  SUPPORT_MANAGE: "support.manage",
+  COMPLIANCE_VIEW: "compliance.view",
+  COMPLIANCE_MANAGE: "compliance.manage",
+  SETTINGS_VIEW: "settings.view",
+  SETTINGS_MANAGE: "settings.manage",
+  SECURITY_VIEW: "security.view",
+  SECURITY_MANAGE: "security.manage",
+  MONITORING_VIEW: "monitoring.view",
+  NOTIFICATIONS_VIEW: "notifications.view",
+} as const;
+export type PermissionKey = typeof PERMISSIONS[keyof typeof PERMISSIONS];
 
 const CITY_COORDINATES: Record<string, { lat: number; lon: number }> = {
   jos: { lat: 9.8965, lon: 8.8583 },
@@ -93,7 +122,7 @@ export function estimateRouteDistanceKm(origin: string, destination: string) {
 const DEFAULT_CATEGORY_MULTIPLIERS: Record<string, number> = { Documents: 1, Clothing: 1.12, Electronics: 1.25, Books: 1.08, "Household items": 1.18, Other: 1.15 };
 const DEFAULT_WEIGHT_MULTIPLIERS = [{ minKg: 0, maxKg: 5, multiplier: 1 }, { minKg: 5, maxKg: 15, multiplier: 1.3 }, { minKg: 15, maxKg: 25, multiplier: 1.6 }];
 
-export function calculateDeliveryFee(input: Pick<CreateShipmentInput, "origin" | "destination" | "category" | "weightKg">, feeConfig?: FeeConfig) {
+export function calculateDeliveryFee(input: { origin: string; destination: string; category: string; weightKg?: number }, feeConfig?: FeeConfig) {
   validateRoute(input.origin, input.destination);
   if (!CATEGORIES.includes(input.category as typeof CATEGORIES[number])) throw new Error("Choose a valid package category.");
   const baseFee = feeConfig?.baseFeeNaira ?? BASE_DELIVERY_FEE_NAIRA;
@@ -103,7 +132,8 @@ export function calculateDeliveryFee(input: Pick<CreateShipmentInput, "origin" |
   const weightMults = feeConfig?.weightMultipliers?.length ? feeConfig.weightMultipliers : DEFAULT_WEIGHT_MULTIPLIERS;
   const distanceKm = estimateRouteDistanceKm(input.origin, input.destination);
   const categoryMultiplier = categoryMults[input.category] ?? 1;
-  const weightTier = weightMults.find((t) => input.weightKg >= t.minKg && (t.maxKg === Infinity || input.weightKg < t.maxKg));
+  const weight = input.weightKg ?? 1;
+  const weightTier = weightMults.find((t) => weight >= t.minKg && (t.maxKg === Infinity || weight < t.maxKg));
   const weightMultiplier = weightTier?.multiplier ?? 1;
   const fee = (baseFee + distanceKm * distanceRate) * categoryMultiplier * weightMultiplier;
   return Math.max(minFee, Math.ceil(fee / 100) * 100);

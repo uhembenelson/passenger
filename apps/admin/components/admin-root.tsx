@@ -1,8 +1,8 @@
 "use client";
 
-import { Component, useEffect, useState, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import { ConvexAuthProvider, useAuthActions } from "@convex-dev/auth/react";
-import { ConvexReactClient, useConvexAuth, useMutation, useQuery } from "convex/react";
+import { ConvexReactClient, useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@passenger/backend/convex/_generated/api";
 import type { Id } from "@passenger/backend/convex/_generated/dataModel";
 import type { DashboardSnapshot } from "@passenger/core";
@@ -16,6 +16,42 @@ const convex = configured ? new ConvexReactClient(convexUrl) : null;
 
 export function Brand() { return <div className="brand"><span className="brand-mark"><Waypoints size={23} strokeWidth={2.5} /></span><span>passenger<span className="brand-dot">.</span></span></div>; }
 export function Gate({ title, children, loading = false }: { title: string; children: ReactNode; loading?: boolean }) { return <main className="gate" aria-busy={loading}><Brand /><section className="gate-card"><div className="gate-icon">{loading ? <LoaderCircle className="spin" aria-hidden="true" /> : <ShieldCheck aria-hidden="true" />}</div><p className="eyebrow">TRUST & SAFETY WORKSPACE</p><h1>{title}</h1>{children}</section><small>Good things move with people.</small></main>; }
+function ForcePasswordChange({ onChangePassword }: { onChangePassword: (args: { currentPassword: string; newPassword: string }) => Promise<unknown> }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [show, setShow] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      if (next.length < 10 || !/[a-z]/.test(next) || !/[A-Z]/.test(next) || !/\d/.test(next)) throw new Error("Use at least 10 characters with uppercase, lowercase, and a number.");
+      if (next !== confirm) throw new Error("Passwords do not match.");
+      if (next === current) throw new Error("Choose a password different from your temporary one.");
+      await onChangePassword({ currentPassword: current, newPassword: next });
+      setDone(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "We could not update your password.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (done) return <Gate title="Password updated" loading><p role="status">Opening your workspace…</p></Gate>;
+  return <Gate title="Set a new password"><p>Before you continue, choose a secure password. Your administrator assigned a temporary one-time password.</p>
+    <form className="form-stack" aria-busy={busy} onSubmit={submit}>
+      <label>Temporary password<span className="auth-input-wrap"><input required minLength={10} disabled={busy} autoComplete="current-password" type={show ? "text" : "password"} value={current} onChange={e => setCurrent(e.target.value)} /><button type="button" className="auth-icon-button" aria-label={show ? "Hide password" : "Show password"} onClick={() => setShow(value => !value)}>{show ? <EyeOff size={20} /> : <Eye size={20} />}</button></span></label>
+      <label>New password<span className="auth-input-wrap"><input required minLength={10} disabled={busy} autoComplete="new-password" type={show ? "text" : "password"} value={next} onChange={e => setNext(e.target.value)} /><button type="button" className="auth-icon-button auth-icon-button-placeholder" aria-hidden="true" tabIndex={-1}><Eye size={20} /></button></span></label>
+      <label>Confirm new password<span className="auth-input-wrap"><input required minLength={10} disabled={busy} autoComplete="new-password" type={show ? "text" : "password"} value={confirm} onChange={e => setConfirm(e.target.value)} /><button type="button" className="auth-icon-button auth-icon-button-placeholder" aria-hidden="true" tabIndex={-1}><Eye size={20} /></button></span></label>
+      <div className="notice">Use at least 10 characters with uppercase, lowercase, and a number.</div>
+      {error && <p role="alert" className="error-message">{error}</p>}
+      <button className="button primary" disabled={busy}>{busy ? "Updating…" : "Update password"}</button>
+    </form>
+    <SignOutButton /></Gate>;
+}
 class LiveBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   state = { error: null as string | null };
   static getDerivedStateFromError(error: Error) { return { error: error.message || "The workspace could not be loaded." }; }
@@ -164,16 +200,57 @@ function AuthenticatedWorkspace() {
   const deleteKycTier = useMutation(api.kycTiers.remove);
   const updateUserTier = useMutation(api.admin.updateUserTier);
   const updateServiceArea = useMutation(api.serviceArea.update);
+  const createAdminRole = useMutation(api.security.createRole);
+  const updateAdminRole = useMutation(api.security.updateRole);
+  const deleteAdminRole = useMutation(api.security.removeRole);
+  const createTeamMember = useMutation(api.security.createTeamMember);
+  const updateTeamMember = useMutation(api.security.updateTeamMember);
+  const deleteTeamMember = useMutation(api.security.removeTeamMember);
+  const createPermission = useMutation(api.security.createPermission);
+  const updatePermission = useMutation(api.security.updatePermission);
+  const deletePermission = useMutation(api.security.removePermission);
+  const setPermissionGrant = useMutation(api.security.setPermissionGrant);
+  const inviteTeamMember = useAction(api.security.inviteTeamMember);
+  const changeOwnPassword = useAction(api.security.setOwnPassword);
+  const ensureSeed = useMutation(api.security.ensureSeed);
+  const recordStaffLogin = useMutation(api.security.recordStaffLogin);
+  const bootLoginRecorded = useRef(false);
+  useEffect(() => {
+    if (bootLoginRecorded.current || !snapshot || !snapshot.viewer) return;
+    if (snapshot.viewer.role !== "admin" && snapshot.viewer.role !== "compliance") return;
+    bootLoginRecorded.current = true;
+    void ensureSeed().catch(() => {});
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 2500);
+    (async () => {
+      let ipAddress: string | null = null;
+      try {
+        const response = await fetch("https://api.ipify.org?format=json", { signal: controller.signal });
+        const data = (await response.json()) as { ip?: string };
+        ipAddress = typeof data.ip === "string" ? data.ip : null;
+      } catch { /* best effort */ }
+      window.clearTimeout(timeout);
+      try {
+        await recordStaffLogin({ deviceInfo: deviceLabel(navigator.userAgent), ...(ipAddress ? { ipAddress } : {}) });
+      } catch { /* best effort */ }
+    })();
+  }, [snapshot, ensureSeed, recordStaffLogin]);
   if (snapshot === undefined) return <Gate title="Getting everything in order" loading><p role="status">Loading live deliveries and trust reviews…</p></Gate>;
   if (!snapshot.viewer) return <ProfileSetup />;
   if (snapshot.viewer.role !== "admin" && snapshot.viewer.role !== "compliance") return <Gate title="An admin seat is required"><p>You’re signed in as <strong>{snapshot.viewer.name}</strong>. This workspace is restricted to Passenger administrators and compliance officers. Ask your system administrator to add your email to <code>ADMIN_USER_EMAILS</code>.</p><div className="notice">Your account does not have access to operational or financial actions.</div><SignOutButton /></Gate>;
+  if (snapshot.viewer.mustChangePassword) return <ForcePasswordChange onChangePassword={changeOwnPassword} />;
   async function act(action: AdminAction) {
     if (action.type === "user") await reviewUser({ userId: action.id as Id<"users">, decision: action.decision, tier: action.tier, note: action.note });
     else if (action.type === "review") await reviewShipment({ shipmentId: action.id as Id<"shipments">, decision: action.decision, note: action.note });
     else if (action.type === "dispute") await resolveDispute({ disputeId: action.id as Id<"disputes">, resolution: action.resolution, note: action.note, externalReference: action.externalReference });
     else await recordPayout({ shipmentId: action.id as Id<"shipments">, externalReference: action.externalReference, note: action.note });
   }
-  return <Dashboard snapshot={snapshot} onAction={act} accountControl={<SignOutButton />} onCreateChat={createChat} onSendMessage={sendMessage} onCreateFaq={createFaq} onUpdateFaq={updateFaq} onDeleteFaq={deleteFaq} onMarkResolved={markResolved} onReopenChat={reopenChat} onQaReview={qaReview} onClaimView={claimView} onReleaseView={releaseView} onHandover={handover} onCreateSetting={createSetting} onUpdateSetting={updateSetting} onDeleteSetting={deleteSetting} onUpdateFeeConfig={updateFeeConfig} onCreateEscrow={createEscrow} onUpdateEscrow={updateEscrow} onDeleteEscrow={deleteEscrow} onCreateCancellation={createCancellation} onUpdateCancellation={updateCancellation} onDeleteCancellation={deleteCancellation} onCreateKycTier={createKycTier} onUpdateKycTier={updateKycTier} onDeleteKycTier={deleteKycTier} onUpdateTier={updateUserTier} onUpdateServiceArea={updateServiceArea} />;
+  return <Dashboard snapshot={snapshot} onAction={act} accountControl={<SignOutButton />} onCreateChat={createChat} onSendMessage={sendMessage} onCreateFaq={createFaq} onUpdateFaq={updateFaq} onDeleteFaq={deleteFaq} onMarkResolved={markResolved} onReopenChat={reopenChat} onQaReview={qaReview} onClaimView={claimView} onReleaseView={releaseView} onHandover={handover} onCreateSetting={createSetting} onUpdateSetting={updateSetting} onDeleteSetting={deleteSetting} onUpdateFeeConfig={updateFeeConfig} onCreateEscrow={createEscrow} onUpdateEscrow={updateEscrow} onDeleteEscrow={deleteEscrow} onCreateCancellation={createCancellation} onUpdateCancellation={updateCancellation} onDeleteCancellation={deleteCancellation} onCreateKycTier={createKycTier} onUpdateKycTier={updateKycTier} onDeleteKycTier={deleteKycTier} onUpdateTier={updateUserTier} onUpdateServiceArea={updateServiceArea} onCreateAdminRole={createAdminRole} onUpdateAdminRole={updateAdminRole} onDeleteAdminRole={deleteAdminRole} onCreateTeamMember={createTeamMember} onInviteTeamMember={inviteTeamMember} onUpdateTeamMember={updateTeamMember} onDeleteTeamMember={deleteTeamMember} onCreatePermission={createPermission} onUpdatePermission={updatePermission} onDeletePermission={deletePermission} onSetPermissionGrant={setPermissionGrant} />;
+}
+function deviceLabel(ua: string) {
+  const browser = /Edg\//i.test(ua) ? "Edge" : /OPR\//i.test(ua) || /Opera/i.test(ua) ? "Opera" : /Chrome/i.test(ua) ? "Chrome" : /Safari/i.test(ua) ? "Safari" : /Firefox/i.test(ua) ? "Firefox" : "Browser";
+  const os = /Windows/i.test(ua) ? "Windows" : /Mac OS X|Macintosh/i.test(ua) ? "macOS" : /Android/i.test(ua) ? "Android" : /iPhone|iPad|iPod/i.test(ua) ? "iOS" : /Linux/i.test(ua) ? "Linux" : "Web";
+  return `${browser}, ${os}`;
 }
 function ProfileSetup() {
   const ensureProfile = useMutation(api.accounts.ensureProfile);

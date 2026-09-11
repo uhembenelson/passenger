@@ -8,8 +8,10 @@
 | --- | --- | --- |
 | `apps/mobile` | Expo **57**, React Native 0.86, React 19 | Sending, travelling, matching, milestones, handover/receipt proofs |
 | `apps/admin` | Next.js 16 App Router | Verification, contents review, delivery oversight, disputes, reconciliation |
+| `apps/website` | Next.js 16 App Router | Public marketing website, pricing calculator, trust & safety guide |
 | `packages/backend` | Convex 1.45 | Shared database, permissions, state machine, audit, proof codes, Paystack adapter |
 | `packages/core` | TypeScript | Shared contracts, validation, routing rules, demo fixtures |
+| `packages/design-tokens` | TypeScript / CSS | Shared design tokens, primitives, typography, colors, and shadows |
 
 Bun 1.4.2 workspaces with a committed `bun.lock`, a single shared root `node_modules/`, and hoisted workspace installs via `bunfig.toml`. No separate mobile/backend data model and no permanent sender-versus-traveller account role.
 
@@ -35,6 +37,7 @@ If you want one surface only, these remain available:
 
 ```sh
 bun run dev:admin
+bun run dev:website
 bun run dev:mobile
 bun run dev:backend
 ```

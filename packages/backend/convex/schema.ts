@@ -35,6 +35,11 @@ export default defineSchema({
   escrowPolicies: defineTable({policyName:v.string(),type:v.string(),releaseTime:v.string(),createdAt:v.number(),updatedAt:v.number()}).index("by_created",["createdAt"]),
   cancellationPolicies: defineTable({ruleName:v.string(),refundType:v.string(),refundPercent:v.number(),window:v.string(),createdAt:v.number(),updatedAt:v.number()}).index("by_created",["createdAt"]),
   kycTiers: defineTable({tierName:v.string(),requirements:v.array(v.string()),maxShipmentValueNaira:v.number(),maxCapacityKg:v.optional(v.number()),description:v.optional(v.string()),createdAt:v.number(),updatedAt:v.number()}).index("by_created",["createdAt"]),
+  adminRoles: defineTable({name:v.string(),createdAt:v.number(),updatedAt:v.number()}).index("by_created",["createdAt"]),
+  teamMembers: defineTable({adminRoleId:v.id("adminRoles"),name:v.string(),email:v.string(),roleTitle:v.string(),mustChangePassword:v.optional(v.boolean()),createdAt:v.number(),updatedAt:v.number()}).index("by_adminRole",["adminRoleId"]),
+  permissions: defineTable({name:v.string(),createdAt:v.number(),updatedAt:v.number()}).index("by_created",["createdAt"]),
+  permissionGrants: defineTable({permissionId:v.id("permissions"),adminRoleId:v.id("adminRoles"),roleTitle:v.string(),granted:v.boolean(),createdAt:v.number(),updatedAt:v.number()}).index("by_adminRole",["adminRoleId"]).index("by_permission",["permissionId"]).index("by_roleTitle",["roleTitle"]),
+  securityEvents: defineTable({kind:v.union(v.literal("login"),v.literal("failed_login"),v.literal("admin_action")),actorId:v.optional(v.id("users")),actorName:v.string(),actorEmail:v.optional(v.string()),actorPhone:v.optional(v.string()),detail:v.string(),affectedSection:v.optional(v.string()),attempts:v.optional(v.number()),ipAddress:v.optional(v.string()),deviceInfo:v.optional(v.string()),location:v.optional(v.string()),createdAt:v.number()}).index("by_created",["createdAt"]).index("by_kind",["kind"]),
   feeConfig: defineTable({platformFeePercent:v.number(),baseFeeNaira:v.number(),distanceRateNairaPerKm:v.number(),minFeeNaira:v.optional(v.number()),categoryMultipliers:v.optional(v.any()),weightMultipliers:v.optional(v.any()),updatedAt:v.number(),updatedBy:v.optional(v.id("users"))}),
   ...financeTables,
 });

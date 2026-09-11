@@ -1,6 +1,7 @@
 import { v } from "convex/values";
+import { PERMISSIONS } from "@passenger/core";
 import { query, mutation } from "./_generated/server";
-import { requireUser, isAdmin, audit } from "./lib";
+import { requireUser, requirePermission, audit } from "./lib";
 
 export const list = query({
   args: {},
@@ -40,7 +41,7 @@ export const create = mutation({
   args: { key: v.string(), title: v.string(), body: v.string() },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    isAdmin(user);
+    await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     const existing = await ctx.db
       .query("settings")
       .withIndex("by_key", (q) => q.eq("key", args.key))
@@ -66,7 +67,7 @@ export const update = mutation({
   args: { id: v.id("settings"), title: v.string(), body: v.string() },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    isAdmin(user);
+    await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     const existing = await ctx.db.get(args.id);
     if (!existing) throw new Error("Setting not found.");
     if (!args.title.trim()) throw new Error("Title is required.");
@@ -84,7 +85,7 @@ export const remove = mutation({
   args: { id: v.id("settings") },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    isAdmin(user);
+    await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     const existing = await ctx.db.get(args.id);
     if (!existing) throw new Error("Setting not found.");
     await ctx.db.delete(args.id);
@@ -129,7 +130,7 @@ export const updateFeeConfig = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    isAdmin(user);
+    await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     if (args.platformFeePercent < 0 || args.platformFeePercent > 50)
       throw new Error("Platform fee must be between 0 and 50%.");
     if (args.baseFeeNaira < 0 || args.baseFeeNaira > 100000)

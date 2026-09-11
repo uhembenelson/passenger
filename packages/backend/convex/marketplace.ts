@@ -1,9 +1,9 @@
 import { v } from "convex/values";
-import { calculateDeliveryFee, validateShipment } from "@passenger/core";
-import type { CreateShipmentInput, DashboardSnapshot } from "@passenger/core";
+import { calculateDeliveryFee, validateShipment, PERMISSIONS } from "@passenger/core";
+import type { CreateShipmentInput, DashboardSnapshot, PermissionKey } from "@passenger/core";
 import { tripArgs, createDefinition as createTripDefinition } from "./journeys";
 import { query, mutation } from "./_generated/server";
-import { findUserBySubject, isCompliance, isStaff, offerDto, participant, personDto, requireUser, requireVerified, shipmentDto, tripDto, audit, requireSender, shipment, releaseCapacity, transition, fail, effectiveChatStatus } from "./lib";
+import { findUserBySubject, isAdmin, isCompliance, isStaff, offerDto, participant, personDto, requireUser, requireVerified, shipmentDto, tripDto, audit, requireSender, shipment, releaseCapacity, transition, fail, effectiveChatStatus } from "./lib";
 import { validateEvidence } from "./evidence";
 import { proposeOffer } from "./offers";
 import { assertSupportedRoute, getServiceArea } from "./serviceArea";
@@ -15,7 +15,7 @@ export const dashboard = query({
   handler: async (ctx): Promise<DashboardSnapshot> => {
     const identity = await ctx.auth.getUserIdentity();
     const serviceArea = await getServiceArea(ctx);
-    const empty: DashboardSnapshot = { viewer: null, people: [], trips: [], shipments: [], events: [], disputes: [], offers: [], notifications: [], serviceArea, walletTransactions: [], reviews: [], supportChats: [], supportMessages: [], faqs: [], settings: [], feeConfig: undefined, escrowPolicies: [], cancellationPolicies: [], kycTiers: [] };
+    const empty: DashboardSnapshot = { viewer: null, people: [], trips: [], shipments: [], events: [], disputes: [], offers: [], notifications: [], serviceArea, walletTransactions: [], reviews: [], supportChats: [], supportMessages: [], faqs: [], settings: [], feeConfig: undefined, escrowPolicies: [], cancellationPolicies: [], kycTiers: [], adminRoles: [], teamMembers: [], permissions: [], permissionGrants: [], suspiciousAccounts: [], adminLogins: [], adminActions: [], viewerPermissions: [] };
     if (!identity) return empty;
 
     const viewer = await findUserBySubject(ctx, identity.subject);
@@ -108,14 +108,82 @@ export const dashboard = query({
     const kycTiers = admin
       ? (await ctx.db.query("kycTiers").withIndex("by_created").order("desc").collect()).map(t => ({ id: t._id, tierName: t.tierName, requirements: t.requirements, maxShipmentValueNaira: t.maxShipmentValueNaira, maxCapacityKg: t.maxCapacityKg, description: t.description, createdAt: t.createdAt, updatedAt: t.updatedAt }))
       : [];
+    const adminRoles = admin
+      ? (await ctx.db.query("adminRoles").withIndex("by_created").order("desc").collect()).map(r => ({ id: r._id, name: r.name, memberCount: 0 }))
+      : [];
+    const teamMembers = admin
+      ? (await ctx.db.query("teamMembers").collect()).map(m => ({ id: m._id, adminRoleId: m.adminRoleId, name: m.name, email: m.email, roleTitle: m.roleTitle, mustChangePassword: m.mustChangePassword }))
+      : [];
+    for (const role of adminRoles) role.memberCount = teamMembers.filter(m => m.adminRoleId === role.id).length;
+    const permissions = admin
+      ? (await ctx.db.query("permissions").withIndex("by_created").collect()).map(p => ({ id: p._id, name: p.name }))
+      : [];
+    const permissionGrants = admin
+      ? (await ctx.db.query("permissionGrants").collect()).map(g => ({ id: g._id, permissionId: g.permissionId, adminRoleId: g.adminRoleId, roleTitle: g.roleTitle, granted: g.granted }))
+      : [];
+    const securityEvents = admin
+      ? await ctx.db.query("securityEvents").withIndex("by_created").order("desc").take(300)
+      : [];
+    const suspiciousMap = new Map<string, { name: string; email?: string; phone?: string; attempts: number }>();
+    for (const event of securityEvents) {
+      if (event.kind !== "failed_login") continue;
+      const key = event.actorEmail ?? event.actorName;
+      const current = suspiciousMap.get(key);
+      if (current) current.attempts += event.attempts ?? 1;
+      else suspiciousMap.set(key, { name: event.actorName, email: event.actorEmail, phone: event.actorPhone, attempts: event.attempts ?? 1 });
+    }
+    const suspiciousAccounts = [...suspiciousMap.entries()]
+      .map(([key, item], index) => ({ id: `sus-${index}-${key}`, ...item }))
+      .sort((a, b) => b.attempts - a.attempts);
+    const prettyDateTime = (value: number) => {
+      const date = new Date(value);
+      const month = date.toLocaleDateString("en-US", { month: "short" });
+      return `${month} ${date.getDate()}, ${date.getFullYear()}, ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+    };
+    const adminLogins = securityEvents.filter(event => event.kind === "login").map(event => ({
+      id: event._id,
+      name: event.actorName,
+      dateTime: prettyDateTime(event.createdAt),
+      ipAddress: event.ipAddress,
+      deviceInfo: event.deviceInfo,
+      location: event.location,
+    }));
+    const adminActions = securityEvents.filter(event => event.kind === "admin_action").map(event => ({
+      id: event._id,
+      name: event.actorName,
+      dateTime: prettyDateTime(event.createdAt),
+      actionTaken: event.detail,
+      affectedSection: event.affectedSection,
+      ipAddress: event.ipAddress,
+    }));
     const feeConfigRows = await ctx.db.query("feeConfig").collect();
     const feeConfigDoc = feeConfigRows[0];
     const feeConfig = feeConfigDoc
       ? { platformFeePercent: feeConfigDoc.platformFeePercent, baseFeeNaira: feeConfigDoc.baseFeeNaira, distanceRateNairaPerKm: feeConfigDoc.distanceRateNairaPerKm, minFeeNaira: feeConfigDoc.minFeeNaira ?? 2000, categoryMultipliers: feeConfigDoc.categoryMultipliers as Record<string, number> | undefined, weightMultipliers: feeConfigDoc.weightMultipliers as { minKg: number; maxKg: number; multiplier: number }[] | undefined, updatedAt: feeConfigDoc.updatedAt }
       : { platformFeePercent: 10, baseFeeNaira: 1400, distanceRateNairaPerKm: 17, minFeeNaira: 2000, updatedAt: 0 };
 
+    let viewerPermissions: PermissionKey[] = [];
+    if (isAdmin(viewer)) {
+      viewerPermissions = Object.values(PERMISSIONS);
+    } else {
+      const viewerEmail = (viewer.email ?? "").toLowerCase();
+      const member = teamMembers.find(m => m.email.toLowerCase() === viewerEmail);
+      if (member) {
+        const grantedPermissionIds = new Set(
+          permissionGrants
+            .filter(g => g.adminRoleId === member.adminRoleId && g.roleTitle === member.roleTitle && g.granted)
+            .map(g => g.permissionId)
+        );
+        viewerPermissions = permissions.filter(p => grantedPermissionIds.has(p.id)).map(p => p.name) as PermissionKey[];
+      }
+    }
+
+    const viewerPerson = await personDto(ctx, viewer, true);
+    const viewerMemberEmail = (viewer.email ?? "").toLowerCase();
+    const viewerMemberRecord = admin ? (await ctx.db.query("teamMembers").collect()).find(m => m.email.toLowerCase() === viewerMemberEmail) : undefined;
+
     return {
-      viewer: await personDto(ctx, viewer, true),
+      viewer: viewerMemberRecord ? { ...viewerPerson, mustChangePassword: viewerMemberRecord.mustChangePassword ?? false } : viewerPerson,
       people: await Promise.all(users.map(u => personDto(ctx, u, admin || u._id === viewer._id, isCompliance(viewer) || u._id === viewer._id))),
       trips,
       shipments: await Promise.all(selected.map(s => shipmentDto(ctx, s, admin || participant(s, viewer)))),
@@ -143,6 +211,14 @@ export const dashboard = query({
       escrowPolicies,
       cancellationPolicies,
       kycTiers,
+      adminRoles,
+      teamMembers,
+      permissions,
+      permissionGrants,
+      suspiciousAccounts,
+      adminLogins,
+      adminActions,
+      viewerPermissions,
     };
   },
 });

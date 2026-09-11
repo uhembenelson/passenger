@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="x-apple-disable-message-reformatting">
+  <!--
+    Passenger — base email template
+    ----------------------------------------------------------
+    Design notes
+    - 600px single column. One message, one primary action.
+    - Monochrome base with the single accent colour only on the primary CTA.
+    - All brand tokens pulled from packages/design-tokens (Work Sans,
+      green scale, neutral scale, pill buttons, hairlines).
+    - No emojis, no gradients, no icons. Calm, plain language,
+      following the volume/tone rules in intend.md.
+
+    Before sending
+    - Replace the logo data URI below with a hosted URL (email clients
+      are inconsistent with data URIs).
+    - Use an email service that inlines CSS (Mailchimp, Postmark, SES)
+      or keep the inline styles as-is — they are already inline.
+  -->
+  <title>Your parcel is on the way</title>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    @media only screen and (max-width: 600px) {
+      .container { width: 100% !important; }
+      .pad { padding-left: 32px !important; padding-right: 32px !important; }
+      .pad-wide { padding-left: 24px !important; padding-right: 24px !important; }
+      .stack-16 { display: block !important; }
+    }
+    @media (prefers-color-scheme: dark) {
+      .body-dark { }
+    }
+  </style>
+</head>
+
+<body style="margin:0; padding:0; background-color:#F7F7F8; -webkit-text-size-adjust:100%; word-spacing:normal;">
+  <!--[if mso]>
+  <table role="presentation" align="center" border="0" cellspacing="0" cellpadding="0" width="600">
+  <tr><td width="600">
+  <![endif]-->
+
+  <!-- Hidden preheader: shown as the preview line in inboxes -->
+  <div style="display:none; font-size:1px; line-height:1px; max-height:0; max-width:0; mso-hide:all;">
+    Adaeze is heading to Lagos with your parcel PC-4102. Track the journey live in the app.
+  </div>
+
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" bgcolor="#F7F7F8">
+    <tr>
+      <td align="center" style="padding:48px 24px 64px 24px;">
+        <table role="presentation" class="container" width="600" border="0" cellspacing="0" cellpadding="0"
+               style="width:600px; max-width:600px; background-color:#FFFFFF; border-radius:16px; overflow:hidden;">
+
+          <!-- ============ HEADER ============ -->
+          <tr>
+            <td class="pad" style="padding:40px 56px 0 56px;" align="left">
+              <table role="presentation" border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td style="vertical-align:middle; font-size:0; line-height:0;">
+                    <!-- Logo. Replace with a hosted URL before sending. -->
+                    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1024' height='1024' viewBox='0 0 1024 1024'%3E%3Crect width='1024' height='1024' rx='224' fill='%23183E32'/%3E%3Cpath d='M302 702 701 303M338 303h363v363' fill='none' stroke='%23D8ED93' stroke-width='88' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='302' cy='702' r='59' fill='%23D8ED93'/%3E%3C/svg%3E"
+                         width="36" height="36" alt=""
+                         style="display:block; width:36px; height:36px; border:0;"
+                         data-replace="https://assets.passenger.ng/emails/logo-256.png">
+                  </td>
+                  <td style="vertical-align:middle; padding-left:12px;">
+                    <span style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:20px; font-weight:600; letter-spacing:-0.01em; color:#2D362F;">Passenger</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ============ HERO ============ -->
+          <tr>
+            <td class="pad" style="padding:56px 56px 0 56px;" align="left">
+              <p style="margin:0 0 20px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:#248A56;">Delivery update</p>
+              <h1 style="margin:0 0 20px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:30px; font-weight:600; line-height:1.35; letter-spacing:-0.015em; color:#2D362F;">
+                Adaeze is on the way to Lagos with your parcel.
+              </h1>
+              <p style="margin:0 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">
+                Hi Ada, your parcel PC-4102 is in good hands. Adaeze is travelling from Abuja on Friday morning and arrives the same evening.
+              </p>
+            </td>
+          </tr>
+
+          <!-- ============ DETAILS ============ -->
+          <tr>
+            <td class="pad" style="padding:48px 56px 0 56px;" align="left">
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0"
+                     style="width:100%; border:1px solid #E5E7EB; border-radius:12px; background-color:#FFFFFF;">
+                <tr>
+                  <td style="padding:20px 24px 12px 24px; border-bottom:1px solid #F0F1F4;">
+                    <span style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:16px; font-weight:600; color:#2D362F;">Journey details</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 24px; border-bottom:1px solid #F0F1F4;">
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px; font-weight:400; color:#7A7F87;">Shipment</td>
+                        <td align="right" style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px; font-weight:600; color:#2D362F;">PC-4102</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 24px; border-bottom:1px solid #F0F1F4;">
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px; font-weight:400; color:#7A7F87;">From</td>
+                        <td align="right" style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px; font-weight:600; color:#2D362F;">Abuja</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 24px; border-bottom:1px solid #F0F1F4;">
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px; font-weight:400; color:#7A7F87;">To</td>
+                        <td align="right" style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px; font-weight:600; color:#2D362F;">Lagos</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 24px; border-bottom:1px solid #F0F1F4;">
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px; font-weight:400; color:#7A7F87;">Traveller</td>
+                        <td align="right" style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px; font-weight:600; color:#2D362F;">Adaeze</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 24px; border-bottom:1px solid #F0F1F4;">
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px; font-weight:400; color:#7A7F87;">Estimated arrival</td>
+                        <td align="right" style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px; font-weight:600; color:#2D362F;">Friday, 6:00 PM</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 24px 20px 24px;">
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px; font-weight:400; color:#7A7F87;">Status</td>
+                        <td align="right">
+                          <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin-left:auto;">
+                            <tr>
+                              <td style="width:8px; height:8px; border-radius:50%; background-color:#34D186; vertical-align:middle;" align="center"></td>
+                              <td style="padding-left:8px; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px; font-weight:600; color:#248A56;" align="right">
+                                On the way
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ============ PRIMARY ACTION ============ -->
+          <tr>
+            <td class="pad" style="padding:48px 56px 0 56px;" align="left">
+              <table role="presentation" border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="center" bgcolor="#34D186" style="border-radius:999px;">
+                    <a href="https://passenger.ng/track/PC-4102"
+                       target="_blank"
+                       style="display:inline-block; padding:16px 40px; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:16px; font-weight:600; line-height:1; color:#FFFFFF; background-color:#34D186; border-radius:999px; text-decoration:none; mso-padding-alt:0px;">
+                      Track your parcel
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:20px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:400; line-height:1.6; color:#7A7F87;">
+                Live updates appear in the app as the journey moves. You will receive a delivery code when it is time to receive your parcel.
+              </p>
+            </td>
+          </tr>
+
+          <!-- ============ FOOTER ============ -->
+          <tr>
+            <td style="padding:64px 56px 0 56px;" align="left">
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%; border-top:1px solid #E5E7EB;">
+                <tr>
+                  <td style="padding:32px 0 40px 0;">
+                    <p style="margin:0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:600; letter-spacing:0.02em; text-transform:uppercase; color:#4B5563;">Passenger</p>
+                    <p style="margin:6px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:400; color:#7A7F87;">
+                      Good things move with people.
+                    </p>
+                    <p style="margin:20px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:400; color:#7A7F87; line-height:1.8;">
+                      <a href="https://passenger.ng/help" style="color:#4B5563; text-decoration:none;">Help centre</a>
+                      &nbsp;·&nbsp;
+                      <a href="https://passenger.ng/privacy" style="color:#4B5563; text-decoration:none;">Privacy</a>
+                      &nbsp;·&nbsp;
+                      <a href="%unsubscribe%/" style="color:#4B5563; text-decoration:none;">Unsubscribe</a>
+                    </p>
+                    <p style="margin:20px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:400; color:#9CA3AF; line-height:1.6;">
+                      You are receiving this because you use Passenger.<br>
+                      Passenger, 12 Awolowo Road, Ikoyi, Lagos, Nigeria.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <!--[if mso]>
+  </td></tr>
+  </table>
+  <![endif]-->
+</body>
+</html>

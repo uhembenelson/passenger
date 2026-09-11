@@ -1,6 +1,7 @@
 import { v } from "convex/values";
+import { PERMISSIONS } from "@passenger/core";
 import { query, mutation } from "./_generated/server";
-import { requireUser, isAdmin, audit } from "./lib";
+import { requireUser, requirePermission, audit } from "./lib";
 
 export const list = query({
   args: {},
@@ -20,7 +21,7 @@ export const create = mutation({
   args: { policyName: v.string(), type: v.string(), releaseTime: v.string() },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    isAdmin(user);
+    await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     if (!args.policyName.trim()) throw new Error("Policy name is required.");
     if (!args.type.trim()) throw new Error("Policy type is required.");
     const now = Date.now();
@@ -40,7 +41,7 @@ export const update = mutation({
   args: { id: v.id("escrowPolicies"), policyName: v.string(), type: v.string(), releaseTime: v.string() },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    isAdmin(user);
+    await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     const existing = await ctx.db.get(args.id);
     if (!existing) throw new Error("Escrow policy not found.");
     if (!args.policyName.trim()) throw new Error("Policy name is required.");
@@ -58,7 +59,7 @@ export const remove = mutation({
   args: { id: v.id("escrowPolicies") },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    isAdmin(user);
+    await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     const existing = await ctx.db.get(args.id);
     if (!existing) throw new Error("Escrow policy not found.");
     await ctx.db.delete(args.id);

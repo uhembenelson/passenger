@@ -4,40 +4,28 @@ import { convexAuth } from "@convex-dev/auth/server";
 import { ConvexError } from "convex/values";
 import { normalizePhone } from "@passenger/core";
 import type { DataModel } from "./_generated/dataModel";
+import { renderResetPasswordEmail, sendBrandedEmail } from "./emails";
 
 const PassengerResetEmail = Email<DataModel>({
   id: "password-reset",
   maxAge: 10 * 60,
   async sendVerificationRequest({ identifier, token, url }: { identifier: string; token: string; url: string }) {
-    const apiKey = process.env.RESEND_API_KEY;
-    const from = process.env.AUTH_EMAIL_FROM;
-    if (!apiKey || !from) {
-      throw new ConvexError("Password reset is not configured yet. Set RESEND_API_KEY and AUTH_EMAIL_FROM on the backend deployment.");
-    }
-
     const resetUrl = new URL(url);
     resetUrl.searchParams.delete("code");
     resetUrl.searchParams.set("reset_code", token);
     resetUrl.searchParams.set("reset_email", identifier);
 
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to: identifier,
-        subject: "Passenger password reset code",
-        text: `Reset your Passenger password by opening ${resetUrl.toString()} within 10 minutes. If you need the code directly, use ${token}.`,
-      }),
-      signal: AbortSignal.timeout(15_000),
+    const { html, text } = renderResetPasswordEmail({
+      email: identifier,
+      resetUrl: resetUrl.toString(),
+      code: token,
     });
-
-    if (!response.ok) {
-      throw new ConvexError("Passenger could not send the password reset email. Check the email provider configuration and try again.");
-    }
+    await sendBrandedEmail({
+      to: identifier,
+      subject: "Reset your Passenger password",
+      html,
+      text,
+    });
   },
 });
 

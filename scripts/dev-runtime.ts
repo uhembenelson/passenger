@@ -5,6 +5,7 @@ import { createConnection } from "node:net";
 
 export const WORKSPACES = {
   admin: { directory: "apps/admin", port: 3000, label: "Next.js admin" },
+  website: { directory: "apps/website", port: 3001, label: "Next.js website" },
   mobile: { directory: "apps/mobile", port: 8081, label: "Expo / Metro" },
   backend: { directory: "packages/backend", port: 3210, label: "Convex local backend" },
 } as const;
@@ -12,7 +13,7 @@ export type WorkspaceName = keyof typeof WORKSPACES;
 export function selectedWorkspaces(args: string[]): WorkspaceName[] {
   const requested = args.filter(a => a !== "--check");
   if (!requested.length || (requested.length === 1 && requested[0] === "all")) return ["admin", "mobile", "backend"];
-  if (requested.length !== 1 || !(requested[0]! in WORKSPACES)) throw new Error("Usage: bun dev [all|admin|mobile|backend] [--check]");
+  if (requested.length !== 1 || !(requested[0]! in WORKSPACES)) throw new Error("Usage: bun dev [all|admin|website|mobile|backend] [--check]");
   return [requested[0] as WorkspaceName];
 }
 export function supportedNode(version: string): boolean {

@@ -1,7 +1,8 @@
 import { v } from "convex/values";
+import { PERMISSIONS } from "@passenger/core";
 import { query, mutation, type MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { effectiveChatStatus, isAdmin, isCompliance, isStaff, personDto, requireUser, shipmentDto, tripDto, audit, closeResolvedChatAfterMs, fail } from "./lib";
+import { effectiveChatStatus, isAdmin, isCompliance, isStaff, hasPermission, personDto, requireUser, shipmentDto, tripDto, audit, closeResolvedChatAfterMs, fail } from "./lib";
 import type { SupportUserDetails, SupportActivityEntry, AgentScoreboardEntry } from "@passenger/core";
 
 export const getUserDetails = query({
@@ -65,7 +66,7 @@ export const listChats = query({
   args: {},
   handler: async (ctx) => {
     const viewer = await requireUser(ctx);
-    if (!isAdmin(viewer)) return [];
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_VIEW))) return [];
     const chats = await ctx.db.query("supportChats").withIndex("by_last_message").order("desc").collect();
     return Promise.all(chats.map(async (chat) => {
       const user = await ctx.db.get(chat.userId);
@@ -165,7 +166,7 @@ export const handover = mutation({
   args: { chatId: v.id("supportChats"), newAgentId: v.id("users"), newAgentName: v.string() },
   handler: async (ctx, args) => {
     const viewer = await requireUser(ctx);
-    if (!isAdmin(viewer)) fail("Admins only.");
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_MANAGE))) fail("Admins only.");
     const now = Date.now();
     await ctx.db.patch(args.chatId, {
       assignedTo: args.newAgentId,
@@ -255,7 +256,7 @@ export const qaReview = mutation({
   args: { chatId: v.id("supportChats"), score: v.union(v.literal("approved"), v.literal("needs_work")), note: v.string() },
   handler: async (ctx, args) => {
     const viewer = await requireUser(ctx);
-    if (!isAdmin(viewer)) fail("Admins only.");
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_MANAGE))) fail("Admins only.");
     const now = Date.now();
     await ctx.db.patch(args.chatId, {
       qaReviewedBy: viewer._id,
@@ -274,7 +275,7 @@ export const supportActivity = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args): Promise<SupportActivityEntry[]> => {
     const viewer = await requireUser(ctx);
-    if (!isAdmin(viewer)) return [];
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_VIEW))) return [];
     const events = await ctx.db.query("supportEvents").withIndex("by_created").order("desc").take(args.limit ?? 200);
     return events.map(e => ({
       id: e._id, chatId: e.chatId, actorId: e.actorId, actorName: e.actorName, action: e.action, detail: e.detail, createdAt: e.createdAt,
@@ -286,7 +287,7 @@ export const agentScoreboard = query({
   args: {},
   handler: async (ctx): Promise<AgentScoreboardEntry[]> => {
     const viewer = await requireUser(ctx);
-    if (!isAdmin(viewer)) return [];
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_VIEW))) return [];
     const [chats, messages, events] = await Promise.all([
       ctx.db.query("supportChats").collect(),
       ctx.db.query("supportMessages").collect(),

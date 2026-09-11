@@ -10,6 +10,7 @@ type Target = { file: string; key: string };
 const targets: Target[] = [
   { file: resolve(root, "apps/mobile/.env.local"), key: "EXPO_PUBLIC_CONVEX_URL" },
   { file: resolve(root, "apps/admin/.env.local"), key: "NEXT_PUBLIC_CONVEX_URL" },
+  { file: resolve(root, "apps/website/.env.local"), key: "NEXT_PUBLIC_CONVEX_URL" },
 ];
 
 if (!existsSync(sharedEnvPath)) {
@@ -27,7 +28,7 @@ for (const target of targets) {
   writeFileSync(target.file, upsertEnv(current, target.key, publicConvexUrl), "utf8");
 }
 
-console.log(`[passenger] Synced public Convex URL to mobile and admin: ${publicConvexUrl}`);
+console.log(`[passenger] Synced public Convex URL to mobile, admin, and website: ${publicConvexUrl}`);
 
 function parseEnv(source: string) {
   const values: Record<string, string> = {};
