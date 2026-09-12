@@ -42,7 +42,21 @@ export const offerStatus = v.union(v.literal("pending"), v.literal("accepted"), 
 export const resolution = v.union(v.literal("refund"), v.literal("release"), v.literal("resume"), v.literal("cancel"));
 export const walletTransactionKind = v.union(v.literal("top_up"), v.literal("parcel_hold"), v.literal("parcel_refund"), v.literal("payout"));
 
+export const promotionFields = {
+  title: v.string(),
+  body: v.string(),
+  backgroundColor: v.string(),
+  textColor: v.string(),
+  imageUrl: v.string(),
+  imageOnly: v.boolean(),
+  destination: v.union(v.literal("send"), v.literal("travel"), v.literal("find"), v.literal("safety"), v.literal("activity"), v.literal("external")),
+  externalUrl: v.string(),
+  position: v.number(),
+  published: v.boolean(),
+};
+
 export default defineSchema({
+  promotions: defineTable(promotionFields).index("by_published_and_position", ["published", "position"]),
   ...authTables,
 
   users: defineTable({
@@ -160,12 +174,17 @@ export default defineSchema({
     safetyConsent: v.optional(v.boolean()),
     reviewNote: v.optional(v.string()),
     payByAt: v.optional(v.number()),
+    handoverEvidenceIds: v.optional(v.array(v.id("evidence"))),
+    deliveryEvidenceIds: v.optional(v.array(v.id("evidence"))),
+    receiverPickupSmsStatus: v.optional(v.union(v.literal("pending"), v.literal("sent"), v.literal("failed"))),
+    receiverDeliverySmsStatus: v.optional(v.union(v.literal("pending"), v.literal("sent"), v.literal("failed"))),
     handoverAt: v.optional(v.number()),
     deliveredAt: v.optional(v.number()),
     latestLatitude: v.optional(v.number()),
     latestLongitude: v.optional(v.number()),
     latestLocationLabel: v.optional(v.string()),
     latestLocationAt: v.optional(v.number()),
+    latestSafetyCheckInAt: v.optional(v.number()),
     locationCheckInCount: v.optional(v.number()),
     disputeUntil: v.optional(v.number()),
     exception: v.optional(v.string()),
@@ -267,6 +286,14 @@ export default defineSchema({
     .index("by_target", ["targetId"])
     .index("by_author", ["authorId"]),
 
+  walletDeposits: defineTable({
+    userId: v.id("users"),
+    reference: v.string(),
+    amountKobo: v.number(),
+    url: v.optional(v.string()),
+    status: v.union(v.literal("pending"), v.literal("paid")),
+    createdAt: v.number(),
+  }).index("by_reference", ["reference"]),
   walletTransactions: defineTable({
     userId: v.id("users"),
     kind: walletTransactionKind,
@@ -280,6 +307,10 @@ export default defineSchema({
     .index("by_reference", ["reference"]),
 
   supportChats: defineTable({
+    contextKind: v.optional(v.union(v.literal("delivery"), v.literal("trip"), v.literal("other"))),
+    shipmentId: v.optional(v.id("shipments")),
+    tripId: v.optional(v.id("trips")),
+    deletedAt: v.optional(v.number()),
     userId: v.id("users"),
     subject: v.optional(v.string()),
     status: v.union(v.literal("unresolved"), v.literal("resolved"), v.literal("closed")),
@@ -306,6 +337,7 @@ export default defineSchema({
     .index("by_last_message", ["lastMessageAt"]),
 
   supportMessages: defineTable({
+    evidenceIds: v.optional(v.array(v.id("evidence"))),
     chatId: v.id("supportChats"),
     authorId: v.id("users"),
     body: v.string(),

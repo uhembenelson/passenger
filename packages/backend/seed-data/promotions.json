@@ -1,0 +1,74 @@
+[
+  {
+    "title": "Send a little love home",
+    "body": "Clothes, books or something they left behind. Add your parcel and find a traveller going their way.",
+    "destination": "send",
+    "backgroundColor": "#DCEBCB",
+    "textColor": "#183B2B",
+    "imageUrl": "https://mellow-ox-83.convex.cloud/api/storage/a1baa3c7-d386-4804-915d-4bc590f0d0b6",
+    "imageOnly": false,
+    "externalUrl": "",
+    "position": 0,
+    "published": true
+  },
+  {
+    "title": "Your next trip could pay",
+    "body": "Got room in your bag? Share your route and available space to find parcels you can carry.",
+    "destination": "travel",
+    "backgroundColor": "#183B2B",
+    "textColor": "#FFFFFF",
+    "imageUrl": "https://mellow-ox-83.convex.cloud/api/storage/89cc78a2-7785-4dd7-b265-4c46e9324bb3",
+    "imageOnly": false,
+    "externalUrl": "",
+    "position": 1,
+    "published": true
+  },
+  {
+    "title": "Find someone heading your way",
+    "body": "Browse upcoming trips and look for a traveller whose route fits your parcel.",
+    "destination": "find",
+    "backgroundColor": "#F7E5BD",
+    "textColor": "#49351C",
+    "imageUrl": "",
+    "imageOnly": false,
+    "externalUrl": "",
+    "position": 2,
+    "published": true
+  },
+  {
+    "title": "Back to campus, bag by bag",
+    "body": "Sending study notes or a change of clothes? Add the parcel details and choose when it needs to arrive.",
+    "destination": "send",
+    "backgroundColor": "#DFEAF4",
+    "textColor": "#203C53",
+    "imageUrl": "https://mellow-ox-83.convex.cloud/api/storage/074f26bf-7139-4758-b06a-f5b61d12449c",
+    "imageOnly": false,
+    "externalUrl": "",
+    "position": 3,
+    "published": true
+  },
+  {
+    "title": "A safer handover starts here",
+    "body": "Read the packing guidance and check how handover and delivery codes work before your next parcel.",
+    "destination": "safety",
+    "backgroundColor": "#EDE4F2",
+    "textColor": "#463153",
+    "imageUrl": "",
+    "imageOnly": false,
+    "externalUrl": "",
+    "position": 4,
+    "published": true
+  },
+  {
+    "title": "Keep an eye on your parcel",
+    "body": "Open your activity to review offers, check delivery progress and see what needs your attention.",
+    "destination": "activity",
+    "backgroundColor": "#F6E0D7",
+    "textColor": "#54362B",
+    "imageUrl": "",
+    "imageOnly": false,
+    "externalUrl": "",
+    "position": 5,
+    "published": true
+  }
+]

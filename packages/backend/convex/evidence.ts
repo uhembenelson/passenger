@@ -128,11 +128,11 @@ export const get = query({
 
     let allowed = e.ownerId === u._id || isAdmin(u);
     if (!allowed && e.purpose === "parcel") {
-      const shipments = await ctx.db
-        .query("shipments")
-        .withIndex("by_traveller", q => q.eq("travellerId", u._id))
-        .collect();
-      allowed = shipments.some(s => participant(s, u) && s.evidenceIds?.includes(e._id));
+      const [carried, sent] = await Promise.all([
+        ctx.db.query("shipments").withIndex("by_traveller", q => q.eq("travellerId", u._id)).collect(),
+        ctx.db.query("shipments").withIndex("by_sender", q => q.eq("senderId", u._id)).collect(),
+      ]);
+      allowed = [...carried, ...sent].some(s => participant(s, u) && [...(s.evidenceIds ?? []), ...(s.handoverEvidenceIds ?? []), ...(s.deliveryEvidenceIds ?? [])].includes(e._id));
     }
 
     if (!allowed) return null;

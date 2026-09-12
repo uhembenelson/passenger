@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { PERMISSIONS } from "@passenger/core";
 import { query, mutation } from "./_generated/server";
-import { requireUser, requirePermission, audit } from "./lib";
+import { requireUser, requirePermission, audit, fail } from "./lib";
 
 export const list = query({
   args: {},
@@ -24,13 +24,13 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
-    if (!args.tierName.trim()) throw new Error("Tier name is required.");
+    if (!args.tierName.trim()) fail("Tier name is required.");
     const requirements = args.requirements.map(value => value.trim()).filter(Boolean);
-    if (!requirements.length || requirements.length > 10) throw new Error("Configure between 1 and 10 verification requirements.");
-    if (args.maxShipmentValueNaira < 0) throw new Error("Max shipment value cannot be negative.");
-    if (args.maxCapacityKg !== undefined && (args.maxCapacityKg < 0 || args.maxCapacityKg > 2000)) throw new Error("Max carry capacity must be between 0 and 2000 kg.");
+    if (!requirements.length || requirements.length > 10) fail("Configure between 1 and 10 verification requirements.");
+    if (args.maxShipmentValueNaira < 0) fail("Max shipment value cannot be negative.");
+    if (args.maxCapacityKg !== undefined && (args.maxCapacityKg < 0 || args.maxCapacityKg > 2000)) fail("Max carry capacity must be between 0 and 2000 kg.");
     const probe = await ctx.db.query("kycTiers").withIndex("by_created").collect();
-    if (probe.some((t) => t.tierName.trim().toLowerCase() === args.tierName.trim().toLowerCase())) throw new Error("A tier with that name already exists.");
+    if (probe.some((t) => t.tierName.trim().toLowerCase() === args.tierName.trim().toLowerCase())) fail("A tier with that name already exists.");
     const now = Date.now();
     const id = await ctx.db.insert("kycTiers", {
       tierName: args.tierName.trim(),
@@ -52,14 +52,14 @@ export const update = mutation({
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     const existing = await ctx.db.get(args.id);
-    if (!existing) throw new Error("KYC tier not found.");
-    if (!args.tierName.trim()) throw new Error("Tier name is required.");
+    if (!existing) fail("KYC tier not found.");
+    if (!args.tierName.trim()) fail("Tier name is required.");
     const requirements = args.requirements.map(value => value.trim()).filter(Boolean);
-    if (!requirements.length || requirements.length > 10) throw new Error("Configure between 1 and 10 verification requirements.");
-    if (args.maxShipmentValueNaira < 0) throw new Error("Max shipment value cannot be negative.");
-    if (args.maxCapacityKg !== undefined && (args.maxCapacityKg < 0 || args.maxCapacityKg > 2000)) throw new Error("Max carry capacity must be between 0 and 2000 kg.");
+    if (!requirements.length || requirements.length > 10) fail("Configure between 1 and 10 verification requirements.");
+    if (args.maxShipmentValueNaira < 0) fail("Max shipment value cannot be negative.");
+    if (args.maxCapacityKg !== undefined && (args.maxCapacityKg < 0 || args.maxCapacityKg > 2000)) fail("Max carry capacity must be between 0 and 2000 kg.");
     const probe = await ctx.db.query("kycTiers").withIndex("by_created").collect();
-    if (probe.some((t) => t._id !== args.id && t.tierName.trim().toLowerCase() === args.tierName.trim().toLowerCase())) throw new Error("A tier with that name already exists.");
+    if (probe.some((t) => t._id !== args.id && t.tierName.trim().toLowerCase() === args.tierName.trim().toLowerCase())) fail("A tier with that name already exists.");
     await ctx.db.patch(args.id, {
       tierName: args.tierName.trim(),
       requirements,
@@ -78,7 +78,7 @@ export const remove = mutation({
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     const existing = await ctx.db.get(args.id);
-    if (!existing) throw new Error("KYC tier not found.");
+    if (!existing) fail("KYC tier not found.");
     await ctx.db.delete(args.id);
     await audit(ctx, user, "kyc.deleted", `Deleted KYC tier: ${existing.tierName}`);
   },

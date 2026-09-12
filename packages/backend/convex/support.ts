@@ -1,15 +1,35 @@
+import { validateEvidence } from "./evidence";
 import { v } from "convex/values";
 import { PERMISSIONS } from "@passenger/core";
-import { query, mutation, type MutationCtx } from "./_generated/server";
+import { query, mutation, type QueryCtx, type MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { effectiveChatStatus, isAdmin, isCompliance, isStaff, hasPermission, personDto, requireUser, shipmentDto, tripDto, audit, closeResolvedChatAfterMs, fail } from "./lib";
+import { effectiveChatStatus, isAdmin, isCompliance, isStaff, hasPermission, personDto, requireUser, shipmentDto, tripDto, audit, closeResolvedChatAfterMs, fail, notify } from "./lib";
 import type { SupportUserDetails, SupportActivityEntry, AgentScoreboardEntry } from "@passenger/core";
+
+const contextArgs = {
+  contextKind: v.optional(v.union(v.literal("delivery"), v.literal("trip"), v.literal("other"))),
+  shipmentId: v.optional(v.id("shipments")),
+  tripId: v.optional(v.id("trips")),
+};
+type ContextInput = { contextKind?: "delivery" | "trip" | "other"; shipmentId?: Id<"shipments">; tripId?: Id<"trips"> };
+async function validateContext(ctx: QueryCtx | MutationCtx, userId: Id<"users">, input: ContextInput) {
+  const kind = input.contextKind ?? "other";
+  if (kind === "delivery") {
+    if (!input.shipmentId || input.tripId) fail("Select a delivery for this request.");
+    const shipment = await ctx.db.get(input.shipmentId);
+    if (!shipment || (shipment.senderId !== userId && shipment.travellerId !== userId)) fail("Choose one of your deliveries.");
+  } else if (kind === "trip") {
+    if (!input.tripId || input.shipmentId) fail("Select a trip for this request.");
+    const trip = await ctx.db.get(input.tripId);
+    if (!trip || trip.travellerId !== userId) fail("Choose one of your trips.");
+  } else if (input.shipmentId || input.tripId) fail("Other issues cannot include a delivery or trip.");
+}
 
 export const getUserDetails = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args): Promise<SupportUserDetails | null> => {
     const viewer = await requireUser(ctx);
-    if (!isStaff(viewer)) return null;
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_VIEW))) return null;
 
     const user = await ctx.db.get(args.userId);
     if (!user) return null;
@@ -71,7 +91,12 @@ export const listChats = query({
     return Promise.all(chats.map(async (chat) => {
       const user = await ctx.db.get(chat.userId);
       const messages = await ctx.db.query("supportMessages").withIndex("by_chat", q => q.eq("chatId", chat._id)).order("desc").take(1);
+      const related = chat.shipmentId ? await ctx.db.get(chat.shipmentId) : chat.tripId ? await ctx.db.get(chat.tripId) : null;
+      const contextLabel = related ? `${related.origin} to ${related.destination}` : undefined;
+      const contextReference = related && "reference" in related ? related.reference : chat.tripId ? `Trip ${chat.tripId.slice(-6)}` : undefined;
       return {
+        contextLabel, contextReference,
+        contextKind: chat.contextKind ?? "other", shipmentId: chat.shipmentId, tripId: chat.tripId, deletedAt: chat.deletedAt,
         id: chat._id,
         userId: chat.userId,
         userName: user?.name ?? "Unknown",
@@ -101,10 +126,22 @@ export const listChats = query({
   },
 });
 
+// Customer requests share the operations inbox, without exposing staff notes.
+export const myChats = query({
+  args: {},
+  handler: async (ctx) => {
+    const viewer = await requireUser(ctx);
+    const chats = await ctx.db.query("supportChats").withIndex("by_user", q => q.eq("userId", viewer._id)).order("desc").take(100);
+    return chats.filter(chat => !chat.deletedAt).map(chat => ({ id: chat._id, subject: chat.subject, status: effectiveChatStatus(chat), contextKind: chat.contextKind ?? "other", shipmentId: chat.shipmentId, tripId: chat.tripId, resolutionNote: chat.resolutionNote, lastMessageAt: chat.lastMessageAt })).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+  },
+});
+
 export const getMessages = query({
   args: { chatId: v.id("supportChats") },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const viewer = await requireUser(ctx);
+    const chat = await ctx.db.get(args.chatId);
+    if (!chat || (chat.userId !== viewer._id && !(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_VIEW)))) fail("Support request not found.");
     const messages = await ctx.db.query("supportMessages").withIndex("by_chat", q => q.eq("chatId", args.chatId)).order("asc").collect();
     return Promise.all(messages.map(async (msg) => {
       const author = await ctx.db.get(msg.authorId);
@@ -115,8 +152,12 @@ export const getMessages = query({
         authorName: author?.name ?? "Unknown",
         authorImage: author?.image,
         body: msg.body,
+        attachments: await Promise.all((msg.evidenceIds ?? []).map(async id => {
+          const file = await ctx.db.get(id);
+          return { id, filename: file?.filename ?? "Photo unavailable", url: file ? await ctx.storage.getUrl(file.storageId) : null };
+        })),
         createdAt: msg.createdAt,
-        isAdmin: author?.verification === "verified" && (author as any).role === "admin",
+        isAdmin: msg.authorId !== chat.userId,
       };
     }));
   },
@@ -139,9 +180,10 @@ export const claimView = mutation({
   args: { chatId: v.id("supportChats") },
   handler: async (ctx, args) => {
     const viewer = await requireUser(ctx);
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_MANAGE))) fail("Support management permission required.");
     const now = Date.now();
     const chat = await ctx.db.get(args.chatId);
-    if (!chat) return { claimed: false, error: "Chat not found" };
+    if (!chat || chat.deletedAt) return { claimed: false, error: "Chat not found" };
     if (chat.activeViewedBy && chat.activeViewedAt && now - chat.activeViewedAt < PRESENCE_TIMEOUT_MS && chat.activeViewedBy !== viewer._id) {
       const current = await ctx.db.get(chat.activeViewedBy);
       return { claimed: false, currentViewer: current?.name ?? "Another agent", currentViewerId: chat.activeViewedBy };
@@ -155,6 +197,7 @@ export const releaseView = mutation({
   args: { chatId: v.id("supportChats") },
   handler: async (ctx, args) => {
     const viewer = await requireUser(ctx);
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_MANAGE))) fail("Support management permission required.");
     const chat = await ctx.db.get(args.chatId);
     if (chat?.activeViewedBy === viewer._id) {
       await ctx.db.patch(args.chatId, { activeViewedBy: undefined, activeViewedAt: undefined });
@@ -167,15 +210,19 @@ export const handover = mutation({
   handler: async (ctx, args) => {
     const viewer = await requireUser(ctx);
     if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_MANAGE))) fail("Admins only.");
+    const agent = await ctx.db.get(args.newAgentId);
+    if (!agent || agent.suspended || !(await hasPermission(ctx, agent, PERMISSIONS.SUPPORT_MANAGE))) fail("Choose an active support agent.");
+    const previous = await ctx.db.get(args.chatId);
+    if (!previous || previous.deletedAt) fail("Support request not found.");
     const now = Date.now();
     await ctx.db.patch(args.chatId, {
       assignedTo: args.newAgentId,
-      assignedByName: args.newAgentName,
+      assignedByName: agent.name,
       activeViewedBy: args.newAgentId,
       activeViewedAt: now,
     });
     const chat = await ctx.db.get(args.chatId);
-    await logSupportEvent(ctx, args.chatId, viewer, "handover", `Handed over to ${args.newAgentName} from ${chat?.assignedByName ?? "nobody"}`);
+    await logSupportEvent(ctx, args.chatId, viewer, "handover", `Handed over to ${agent.name} from ${previous.assignedByName ?? "nobody"}`);
   },
 });
 
@@ -194,8 +241,10 @@ export const sendMessage = mutation({
   args: { chatId: v.id("supportChats"), body: v.string() },
   handler: async (ctx, args) => {
     const viewer = await requireUser(ctx);
-    await sweepClosedChats(ctx);
     const chat = await ctx.db.get(args.chatId);
+    if (!chat || (chat.userId !== viewer._id && !(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_MANAGE)))) fail("Support request not found.");
+    if (chat.deletedAt) fail("This request has been archived. Restore it before replying.");
+    if (!args.body.trim() || args.body.trim().length > 2000) fail("Messages must contain 1 to 2,000 characters.");
     await ctx.db.insert("supportMessages", {
       chatId: args.chatId,
       authorId: viewer._id,
@@ -203,7 +252,7 @@ export const sendMessage = mutation({
       createdAt: Date.now(),
     });
     if (chat && viewer._id === chat.userId && chat.status !== "unresolved") {
-      await ctx.db.patch(args.chatId, { status: "unresolved", closedAt: undefined });
+      await ctx.db.patch(args.chatId, { status: "unresolved", closedAt: undefined, resolvedAt: undefined, resolution: undefined, resolutionNote: undefined, resolvedBy: undefined, resolvedByName: undefined, qaReviewedAt: undefined, qaScore: undefined, qaNote: undefined, qaReviewedBy: undefined, qaReviewedByName: undefined });
       await logSupportEvent(ctx, args.chatId, viewer, "reopen", "Reopened by customer reply");
     }
     await ctx.db.patch(args.chatId, { lastMessageAt: Date.now() });
@@ -212,7 +261,8 @@ export const sendMessage = mutation({
         await ctx.db.patch(args.chatId, { assignedTo: viewer._id, assignedByName: viewer.name });
       }
       await ctx.db.patch(args.chatId, { activeViewedBy: viewer._id, activeViewedAt: Date.now() });
-      if (isAdmin(viewer)) {
+      await notify(ctx, chat.userId, "Support replied", "You have a new reply in your support request.", chat.shipmentId);
+      if (isStaff(viewer)) {
         await logSupportEvent(ctx, args.chatId, viewer, "message", args.body.slice(0, 200));
       }
     }
@@ -223,6 +273,10 @@ export const markResolved = mutation({
   args: { chatId: v.id("supportChats"), resolution: v.string(), note: v.string() },
   handler: async (ctx, args) => {
     const viewer = await requireUser(ctx);
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_MANAGE))) fail("Support management permission required.");
+    if (!args.resolution.trim() || !args.note.trim() || args.note.length > 2000) fail("Add a resolution and a note of up to 2,000 characters.");
+    const request = await ctx.db.get(args.chatId);
+    if (!request || request.deletedAt) fail("Support request not found.");
     const now = Date.now();
     await sweepClosedChats(ctx, now);
     await ctx.db.patch(args.chatId, {
@@ -235,6 +289,7 @@ export const markResolved = mutation({
       resolvedByName: viewer.name,
     });
     const chat = await ctx.db.get(args.chatId);
+    await notify(ctx, request.userId, "Support request resolved", args.note.trim(), request.shipmentId);
     await audit(ctx, viewer, "support.resolve", `Resolved support chat for ${chat?.userId}: ${args.resolution} — ${args.note}`);
     await logSupportEvent(ctx, args.chatId, viewer, "resolve", `${args.resolution} — ${args.note}`);
   },
@@ -244,8 +299,11 @@ export const reopenChat = mutation({
   args: { chatId: v.id("supportChats") },
   handler: async (ctx, args) => {
     const viewer = await requireUser(ctx);
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_MANAGE))) fail("Support management permission required.");
+    const request = await ctx.db.get(args.chatId);
+    if (!request || request.deletedAt) fail("Support request not found.");
     await sweepClosedChats(ctx);
-    await ctx.db.patch(args.chatId, { status: "unresolved", closedAt: undefined, resolvedAt: undefined });
+    await ctx.db.patch(args.chatId, { status: "unresolved", closedAt: undefined, resolvedAt: undefined, resolution: undefined, resolutionNote: undefined, resolvedBy: undefined, resolvedByName: undefined, qaReviewedAt: undefined, qaScore: undefined, qaNote: undefined, qaReviewedBy: undefined, qaReviewedByName: undefined });
     const chat = await ctx.db.get(args.chatId);
     await audit(ctx, viewer, "support.reopen", `Reopened support chat for ${chat?.userId}`);
     await logSupportEvent(ctx, args.chatId, viewer, "reopen", "Reopened");
@@ -257,6 +315,9 @@ export const qaReview = mutation({
   handler: async (ctx, args) => {
     const viewer = await requireUser(ctx);
     if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_MANAGE))) fail("Admins only.");
+    const request = await ctx.db.get(args.chatId);
+    if (!request || request.deletedAt || effectiveChatStatus(request) === "unresolved") fail("Resolve the request before reviewing its handling.");
+    if (args.note.length > 2000 || (args.score === "needs_work" && !args.note.trim())) fail("Add a review note of up to 2,000 characters.");
     const now = Date.now();
     await ctx.db.patch(args.chatId, {
       qaReviewedBy: viewer._id,
@@ -345,12 +406,20 @@ export const agentScoreboard = query({
 });
 
 export const createChat = mutation({
-  args: { userId: v.id("users"), subject: v.optional(v.string()), body: v.string() },
+  args: { userId: v.id("users"), subject: v.optional(v.string()), body: v.string(), evidenceIds: v.optional(v.array(v.id("evidence"))), ...contextArgs },
   handler: async (ctx, args) => {
     const viewer = await requireUser(ctx);
+    if (args.userId !== viewer._id && !(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_MANAGE))) fail("You can only create your own support requests.");
+    if (!args.body.trim() || args.body.trim().length > 2000) fail("Messages must contain 1 to 2,000 characters.");
+    if (args.subject && args.subject.length > 160) fail("Subject is too long.");
+    if (!(await ctx.db.get(args.userId))) fail("Customer not found.");
+    await validateContext(ctx, args.userId, args);
+    if (args.evidenceIds?.length) await validateEvidence(ctx, args.evidenceIds, viewer._id, "parcel");
     const now = Date.now();
-    await sweepClosedChats(ctx, now);
     const chatId = await ctx.db.insert("supportChats", {
+      contextKind: args.contextKind ?? "other",
+      shipmentId: args.shipmentId,
+      tripId: args.tripId,
       userId: args.userId,
       subject: args.subject,
       status: "unresolved",
@@ -361,8 +430,113 @@ export const createChat = mutation({
       chatId,
       authorId: viewer._id,
       body: args.body,
+      evidenceIds: args.evidenceIds,
       createdAt: now,
     });
+    await logSupportEvent(ctx, chatId, viewer, "created", "Support request created");
     return chatId;
+  },
+});
+
+export const contextOptions = query({
+  args: { userId: v.optional(v.id("users")) },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx);
+    const userId = args.userId ?? viewer._id;
+    if (userId !== viewer._id && !(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_MANAGE))) fail("Support permission required.");
+    const [sent, carried, trips] = await Promise.all([
+      ctx.db.query("shipments").withIndex("by_sender", q => q.eq("senderId", userId)).collect(),
+      ctx.db.query("shipments").withIndex("by_traveller", q => q.eq("travellerId", userId)).collect(),
+      ctx.db.query("trips").withIndex("by_traveller", q => q.eq("travellerId", userId)).collect(),
+    ]);
+    return {
+      deliveries: [...new Map([...sent, ...carried].map(item => [item._id, item])).values()].sort((a, b) => b.createdAt - a.createdAt).map(item => ({ id: item._id, reference: item.reference, origin: item.origin, destination: item.destination, status: item.status, date: item.createdAt, past: ["delivered", "cancelled", "rejected"].includes(item.status) })),
+      trips: trips.sort((a, b) => b.departureAt - a.departureAt).map(item => ({ id: item._id, reference: `Trip ${item._id.slice(-6)}`, origin: item.origin, destination: item.destination, status: item.status ?? "active", date: item.departureAt, past: item.status === "completed" || item.status === "cancelled" || (item.arrivalAt ?? item.departureAt) < Date.now() })),
+    };
+  },
+});
+
+export const requestDetails = query({
+  args: { chatId: v.id("supportChats") },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx);
+    const chat = await ctx.db.get(args.chatId);
+    const staff = await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_VIEW);
+    if (!chat || (chat.userId !== viewer._id && !staff)) fail("Support request not found.");
+    const shipment = chat.shipmentId ? await ctx.db.get(chat.shipmentId) : null;
+    const trip = chat.tripId ? await ctx.db.get(chat.tripId) : null;
+    const user = staff ? await ctx.db.get(chat.userId) : null;
+    const context = shipment ? {
+      kind: "delivery" as const, id: shipment._id, reference: shipment.reference,
+      origin: shipment.origin, destination: shipment.destination, status: shipment.status,
+      date: shipment.createdAt, description: shipment.description,
+      pickup: shipment.pickupInstructions, dropoff: shipment.dropoffInstructions,
+      paymentStatus: shipment.paymentStatus, feeNaira: shipment.feeNaira,
+      weightKg: shipment.weightKg,
+    } : trip ? {
+      kind: "trip" as const, id: trip._id, reference: `Trip ${trip._id.slice(-6)}`,
+      origin: trip.origin, destination: trip.destination, status: trip.status ?? "active",
+      date: trip.departureAt, arrivalAt: trip.arrivalAt, stops: trip.stops, capacityKg: trip.capacityKg,
+    } : null;
+    return { id: chat._id, userId: chat.userId, userName: user?.name, subject: chat.subject, status: effectiveChatStatus(chat), contextKind: chat.contextKind ?? "other", context, deletedAt: chat.deletedAt, assignedTo: chat.assignedTo, assignedByName: chat.assignedByName, resolution: chat.resolution, resolutionNote: chat.resolutionNote, createdAt: chat.createdAt };
+  },
+});
+
+export const requestEvents = query({
+  args: { chatId: v.id("supportChats") },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx);
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_VIEW))) fail("Support permission required.");
+    return ctx.db.query("supportEvents").withIndex("by_chat", q => q.eq("chatId", args.chatId)).order("desc").collect();
+  },
+});
+
+export const agents = query({
+  args: {},
+  handler: async ctx => {
+    const viewer = await requireUser(ctx);
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_VIEW))) return [];
+    const users = await ctx.db.query("users").collect();
+    const eligible = await Promise.all(users.map(async user => (await hasPermission(ctx, user, PERMISSIONS.SUPPORT_MANAGE)) && !user.suspended ? { id: user._id, name: user.name } : null));
+    return eligible.filter((user): user is NonNullable<typeof user> => user !== null);
+  },
+});
+
+export const updateRequest = mutation({
+  args: { chatId: v.id("supportChats"), subject: v.string(), ...contextArgs },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx);
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_MANAGE))) fail("Support management permission required.");
+    const chat = await ctx.db.get(args.chatId);
+    if (!chat || chat.deletedAt) fail("Support request not found.");
+    if (!args.subject.trim() || args.subject.length > 160) fail("Enter a subject of up to 160 characters.");
+    await validateContext(ctx, chat.userId, args);
+    await ctx.db.patch(chat._id, { subject: args.subject.trim(), contextKind: args.contextKind ?? "other", shipmentId: args.shipmentId, tripId: args.tripId });
+    await logSupportEvent(ctx, chat._id, viewer, "updated", "Updated request subject and context");
+  },
+});
+
+export const setArchived = mutation({
+  args: { chatId: v.id("supportChats"), archived: v.boolean() },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx);
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_MANAGE))) fail("Support management permission required.");
+    const chat = await ctx.db.get(args.chatId);
+    if (!chat) fail("Support request not found.");
+    if (args.archived && effectiveChatStatus(chat) === "unresolved") fail("Resolve the request before archiving it.");
+    await ctx.db.patch(chat._id, { deletedAt: args.archived ? Date.now() : undefined });
+    await logSupportEvent(ctx, chat._id, viewer, args.archived ? "archived" : "restored", args.archived ? "Archived request" : "Restored request");
+  },
+});
+
+export const addNote = mutation({
+  args: { chatId: v.id("supportChats"), body: v.string() },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx);
+    if (!(await hasPermission(ctx, viewer, PERMISSIONS.SUPPORT_MANAGE))) fail("Support management permission required.");
+    const chat = await ctx.db.get(args.chatId);
+    if (!chat || chat.deletedAt) fail("Support request not found.");
+    if (!args.body.trim() || args.body.length > 2000) fail("Notes must contain 1 to 2,000 characters.");
+    await logSupportEvent(ctx, chat._id, viewer, "internal_note", args.body.trim());
   },
 });

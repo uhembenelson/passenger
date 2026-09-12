@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { convexTest } from "convex-test";
 import { createHash, createHmac } from "node:crypto";
 import { calculateDeliveryFee } from "@passenger/core";
@@ -13,6 +13,7 @@ const initialWalletBalanceNaira = 50000;
 const walletBalanceAfterParcelHold = initialWalletBalanceNaira - backendCalculatedFeeNaira;
 const identity = (subject: string) => ({ subject, issuer: "https://clerk.test", tokenIdentifier: `https://clerk.test|${subject}`, email: `${subject}@example.com` });
 beforeEach(() => {
+  vi.useFakeTimers();
   vi.stubEnv("ADMIN_CLERK_SUBJECTS", "admin");
   vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_test_backend_only");
   vi.stubEnv("TWILIO_ACCOUNT_SID", "AC123456789");
@@ -20,6 +21,7 @@ beforeEach(() => {
   vi.stubEnv("TWILIO_FROM_NUMBER", "+15005550006");
   vi.unstubAllGlobals();
 });
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 const shipmentInput = (evidenceIds: Id<"evidence">[]) => ({ ...baseShipmentInput, evidenceIds });
 async function evidence(owner: ReturnType<ReturnType<typeof convexTest>["withIdentity"]>, ownerId: Id<"users">, suffix: string) {
   return owner.run(async ctx => {
@@ -400,7 +402,8 @@ describe("wallet funding and holds", () => {
     // Sender starts with 50000. Create shipment deducts the backend-calculated fee.
     const senderUser = await f.t.run(ctx => ctx.db.get(f.senderId));
     expect(senderUser?.walletBalanceNaira).toBe(walletBalanceAfterParcelHold);
-    // Record a top-up and verify balance increases.
+    // Reserve a provider deposit before accepting settlement.
+    await f.t.mutation(internal.wallet.reserveTopUp, { userId: f.senderId, amountKobo: 1000000, reference: "test-topup-1" });
     await f.t.mutation(internal.wallet.recordTopUp, { userId: f.senderId, amountNaira: 10000, reference: "test-topup-1" });
     const after = await f.t.run(ctx => ctx.db.get(f.senderId));
     expect(after?.walletBalanceNaira).toBe(walletBalanceAfterParcelHold + 10000);
@@ -412,22 +415,14 @@ describe("wallet funding and holds", () => {
     expect(txns.some(t => t.kind === "top_up" && t.amountNaira === 10000)).toBe(true);
     expect(txns.some(t => t.kind === "parcel_hold" && t.amountNaira === backendCalculatedFeeNaira)).toBe(true);
   });
-  it("funds the wallet immediately when hosted payments are unavailable", async () => {
+  it("does not fund the wallet when Paystack is unconfigured", async () => {
     const t = convexTest(schema, modules);
-    vi.stubEnv("ADMIN_CLERK_SUBJECTS", "admin");
     vi.stubEnv("PAYSTACK_SECRET_KEY", "");
-    vi.stubEnv("TWILIO_ACCOUNT_SID", "AC123456789");
-    vi.stubEnv("TWILIO_AUTH_TOKEN", "twilio-test-token");
-    vi.stubEnv("TWILIO_FROM_NUMBER", "+15005550006");
-    const member = t.withIdentity(identity("manual-topup"));
-    const profile = await member.mutation(api.accounts.ensureProfile, { name: "Manual Topup", phone: "+2348000000099" });
-    const funded = await member.action(api.wallet.initializeTopUp, { amountNaira: 7000 });
-    expect(funded.mode).toBe("manual");
-    if (funded.mode !== "manual") throw new Error("Expected manual wallet funding mode.");
-    expect(funded.reference).toMatch(/^wallet-manual-/);
-    expect(funded.balanceNaira).toBe(7000);
-    expect((await t.run(ctx => ctx.db.get(profile.id as Id<"users">)))?.walletBalanceNaira).toBe(7000);
-    await expect(member.action(api.wallet.verifyTopUp, { reference: funded.reference })).resolves.toEqual({ success: true, balanceNaira: 7000 });
+    const member = t.withIdentity(identity("topup"));
+    const profile = await member.mutation(api.accounts.ensureProfile, { name: "Topup", phone: "+2348000000099" });
+    await expect(member.action(api.wallet.initializeTopUp, { amountNaira: 7000 })).rejects.toThrow("Payments are not available");
+    expect((await t.run(ctx => ctx.db.get(profile.id as Id<"users">)))?.walletBalanceNaira ?? 0).toBe(0);
+    expect(await t.run(ctx => ctx.db.query("walletTransactions").collect())).toHaveLength(0);
   });
   it("refunds held fee when sender cancels a funded shipment", async () => {
     const f = await fixture();
@@ -474,5 +469,156 @@ describe("wallet funding and holds", () => {
       capacityKg: 5,
       });
     expect(returnTripId).toBeDefined();
+  });
+});
+
+describe("customer support requests", () => {
+  it("attaches private photos and the selected trip to a support request", async () => {
+    const f = await fixture();
+    const photo = await evidence(f.traveller, f.travellerId, "support");
+    const chatId = await f.traveller.mutation(api.support.createChat, { userId: f.travellerId, contextKind: "trip", tripId: f.tripId, subject: "Delay: Jos to Abuja", body: "The road is closed ahead.", evidenceIds: [photo] });
+    expect(await f.traveller.query(api.support.requestDetails, { chatId })).toMatchObject({ contextKind: "trip", context: { id: f.tripId } });
+    const messages = await f.admin.query(api.support.getMessages, { chatId });
+    expect(messages[0].attachments).toMatchObject([{ id: photo, filename: "parcel-support.jpg", url: expect.any(String) }]);
+    await expect(f.outsider.query(api.support.getMessages, { chatId })).rejects.toThrow("not found");
+    await expect(f.sender.mutation(api.support.createChat, { userId: f.senderId, body: "Use another person's photo", evidenceIds: [photo] })).rejects.toThrow("own upload");
+    await expect(f.sender.mutation(api.support.createChat, { userId: f.senderId, contextKind: "trip", tripId: f.tripId, body: "Wrong trip" })).rejects.toThrow("your trips");
+    await expect(f.traveller.mutation(api.support.createChat, { userId: f.travellerId, body: "Duplicate attachments", evidenceIds: [photo, photo] })).rejects.toThrow("distinct");
+    expect(await f.traveller.query(api.support.myChats, {})).toHaveLength(1);
+  });
+
+  it("keeps requests private and supports staff replies and customer reopening", async () => {
+    const f = await fixture();
+    const chatId = await f.sender.mutation(api.support.createChat, { userId: f.senderId, subject: "Delivery help", body: "Please help with my delivery." });
+    expect(await f.sender.query(api.support.myChats, {})).toMatchObject([{ id: chatId, status: "unresolved" }]);
+    expect(await f.outsider.query(api.support.myChats, {})).toEqual([]);
+    await expect(f.outsider.query(api.support.getMessages, { chatId })).rejects.toThrow("not found");
+    await expect(f.outsider.mutation(api.support.sendMessage, { chatId, body: "Intrusion" })).rejects.toThrow("not found");
+    await expect(f.outsider.mutation(api.support.createChat, { userId: f.senderId, body: "Impersonation" })).rejects.toThrow("own support");
+    await f.admin.mutation(api.support.sendMessage, { chatId, body: "We can help." });
+    expect(await f.sender.query(api.support.getMessages, { chatId })).toHaveLength(2);
+    await f.t.run(ctx => ctx.db.patch(chatId, { status: "resolved", resolvedAt: Date.now() }));
+    await f.sender.mutation(api.support.sendMessage, { chatId, body: "I still need help." });
+    expect(await f.sender.query(api.support.myChats, {})).toMatchObject([{ status: "unresolved" }]);
+    await expect(f.sender.mutation(api.support.sendMessage, { chatId, body: " " })).rejects.toThrow("characters");
+    await expect(f.sender.mutation(api.support.createChat, { userId: f.senderId, body: "a".repeat(2001) })).rejects.toThrow("characters");
+  });
+});
+
+describe("contextual support workflow", () => {
+  it("requires a related record of the right type owned by the requester", async () => {
+    const f = await fixture();
+    await expect(f.sender.mutation(api.support.createChat, { userId: f.senderId, contextKind: "delivery", body: "Help with a delivery" })).rejects.toThrow("Select a delivery");
+    await expect(f.outsider.mutation(api.support.createChat, { userId: f.outsiderId, contextKind: "delivery", shipmentId: f.shipmentId, body: "Help with a delivery" })).rejects.toThrow("your deliveries");
+    await expect(f.sender.mutation(api.support.createChat, { userId: f.senderId, contextKind: "trip", tripId: f.tripId, body: "Help with a trip" })).rejects.toThrow("your trips");
+    await expect(f.sender.mutation(api.support.createChat, { userId: f.senderId, contextKind: "other", shipmentId: f.shipmentId, body: "Help" })).rejects.toThrow("cannot include");
+    const id = await f.sender.mutation(api.support.createChat, { userId: f.senderId, contextKind: "delivery", shipmentId: f.shipmentId, body: "My parcel needs help" });
+    expect(await f.admin.query(api.support.requestDetails, { chatId: id })).toMatchObject({ contextKind: "delivery", context: { id: f.shipmentId, origin: "Jos", destination: "Abuja", description: baseShipmentInput.description } });
+    await expect(f.outsider.query(api.support.requestDetails, { chatId: id })).rejects.toThrow("not found");
+  });
+  it("lists only the customer's ongoing and past deliveries and trips", async () => {
+    const f = await fixture();
+    expect((await f.sender.query(api.support.contextOptions, {})).deliveries).toMatchObject([{ id: f.shipmentId, past: false }]);
+    expect((await f.sender.query(api.support.contextOptions, {})).trips).toEqual([]);
+    await f.t.run(async ctx => { await ctx.db.patch(f.shipmentId, { status: "delivered" }); await ctx.db.patch(f.tripId, { status: "completed" }); });
+    expect((await f.sender.query(api.support.contextOptions, {})).deliveries).toMatchObject([{ id: f.shipmentId, past: true }]);
+    expect((await f.traveller.query(api.support.contextOptions, {})).trips).toMatchObject([{ id: f.tripId, past: true }]);
+    expect((await f.outsider.query(api.support.contextOptions, {})).deliveries).toEqual([]);
+    await expect(f.outsider.query(api.support.contextOptions, { userId: f.senderId })).rejects.toThrow("permission");
+    const chatId = await f.traveller.mutation(api.support.createChat, { userId: f.travellerId, contextKind: "trip", tripId: f.tripId, body: "A problem after my trip" });
+    expect(await f.traveller.query(api.support.requestDetails, { chatId })).toMatchObject({ context: { kind: "trip", status: "completed" } });
+  });
+  it("keeps staff notes private and enforces staff permissions on handling", async () => {
+    const f = await fixture();
+    const chatId = await f.sender.mutation(api.support.createChat, { userId: f.senderId, contextKind: "other", body: "Please help" });
+    await f.admin.mutation(api.support.addNote, { chatId, body: "Private investigation note" });
+    expect(await f.sender.query(api.support.getMessages, { chatId })).toHaveLength(1);
+    await expect(f.sender.query(api.support.requestEvents, { chatId })).rejects.toThrow("permission");
+    await expect(f.sender.mutation(api.support.claimView, { chatId })).rejects.toThrow("permission");
+    await expect(f.sender.mutation(api.support.markResolved, { chatId, resolution: "done", note: "Not allowed" })).rejects.toThrow("permission");
+    await expect(f.sender.mutation(api.support.reopenChat, { chatId })).rejects.toThrow("permission");
+    await expect(f.admin.mutation(api.support.handover, { chatId, newAgentId: f.outsiderId, newAgentName: "Pretend agent" })).rejects.toThrow("active support agent");
+    await f.admin.mutation(api.support.handover, { chatId, newAgentId: f.adminId, newAgentName: "Forged name" });
+    expect(await f.admin.query(api.support.requestDetails, { chatId })).toMatchObject({ assignedByName: "Admin" });
+    await f.admin.mutation(api.support.sendMessage, { chatId, body: "We are checking" });
+    expect(await f.sender.query(api.support.getMessages, { chatId })).toHaveLength(2);
+  });
+  it("supports editing context, resolution, archive, restore and reopening", async () => {
+    const f = await fixture();
+    const chatId = await f.sender.mutation(api.support.createChat, { userId: f.senderId, body: "Please help" });
+    await expect(f.admin.mutation(api.support.setArchived, { chatId, archived: true })).rejects.toThrow("Resolve");
+    await f.admin.mutation(api.support.updateRequest, { chatId, subject: "Delivery issue", contextKind: "delivery", shipmentId: f.shipmentId });
+    await expect(f.admin.mutation(api.support.updateRequest, { chatId, subject: "Wrong trip", contextKind: "trip", tripId: f.tripId })).rejects.toThrow("your trips");
+    await f.admin.mutation(api.support.markResolved, { chatId, resolution: "support_resolved", note: "Confirmed the delivery arrangements" });
+    expect(await f.sender.query(api.support.myChats, {})).toMatchObject([{ resolutionNote: "Confirmed the delivery arrangements", contextKind: "delivery" }]);
+    await f.admin.mutation(api.support.setArchived, { chatId, archived: true });
+    expect(await f.sender.query(api.support.myChats, {})).toEqual([]);
+    await expect(f.sender.mutation(api.support.sendMessage, { chatId, body: "Reopen" })).rejects.toThrow("archived");
+    await f.admin.mutation(api.support.setArchived, { chatId, archived: false });
+    await f.sender.mutation(api.support.sendMessage, { chatId, body: "I still need help" });
+    const request = await f.sender.query(api.support.requestDetails, { chatId });
+    expect(request.status).toBe("unresolved");
+    expect(request.resolutionNote).toBeUndefined();
+    expect(request.context?.id).toBe(f.shipmentId);
+    const events = await f.admin.query(api.support.requestEvents, { chatId });
+    expect(events.map(event => event.action)).toEqual(expect.arrayContaining(["created", "updated", "resolve", "archived", "restored", "reopen"]));
+  });
+});
+
+
+describe("traveller safety check-ins", () => {
+  it("records an explicit safety confirmation only from the assigned traveller in transit", async () => {
+    const f = await funded();
+    await expect(f.traveller.mutation(api.deliveries.confirmSafe, { shipmentId: f.shipmentId })).rejects.toThrow("in transit");
+    await f.t.run(ctx => ctx.db.patch(f.shipmentId, { status: "in_transit", handoverAt: Date.now() }));
+    await expect(f.sender.mutation(api.deliveries.confirmSafe, { shipmentId: f.shipmentId })).rejects.toThrow();
+    await expect(f.outsider.mutation(api.deliveries.confirmSafe, { shipmentId: f.shipmentId })).rejects.toThrow();
+    await f.traveller.mutation(api.deliveries.confirmSafe, { shipmentId: f.shipmentId });
+    const saved = await f.t.run(ctx => ctx.db.get(f.shipmentId));
+    expect(saved?.latestSafetyCheckInAt).toEqual(expect.any(Number));
+    expect(saved?.status).toBe("in_transit");
+    expect(saved?.latestLocationAt).toBeUndefined();
+    await f.traveller.mutation(api.deliveries.confirmSafe, { shipmentId: f.shipmentId });
+    expect((await f.t.run(ctx => ctx.db.get(f.shipmentId)))?.latestSafetyCheckInAt).toBe(saved?.latestSafetyCheckInAt);
+    const senderView = await f.sender.query(api.marketplace.dashboard, {});
+    expect(senderView.shipments.find(item => item.id === f.shipmentId)?.latestSafetyCheckInAt).toBe(saved?.latestSafetyCheckInAt);
+    await f.t.run(ctx => ctx.db.patch(f.shipmentId, { status: "delivered" }));
+    await expect(f.traveller.mutation(api.deliveries.confirmSafe, { shipmentId: f.shipmentId })).rejects.toThrow("in transit");
+  });
+});
+
+
+describe("handover photos and receiver updates", () => {
+  it("saves collection and delivery photos with verified codes and limits photo access", async () => {
+    const f = await funded();
+    const photo = await evidence(f.traveller, f.travellerId, "handover-proof");
+    const foreignPhoto = await evidence(f.outsider, f.outsiderId, "foreign-proof");
+    const code = requiredCode((await f.sender.action(api.deliveries.issueCode, { shipmentId: f.shipmentId, kind: "handover" })).code);
+    await expect(f.traveller.action(api.deliveries.confirmHandover, { shipmentId: f.shipmentId, code, evidenceIds: [foreignPhoto] })).rejects.toThrow("own upload");
+    expect((await f.t.run(ctx => ctx.db.get(f.shipmentId)))?.status).toBe("funded");
+    await f.traveller.action(api.deliveries.confirmHandover, { shipmentId: f.shipmentId, code, evidenceIds: [photo] });
+    expect(await f.t.run(ctx => ctx.db.get(f.shipmentId))).toMatchObject({ status: "in_transit", handoverEvidenceIds: [photo], handoverAt: expect.any(Number), receiverPickupSmsStatus: "pending" });
+    expect(await f.sender.query(api.evidence.get, { evidenceId: photo })).toMatchObject({ id: photo, url: expect.any(String) });
+    expect(await f.outsider.query(api.evidence.get, { evidenceId: photo })).toBeNull();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ sid: "SM-test" }), { status: 200 }));
+    await f.sender.action(api.deliveries.issueCode, { shipmentId: f.shipmentId, kind: "delivery" });
+    const receiverCode = smsCodeFromBody(String(fetchMock.mock.calls.at(-1)?.[1]?.body));
+    await f.traveller.action(api.deliveries.confirmDelivery, { shipmentId: f.shipmentId, code: receiverCode, evidenceIds: [photo] });
+    expect(await f.t.run(ctx => ctx.db.get(f.shipmentId))).toMatchObject({ status: "delivered", deliveryEvidenceIds: [photo], deliveredAt: expect.any(Number), receiverDeliverySmsStatus: "pending", paymentStatus: "held" });
+    await expect(f.traveller.action(api.deliveries.confirmDelivery, { shipmentId: f.shipmentId, code: receiverCode, evidenceIds: [photo] })).rejects.toThrow("stage");
+    fetchMock.mockRestore();
+  });
+
+  it("records receiver SMS success or failure without undoing handover", async () => {
+    const f = await funded();
+    await prove(f, "handover");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ sid: "SM-status", status: "queued" }), { status: 200 }));
+    await f.t.action(internal.sms.sendParcelMilestone, { shipmentId: f.shipmentId, kind: "handover", receiverPhone: baseShipmentInput.receiverPhone, reference: "TEST-PARCEL" });
+    expect(new URLSearchParams(String(fetchMock.mock.calls[0]?.[1]?.body)).get("Body")).toContain("has been collected");
+    expect(await f.t.run(ctx => ctx.db.get(f.shipmentId))).toMatchObject({ status: "in_transit", receiverPickupSmsStatus: "sent" });
+    fetchMock.mockRejectedValue(new Error("SMS unavailable"));
+    await f.t.action(internal.sms.sendParcelMilestone, { shipmentId: f.shipmentId, kind: "handover", receiverPhone: baseShipmentInput.receiverPhone, reference: "TEST-PARCEL" });
+    expect(await f.t.run(ctx => ctx.db.get(f.shipmentId))).toMatchObject({ status: "in_transit", receiverPickupSmsStatus: "failed" });
+    fetchMock.mockRestore();
   });
 });

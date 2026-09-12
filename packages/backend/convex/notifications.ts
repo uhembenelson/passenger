@@ -31,11 +31,11 @@ export const unreadCount = query({
   args: {},
   handler: async (ctx) => {
     const user = await requireUser(ctx);
-    const unread = await ctx.db
+    const notifications = await ctx.db
       .query("notifications")
-      .withIndex("by_user_read", q => q.eq("userId", user._id).eq("readAt", undefined))
+      .withIndex("by_user", q => q.eq("userId", user._id))
       .collect();
-    return unread.length;
+    return notifications.filter(n => !n.readAt).length;
   },
 });
 
@@ -58,11 +58,13 @@ export const markRead = mutation({
 
     const notifications = await ctx.db
       .query("notifications")
-      .withIndex("by_user_read", q => q.eq("userId", user._id).eq("readAt", undefined))
+      .withIndex("by_user", q => q.eq("userId", user._id))
       .collect();
 
     for (const notification of notifications) {
-      await ctx.db.patch(notification._id, { readAt: now });
+      if (!notification.readAt) {
+        await ctx.db.patch(notification._id, { readAt: now });
+      }
     }
   },
 });

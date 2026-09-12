@@ -1,14 +1,12 @@
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { audit, fail, requireActive, requireUser, subject, userBySubject } from "./lib";
 
-type TopUpInitialization =
-  | { mode: "provider"; url: string; reference: string }
-  | { mode: "manual"; reference: string; balanceNaira: number };
+type TopUpInitialization = { mode: "provider"; url: string; reference: string };
 
 export const balance = query({
   args: {},
@@ -43,6 +41,19 @@ export const transactionsPage = query({
   },
 });
 
+export const reserveTopUp = internalMutation({
+  args: { userId: v.id("users"), reference: v.string(), amountKobo: v.number() },
+  handler: async (ctx, args) => {
+    if (!Number.isSafeInteger(args.amountKobo) || args.amountKobo <= 0 || args.amountKobo % 100 !== 0) fail("Invalid deposit amount.");
+    return ctx.db.insert("walletDeposits", { ...args, status: "pending", createdAt: Date.now() });
+  },
+});
+
+export const depositByReference = internalQuery({
+  args: { reference: v.string() },
+  handler: async (ctx, args) => ctx.db.query("walletDeposits").withIndex("by_reference", q => q.eq("reference", args.reference)).unique(),
+});
+
 export const recordTopUp = internalMutation({
   args: {
     userId: v.id("users"),
@@ -50,6 +61,8 @@ export const recordTopUp = internalMutation({
     reference: v.string(),
   },
   handler: async (ctx, args) => {
+    const deposit = await ctx.db.query("walletDeposits").withIndex("by_reference", q => q.eq("reference", args.reference)).unique();
+    if (!deposit || deposit.userId !== args.userId || !Number.isSafeInteger(args.amountNaira) || args.amountNaira <= 0 || deposit.amountKobo !== args.amountNaira * 100) fail("Deposit does not match the saved payment.");
     const existing = await ctx.db
       .query("walletTransactions")
       .withIndex("by_reference", q => q.eq("reference", args.reference))
@@ -62,6 +75,7 @@ export const recordTopUp = internalMutation({
     const currentBalance = user.walletBalanceNaira ?? 0;
     const nextBalance = currentBalance + args.amountNaira;
 
+    await ctx.db.patch(deposit._id, { status: "paid" });
     await ctx.db.patch(user._id, { walletBalanceNaira: nextBalance });
     await ctx.db.insert("walletTransactions", {
       userId: user._id,
@@ -141,9 +155,11 @@ export const initializeTopUp = action({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) fail("Sign in required.");
 
-    const amountNaira = Math.floor(args.amountNaira);
-    if (!Number.isSafeInteger(amountNaira) || amountNaira < 100 || amountNaira > 500000) {
-      fail("Enter a whole-naira amount between ₦100 and ₦500,000.");
+    const amountNaira = args.amountNaira;
+    const productConfig = await ctx.runQuery(internal.productConfig.getInternal, {});
+    const { minTopUpNaira, maxTopUpNaira } = productConfig.wallet;
+    if (!Number.isSafeInteger(amountNaira) || amountNaira < minTopUpNaira || amountNaira > maxTopUpNaira) {
+      fail(`Enter a whole-naira amount between ₦${minTopUpNaira.toLocaleString()} and ₦${maxTopUpNaira.toLocaleString()}.`);
     }
 
     const sub = identity.subject.split("|")[0]!;
@@ -152,29 +168,22 @@ export const initializeTopUp = action({
     requireActive(user);
 
     const key = process.env.PAYSTACK_SECRET_KEY;
-    if (!key) {
-      const reference = `wallet-manual-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-      await ctx.runMutation(internal.wallet.recordTopUp, {
-        userId: user._id,
-        amountNaira,
-        reference,
-      });
-      const updated = await ctx.runQuery(internal.wallet.getUserForTopUp, { sub });
-      return {
-        mode: "manual",
-        reference,
-        balanceNaira: updated?.walletBalanceNaira ?? user.walletBalanceNaira ?? amountNaira,
-      };
-    }
+    if (!key) fail("Payments are not available yet. Please try again later.");
 
-    const email = identity.email;
+    const email = identity.email ?? user.email;
     if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       fail("A verified email is required for wallet top-up.");
     }
 
-    const reference = `wallet-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const reference = `wallet-${crypto.randomUUID()}`;
     const callback = process.env.PAYSTACK_CALLBACK_URL;
+    if (callback) {
+      let url: URL;
+      try { url = new URL(callback); } catch { fail("Payment return URL is invalid."); }
+      if (url.protocol !== "https:" || url.username || url.password) fail("Payment return URL must use HTTPS.");
+    }
     const amountKobo = amountNaira * 100;
+    await ctx.runMutation(internal.wallet.reserveTopUp, { userId: user._id, reference, amountKobo });
 
     let response: Response;
     try {
@@ -203,11 +212,13 @@ export const initializeTopUp = action({
     }
 
     if (!response.ok) fail("Failed to contact payment provider.");
-    const body = await response.json().catch(() => null) as { status?: boolean; data?: { authorization_url?: string } } | null;
-    if (body?.status !== true || !body.data?.authorization_url) {
+    const body = await response.json().catch(() => null) as { status?: boolean; data?: { authorization_url?: string; reference?: string } } | null;
+    if (body?.status !== true || !body.data?.authorization_url || body.data.reference !== reference) {
       fail("Could not initialize payment with provider.");
     }
 
+    const checkoutUrl = new URL(body.data.authorization_url);
+    if (checkoutUrl.protocol !== "https:" || checkoutUrl.hostname !== "checkout.paystack.com" || checkoutUrl.username || checkoutUrl.password) fail("Invalid payment checkout URL.");
     return {
       mode: "provider",
       url: body.data.authorization_url,
@@ -239,10 +250,9 @@ export const verifyTopUp = action({
     const user = await ctx.runQuery(internal.wallet.getUserForTopUp, { sub });
     const balanceNaira = user?.walletBalanceNaira ?? 0;
     const key = process.env.PAYSTACK_SECRET_KEY;
-    if (!key) {
-      const topUp = await ctx.runQuery(internal.wallet.topUpByReference, { reference: args.reference });
-      return { success: !!topUp && topUp.userId === user?._id, balanceNaira };
-    }
+    if (!key) fail("Payments are not available yet. Please try again later.");
+    const deposit = await ctx.runQuery(internal.wallet.depositByReference, { reference: args.reference });
+    if (!user || !deposit || deposit.userId !== user._id) fail("Payment not found.");
 
     let response: Response;
     try {
@@ -255,11 +265,12 @@ export const verifyTopUp = action({
     }
 
     if (!response.ok) fail("Could not verify transaction with payment provider.");
-    const body = await response.json().catch(() => null) as { data?: { status?: string; currency?: string; amount?: number } } | null;
+    const body = await response.json().catch(() => null) as { status?: boolean; data?: { reference?: string; status?: string; currency?: string; amount?: number } } | null;
     const data = body?.data;
 
+    if (body?.status !== true || !data || data.reference !== deposit.reference || data.amount !== deposit.amountKobo || data.currency !== "NGN") fail("Payment verification did not match your deposit.");
     if (data?.status === "success" && data.currency === "NGN" && typeof data.amount === "number" && Number.isSafeInteger(data.amount) && user) {
-      const amountNaira = Math.floor(data.amount / 100);
+      const amountNaira = data.amount / 100;
       await ctx.runMutation(internal.wallet.recordTopUp, {
         userId: user._id,
         amountNaira,

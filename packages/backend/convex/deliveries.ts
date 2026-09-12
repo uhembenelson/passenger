@@ -1,10 +1,11 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { action, mutation } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { codeKind } from "./schema";
 import { audit, fail, noOpenDispute, notify, requireActive, requireTraveller, requireUser, shipment, subject } from "./lib";
+import { renderParcelMap } from "./parcelMapData";
 import { disputeDefinition } from "./deliveryState";
 
 export const issueCode = action({
@@ -34,7 +35,7 @@ export const issueCode = action({
           kind: "delivery",
           status: "failed",
         });
-        throw error;
+        fail(error instanceof ConvexError && typeof error.data === "string" ? error.data : error instanceof Error ? error.message : "Failed to issue delivery code SMS.");
       }
       return {};
     }
@@ -43,14 +44,15 @@ export const issueCode = action({
   },
 });
 
-async function confirm(ctx: ActionCtx, args: { shipmentId: Id<"shipments">; code: string }, kind: "handover" | "delivery"): Promise<void> {
+async function confirm(ctx: ActionCtx, args: { shipmentId: Id<"shipments">; code: string; evidenceIds?: Id<"evidence">[] }, kind: "handover" | "delivery"): Promise<void> {
   const sub = await subject(ctx);
   if (args.code.length > 64) fail("Invalid code.");
-  const hash: string = await ctx.runAction(internal.deliveryCrypto.hash, { ...args, kind });
+  const hash: string = await ctx.runAction(internal.deliveryCrypto.hash, { shipmentId: args.shipmentId, code: args.code, kind });
   const result: { ok: boolean; error?: string } = await ctx.runMutation(internal.deliveryState.consumeCode, {
     shipmentId: args.shipmentId,
     kind,
     hash,
+    evidenceIds: args.evidenceIds,
     subject: sub,
   });
   if (!result.ok) fail(result.error ?? "Invalid proof.");
@@ -68,12 +70,12 @@ export const prepareDeliveryShare = action({
 });
 
 export const confirmHandover = action({
-  args: { shipmentId: v.id("shipments"), code: v.string() },
+  args: { shipmentId: v.id("shipments"), code: v.string(), evidenceIds: v.optional(v.array(v.id("evidence"))) },
   handler: async (ctx, args): Promise<void> => confirm(ctx, args, "handover"),
 });
 
 export const confirmDelivery = action({
-  args: { shipmentId: v.id("shipments"), code: v.string() },
+  args: { shipmentId: v.id("shipments"), code: v.string(), evidenceIds: v.optional(v.array(v.id("evidence"))) },
   handler: async (ctx, args): Promise<void> => confirm(ctx, args, "delivery"),
 });
 
@@ -99,3 +101,38 @@ export const updateLocation = mutation({
 });
 
 export const raiseDispute = mutation(disputeDefinition);
+
+// Safety confirmation is separate from GPS reporting and delivery proof.
+export const confirmSafe = mutation({
+  args: { shipmentId: v.id("shipments") },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const record = await shipment(ctx, args.shipmentId);
+    requireTraveller(record, user);
+    requireActive(user);
+    if (record.status !== "in_transit") fail("Check in while the parcel is in transit.");
+    await noOpenDispute(ctx, record._id);
+    const now = Date.now();
+    if (record.latestSafetyCheckInAt && now - record.latestSafetyCheckInAt < 30_000) return;
+    await ctx.db.patch(record._id, { latestSafetyCheckInAt: now, updatedAt: now });
+    await notify(ctx, record.senderId, "Safe and sound", "The traveller confirmed that they and your parcel are safe.", record._id);
+    await audit(ctx, user, "shipment.safety_check_in", "Traveller confirmed that they and the parcel are safe.", record._id);
+  },
+});
+
+export const parcelMap = action({
+  args: { shipmentId: v.id("shipments") },
+  returns: v.object({ imageUri: v.string(), roadRoute: v.boolean() }),
+  handler: async (ctx, args): Promise<{ imageUri: string; roadRoute: boolean }> => {
+    // Authorize before any paid provider calls. Never trust client coordinates.
+    const record = await ctx.runQuery(internal.deliveryState.parcelMapShipment, args);
+    const token = process.env.MAPBOX_ACCESS_TOKEN?.trim();
+    if (!token) fail("Parcel maps are unavailable.");
+    try {
+      return await renderParcelMap(record, token);
+    } catch {
+      // Fetch errors may contain a provider URL with credentials.
+      throw new ConvexError("Couldn't load the parcel map. Please try again.");
+    }
+  },
+});

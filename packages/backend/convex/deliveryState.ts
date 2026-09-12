@@ -1,10 +1,13 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { validateEvidence } from "./evidence";
 import { codeKind } from "./schema";
 import {
   audit,
   fail,
   noOpenDispute,
+  notifyParticipants,
   note,
   requireParticipant,
   requireSender,
@@ -89,7 +92,7 @@ export const markSms = internalMutation({
 });
 
 export const consumeCode = internalMutation({
-  args: { subject: v.string(), shipmentId: v.id("shipments"), kind: codeKind, hash: v.string() },
+  args: { subject: v.string(), shipmentId: v.id("shipments"), kind: codeKind, hash: v.string(), evidenceIds: v.optional(v.array(v.id("evidence"))) },
   handler: async (ctx, args): Promise<{ ok: boolean; error?: string }> => {
     const user = await userBySubject(ctx, args.subject);
     const s = await shipment(ctx, args.shipmentId);
@@ -99,6 +102,7 @@ export const consumeCode = internalMutation({
 
     if (s.paymentStatus !== "held" || s.status !== (args.kind === "handover" ? "funded" : "in_transit")) fail("Proof is not valid at this delivery stage.");
 
+    if (args.evidenceIds?.length) await validateEvidence(ctx, args.evidenceIds, user._id, "parcel");
     const proof = await ctx.db.query("codes").withIndex("by_shipment_kind", q => q.eq("shipmentId", s._id).eq("kind", args.kind)).unique();
     if (!proof || proof.consumedAt !== undefined || proof.attempts >= 5) fail("Proof is unavailable or locked. Ask the sender for a new code.");
 
@@ -110,11 +114,17 @@ export const consumeCode = internalMutation({
 
     await ctx.db.patch(proof._id, { consumedAt: Date.now() });
     await transition(ctx, s, args.kind === "handover" ? "in_transit" : "delivered");
+    await ctx.db.patch(s._id, args.kind === "handover"
+      ? { handoverAt: Date.now(), handoverEvidenceIds: args.evidenceIds ?? [], receiverPickupSmsStatus: "pending" }
+      : { deliveredAt: Date.now(), deliveryEvidenceIds: args.evidenceIds ?? [], receiverDeliverySmsStatus: "pending" });
+    if (args.kind === "delivery") await ctx.scheduler.runAfter(86400000, internal.finance.automaticPayout, { shipmentId: s._id });
+    await notifyParticipants(ctx, s, args.kind === "handover" ? "Parcel collected" : "Parcel delivered", args.kind === "handover" ? "The traveller verified collection with the sender's code." : "Delivery was confirmed with the receiver's code.");
+    await ctx.scheduler.runAfter(0, internal.sms.sendParcelMilestone, { shipmentId: s._id, kind: args.kind, receiverPhone: s.receiverPhone, reference: s.reference });
     await audit(
       ctx,
       user,
       `proof.${args.kind}.confirmed`,
-      args.kind === "handover" ? "Sender handover proof confirmed." : "Receiver delivery proof confirmed. Payout requires external reconciliation.",
+      args.kind === "handover" ? "Sender handover proof confirmed." : "Receiver delivery proof confirmed. Automatic payout scheduled after the 24-hour dispute window.",
       s._id,
     );
     return { ok: true };
@@ -147,3 +157,24 @@ export const disputeDefinition = {
 };
 
 export const raiseDispute = mutation(disputeDefinition);
+
+export const markReceiverMilestoneSms = internalMutation({
+  args: { shipmentId: v.id("shipments"), kind: codeKind, status: v.union(v.literal("sent"), v.literal("failed")) },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.shipmentId, args.kind === "handover" ? { receiverPickupSmsStatus: args.status } : { receiverDeliverySmsStatus: args.status });
+  },
+});
+
+export const parcelMapShipment = internalQuery({
+  args: { shipmentId: v.id("shipments") },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const record = await shipment(ctx, args.shipmentId);
+    requireParticipant(record, user);
+    return {
+      origin: record.origin, destination: record.destination,
+      latestLatitude: record.latestLatitude, latestLongitude: record.latestLongitude,
+      latestLocationAt: record.latestLocationAt,
+    };
+  },
+});

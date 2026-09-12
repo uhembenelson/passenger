@@ -132,6 +132,34 @@ async function marketplaceFixture() {
 }
 
 describe("marketplace matching queries", () => {
+  it("paginates sent parcel history beyond the dashboard limit without exposing other senders", async () => {
+    const f = await marketplaceFixture();
+    await f.sender.run(async ctx => {
+      const original = await ctx.db.get(f.shipmentId);
+      if (!original) throw new Error("Missing fixture parcel");
+      const { _id, _creationTime, ...parcel } = original;
+      for (let index = 0; index < 201; index++) {
+        await ctx.db.insert("shipments", { ...parcel, reference: `HISTORY-${index}`, status: index % 2 ? "delivered" : "cancelled" });
+      }
+    });
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    let done = false;
+    while (!done) {
+      const result: { page: Array<{ id: string }>; continueCursor: string; isDone: boolean } = await f.sender.query(api.marketplace.mySentParcelsPage, { paginationOpts: { numItems: 30, cursor } });
+      ids.push(...result.page.map(parcel => parcel.id));
+      cursor = result.continueCursor;
+      done = result.isDone;
+    }
+    expect(ids).toHaveLength(202);
+    expect(new Set(ids).size).toBe(202);
+    expect(ids.at(-1)).toBe(f.shipmentId);
+    const otherSender = await f.traveller1.query(api.marketplace.mySentParcelsPage, { paginationOpts: { numItems: 30, cursor: null } });
+    expect(otherSender.page).toEqual([]);
+    const unauthenticated = convexTest(schema, modules);
+    await expect(unauthenticated.query(api.marketplace.mySentParcelsPage, { paginationOpts: { numItems: 30, cursor: null } })).rejects.toThrow();
+  });
+
   it("returns ranked compatible trips for a sender parcel", async () => {
     const f = await marketplaceFixture();
 

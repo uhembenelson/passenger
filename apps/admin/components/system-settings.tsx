@@ -2,10 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { ChevronDown, EllipsisVertical, X } from "lucide-react";
-import type { SystemSetting, FeeConfig, EscrowPolicy, CancellationPolicy, KycTier, ServiceAreaConfig } from "@passenger/core";
+import type { SystemSetting, FeeConfig, EscrowPolicy, CancellationPolicy, KycTier, ServiceAreaConfig, MobileProductConfig } from "@passenger/core";
+import { formatErrorMessage } from "@passenger/core";
 import type { Id } from "@passenger/backend/convex/_generated/dataModel";
+import { api } from "@passenger/backend/convex/_generated/api";
+import { useMutation } from "convex/react";
 
-type SettingsTab = "fees" | "escrow" | "serviceArea" | "cancellation" | "kyc" | "terms" | "privacy";
+import { PromotionsManagement } from "./promotions-management";
+
+type SettingsTab = "promotions" | "fees" | "mobile" | "escrow" | "serviceArea" | "cancellation" | "kyc" | "terms" | "privacy";
 
 interface Props {
   settings: SystemSetting[];
@@ -14,6 +19,7 @@ interface Props {
   cancellationPolicies: CancellationPolicy[];
   kycTiers: KycTier[];
   serviceArea?: ServiceAreaConfig;
+  mobileConfig?: MobileProductConfig;
   onCreateSetting?: (args: { key: string; title: string; body: string }) => Promise<unknown>;
   onUpdateSetting?: (args: { id: Id<"settings">; title: string; body: string }) => Promise<unknown>;
   onDeleteSetting?: (args: { id: Id<"settings"> }) => Promise<unknown>;
@@ -44,7 +50,8 @@ function buildSettingBody(version: string, status: string, content: string) {
   return `Version: ${version}\nStatus: ${status}\n${content}`;
 }
 
-export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellationPolicies, kycTiers, serviceArea, onCreateSetting, onUpdateSetting, onDeleteSetting, onUpdateFeeConfig, onCreateEscrow, onUpdateEscrow, onDeleteEscrow, onCreateCancellation, onUpdateCancellation, onDeleteCancellation, onCreateKycTier, onUpdateKycTier, onDeleteKycTier, onUpdateServiceArea }: Props) {
+export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellationPolicies, kycTiers, serviceArea, mobileConfig, onCreateSetting, onUpdateSetting, onDeleteSetting, onUpdateFeeConfig, onCreateEscrow, onUpdateEscrow, onDeleteEscrow, onCreateCancellation, onUpdateCancellation, onDeleteCancellation, onCreateKycTier, onUpdateKycTier, onDeleteKycTier, onUpdateServiceArea }: Props) {
+  const updateMobileConfig = useMutation(api.settings.updateMobileProductConfig);
   const [activeTab, setActiveTab] = useState<SettingsTab>("fees");
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [toast, setToast] = useState("");
@@ -54,6 +61,7 @@ export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellati
   const privacyItems = settings.filter((s) => s.key.startsWith("privacy_")).map(parseSettingItem);
 
   const [feeModalOpen, setFeeModalOpen] = useState(false);
+  const [mobileModalOpen, setMobileModalOpen] = useState(false);
   const [escrowModalOpen, setEscrowModalOpen] = useState(false);
   const [editingEscrow, setEditingEscrow] = useState<{ id: string; policyName: string; type: string; releaseTime: string } | null>(null);
   const [saBase, setSaBase] = useState(serviceArea?.baseLocation ?? "Jos");
@@ -92,7 +100,9 @@ export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellati
       {toast && <div className="figma-toast">{toast}</div>}
       <div className="figma-settings-header"><h1>System Settings</h1></div>
       <div className="figma-settings-tabs-bar">
+        <button type="button" className={`figma-settings-tab ${activeTab === "promotions" ? "active" : ""}`} onClick={() => setActiveTab("promotions")}>Promotions</button>
         <button type="button" className={`figma-settings-tab ${activeTab === "fees" ? "active" : ""}`} onClick={() => { setActiveTab("fees"); setActiveMenuId(null); }}>Transaction Fees</button>
+        <button type="button" className={`figma-settings-tab ${activeTab === "mobile" ? "active" : ""}`} onClick={() => { setActiveTab("mobile"); setActiveMenuId(null); }}>Mobile App</button>
         <button type="button" className={`figma-settings-tab ${activeTab === "escrow" ? "active" : ""}`} onClick={() => { setActiveTab("escrow"); setActiveMenuId(null); }}>Escrow Policies</button>
         <button type="button" className={`figma-settings-tab ${activeTab === "serviceArea" ? "active" : ""}`} onClick={() => { setActiveTab("serviceArea"); setActiveMenuId(null); }}>Service Area</button>
         <button type="button" className={`figma-settings-tab ${activeTab === "cancellation" ? "active" : ""}`} onClick={() => { setActiveTab("cancellation"); setActiveMenuId(null); }}>Cancellation &amp; Refund</button>
@@ -103,6 +113,7 @@ export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellati
 
       <div className="figma-settings-action-bar">
         {activeTab === "fees" && <button type="button" className="figma-settings-add-btn" onClick={() => setFeeModalOpen(true)}>Edit fee configuration</button>}
+        {activeTab === "mobile" && <button type="button" className="figma-settings-add-btn" onClick={() => setMobileModalOpen(true)}>Edit mobile options</button>}
         {activeTab === "escrow" && <button type="button" className="figma-settings-add-btn" onClick={() => { setEditingEscrow(null); setEscrowModalOpen(true); }}>Add new escrow policy</button>}
         {activeTab === "serviceArea" && <button type="button" className="figma-settings-add-btn" onClick={() => setSaModalOpen(true)}>Manage service area</button>}
         {activeTab === "cancellation" && <button type="button" className="figma-settings-add-btn" onClick={() => { setEditingCancel(null); setCancelModalOpen(true); }}>Add new cancellation policy</button>}
@@ -112,6 +123,7 @@ export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellati
       </div>
 
       <div className="figma-settings-table-card">
+        {activeTab === "promotions" && <PromotionsManagement />}
         {activeTab === "fees" && (
           <div className="figma-settings-fee-config">
             <div className="figma-settings-fee-grid">
@@ -120,6 +132,16 @@ export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellati
               <div className="figma-settings-fee-item"><span className="figma-settings-fee-label">Distance rate</span><span className="figma-settings-fee-value">₦{(feeConfig?.distanceRateNairaPerKm ?? 17).toLocaleString()}/km</span></div>
             </div>
             {feeConfig?.updatedAt ? <div className="figma-settings-fee-updated">Last updated {new Date(feeConfig.updatedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</div> : null}
+          </div>
+        )}
+
+        {activeTab === "mobile" && (
+          <div className="figma-settings-fee-config">
+            <div className="figma-settings-fee-grid">
+              <div className="figma-settings-fee-item"><span className="figma-settings-fee-label">Parcel types</span><span className="figma-settings-fee-value">{mobileConfig?.parcelTypes.length ?? 0}</span></div>
+              <div className="figma-settings-fee-item"><span className="figma-settings-fee-label">Supported banks</span><span className="figma-settings-fee-value">{mobileConfig?.banks.length ?? 0}</span></div>
+              <div className="figma-settings-fee-item"><span className="figma-settings-fee-label">Top-up range</span><span className="figma-settings-fee-value">₦{(mobileConfig?.wallet.minTopUpNaira ?? 0).toLocaleString()} to ₦{(mobileConfig?.wallet.maxTopUpNaira ?? 0).toLocaleString()}</span></div>
+            </div>
           </div>
         )}
 
@@ -137,7 +159,7 @@ export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellati
                         <div className="figma-settings-dropdown-menu" onClick={(e) => e.stopPropagation()}>
                           <button type="button" onClick={() => { setActiveMenuId(null); setEditingEscrow(policy); setEscrowModalOpen(true); }}>Edit Policy</button>
                           <div className="figma-settings-dropdown-divider" />
-                          <button type="button" className="danger-item" onClick={async () => { setActiveMenuId(null); if (!onDeleteEscrow) return; try { await onDeleteEscrow({ id: policy.id as Id<"escrowPolicies"> }); setToast("Escrow policy deleted."); } catch { setToast("Failed to delete."); } }}>Delete Policy</button>
+                          <button type="button" className="danger-item" onClick={async () => { setActiveMenuId(null); if (!onDeleteEscrow) return; try { await onDeleteEscrow({ id: policy.id as Id<"escrowPolicies"> }); setToast("Escrow policy deleted."); } catch (err) { setToast(formatErrorMessage(err, "Failed to delete escrow policy.")); } }}>Delete Policy</button>
                         </div>
                       )}
                     </div>
@@ -176,7 +198,7 @@ export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellati
                         <div className="figma-settings-dropdown-menu" onClick={(e) => e.stopPropagation()}>
                           <button type="button" onClick={() => { setActiveMenuId(null); setSaModalOpen(true); }}>Edit Service Area</button>
                           <div className="figma-settings-dropdown-divider" />
-                          <button type="button" className="danger-item" onClick={async () => { setActiveMenuId(null); if (!onUpdateServiceArea) return; const next = saDests.filter((_, idx) => idx !== i); setBusy(true); try { await onUpdateServiceArea({ baseLocation: saBase.trim(), destinations: next }); setSaDests(next); setToast("Destination removed."); } catch { setToast("Failed to remove destination."); } finally { setBusy(false); } }}>Remove Destination</button>
+                          <button type="button" className="danger-item" onClick={async () => { setActiveMenuId(null); if (!onUpdateServiceArea) return; const next = saDests.filter((_, idx) => idx !== i); setBusy(true); try { await onUpdateServiceArea({ baseLocation: saBase.trim(), destinations: next }); setSaDests(next); setToast("Destination removed."); } catch (err) { setToast(formatErrorMessage(err, "Failed to remove destination.")); } finally { setBusy(false); } }}>Remove Destination</button>
                         </div>
                       )}
                     </div>
@@ -202,7 +224,7 @@ export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellati
                         <div className="figma-settings-dropdown-menu" onClick={(e) => e.stopPropagation()}>
                           <button type="button" onClick={() => { setActiveMenuId(null); setEditingCancel(policy); setCancelModalOpen(true); }}>Edit Policy</button>
                           <div className="figma-settings-dropdown-divider" />
-                          <button type="button" className="danger-item" onClick={async () => { setActiveMenuId(null); if (!onDeleteCancellation) return; try { await onDeleteCancellation({ id: policy.id as Id<"cancellationPolicies"> }); setToast("Cancellation policy deleted."); } catch { setToast("Failed to delete."); } }}>Delete Policy</button>
+                          <button type="button" className="danger-item" onClick={async () => { setActiveMenuId(null); if (!onDeleteCancellation) return; try { await onDeleteCancellation({ id: policy.id as Id<"cancellationPolicies"> }); setToast("Cancellation policy deleted."); } catch (err) { setToast(formatErrorMessage(err, "Failed to delete cancellation policy.")); } }}>Delete Policy</button>
                         </div>
                       )}
                     </div>
@@ -228,7 +250,7 @@ export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellati
                         <div className="figma-settings-dropdown-menu" onClick={(e) => e.stopPropagation()}>
                           <button type="button" onClick={() => { setActiveMenuId(null); setEditingKyc(tier); setKycModalOpen(true); }}>Edit Tier</button>
                           <div className="figma-settings-dropdown-divider" />
-                          <button type="button" className="danger-item" onClick={async () => { setActiveMenuId(null); if (!onDeleteKycTier) return; try { await onDeleteKycTier({ id: tier.id as Id<"kycTiers"> }); setToast("KYC tier deleted."); } catch { setToast("Failed to delete."); } }}>Delete Tier</button>
+                          <button type="button" className="danger-item" onClick={async () => { setActiveMenuId(null); if (!onDeleteKycTier) return; try { await onDeleteKycTier({ id: tier.id as Id<"kycTiers"> }); setToast("KYC tier deleted."); } catch (err) { setToast(formatErrorMessage(err, "Failed to delete KYC tier.")); } }}>Delete Tier</button>
                         </div>
                       )}
                     </div>
@@ -256,7 +278,7 @@ export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellati
                           <div className="figma-settings-dropdown-divider" />
                           <button type="button" onClick={() => { setActiveMenuId(null); setEditingTerm(item); setTermModalOpen(true); }}>Edit T &amp; C</button>
                           <div className="figma-settings-dropdown-divider" />
-                          <button type="button" className="danger-item" onClick={async () => { setActiveMenuId(null); if (!onDeleteSetting) return; try { await onDeleteSetting({ id: item.id as Id<"settings"> }); setToast("T&C deleted."); } catch { setToast("Failed to delete."); } }}>Delete T &amp; C</button>
+                          <button type="button" className="danger-item" onClick={async () => { setActiveMenuId(null); if (!onDeleteSetting) return; try { await onDeleteSetting({ id: item.id as Id<"settings"> }); setToast("T&C deleted."); } catch (err) { setToast(formatErrorMessage(err, "Failed to delete T&C.")); } }}>Delete T &amp; C</button>
                         </div>
                       )}
                     </div>
@@ -284,7 +306,7 @@ export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellati
                           <div className="figma-settings-dropdown-divider" />
                           <button type="button" onClick={() => { setActiveMenuId(null); setEditingPrivacy(item); setPrivacyModalOpen(true); }}>Edit Privacy Policy</button>
                           <div className="figma-settings-dropdown-divider" />
-                          <button type="button" className="danger-item" onClick={async () => { setActiveMenuId(null); if (!onDeleteSetting) return; try { await onDeleteSetting({ id: item.id as Id<"settings"> }); setToast("Privacy policy deleted."); } catch { setToast("Failed to delete."); } }}>Delete Privacy Policy</button>
+                          <button type="button" className="danger-item" onClick={async () => { setActiveMenuId(null); if (!onDeleteSetting) return; try { await onDeleteSetting({ id: item.id as Id<"settings"> }); setToast("Privacy policy deleted."); } catch (err) { setToast(formatErrorMessage(err, "Failed to delete privacy policy.")); } }}>Delete Privacy Policy</button>
                         </div>
                       )}
                     </div>
@@ -297,17 +319,34 @@ export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellati
         )}
       </div>
 
-      {feeModalOpen && <FeeConfigModal config={feeConfig} onClose={() => setFeeModalOpen(false)} onSave={async (config) => { if (!onUpdateFeeConfig) return; setBusy(true); try { await onUpdateFeeConfig(config); setToast("Fee configuration updated."); setFeeModalOpen(false); } catch { setToast("Failed to update fee config."); } finally { setBusy(false); } }} />}
-      {escrowModalOpen && <EscrowPolicyModal initialData={editingEscrow} onClose={() => { setEscrowModalOpen(false); setEditingEscrow(null); }} onSave={async (item) => { if (!onCreateEscrow && !onUpdateEscrow) return; setBusy(true); try { if (editingEscrow) { await onUpdateEscrow?.({ id: editingEscrow.id as Id<"escrowPolicies">, ...item }); setToast("Escrow policy updated."); } else { await onCreateEscrow?.(item); setToast("Escrow policy created."); } setEscrowModalOpen(false); setEditingEscrow(null); } catch { setToast("Failed to save escrow policy."); } finally { setBusy(false); } }} />}
-      {saModalOpen && <ServiceAreaModal baseLocation={saBase} destinations={saDests} onClose={() => setSaModalOpen(false)} onSave={async (newBase, newDests) => { if (!onUpdateServiceArea) return; setBusy(true); try { await onUpdateServiceArea({ baseLocation: newBase, destinations: newDests }); setSaBase(newBase); setSaDests(newDests); setToast("Service area updated."); setSaModalOpen(false); } catch { setToast("Failed to update service area."); } finally { setBusy(false); } }} />}
-      {cancelModalOpen && <CancellationPolicyModal initialData={editingCancel} onClose={() => { setCancelModalOpen(false); setEditingCancel(null); }} onSave={async (item) => { if (!onCreateCancellation && !onUpdateCancellation) return; setBusy(true); try { if (editingCancel) { await onUpdateCancellation?.({ id: editingCancel.id as Id<"cancellationPolicies">, ...item }); setToast("Cancellation policy updated."); } else { await onCreateCancellation?.(item); setToast("Cancellation policy created."); } setCancelModalOpen(false); setEditingCancel(null); } catch { setToast("Failed to save cancellation policy."); } finally { setBusy(false); } }} />}
-      {kycModalOpen && <KycTierModal initialData={editingKyc} onClose={() => { setKycModalOpen(false); setEditingKyc(null); }} onSave={async (item) => { if (!onCreateKycTier && !onUpdateKycTier) return; setBusy(true); try { if (editingKyc) { await onUpdateKycTier?.({ id: editingKyc.id as Id<"kycTiers">, ...item }); setToast("KYC tier updated."); } else { await onCreateKycTier?.(item); setToast("KYC tier created."); } setKycModalOpen(false); setEditingKyc(null); } catch { setToast("Failed to save KYC tier."); } finally { setBusy(false); } }} />}
-      {termModalOpen && <TermConditionsModal initialData={editingTerm} onClose={() => { setTermModalOpen(false); setEditingTerm(null); }} onSave={async (item, status) => { if (!onCreateSetting && !onUpdateSetting) return; setBusy(true); try { const body = buildSettingBody(item.version, status, item.content); if (editingTerm) { await onUpdateSetting?.({ id: editingTerm.id as Id<"settings">, title: item.title, body }); setToast("T&C updated."); } else { const key = `terms_${Date.now()}`; await onCreateSetting?.({ key, title: item.title, body }); setToast("T&C created."); } setTermModalOpen(false); setEditingTerm(null); } catch { setToast("Failed to save T&C."); } finally { setBusy(false); } }} />}
+      {feeModalOpen && <FeeConfigModal config={feeConfig} onClose={() => setFeeModalOpen(false)} onSave={async (config) => { if (!onUpdateFeeConfig) return; setBusy(true); try { await onUpdateFeeConfig(config); setToast("Fee configuration updated."); setFeeModalOpen(false); } catch (err) { setToast(formatErrorMessage(err, "Failed to update fee config.")); } finally { setBusy(false); } }} />}
+      {mobileModalOpen && mobileConfig && <MobileConfigModal config={mobileConfig} onClose={() => setMobileModalOpen(false)} onSave={async (config) => { setBusy(true); try { await updateMobileConfig({ config }); setToast("Mobile options updated."); setMobileModalOpen(false); } catch (err) { setToast(formatErrorMessage(err, "Failed to update mobile options.")); } finally { setBusy(false); } }} />}
+      {escrowModalOpen && <EscrowPolicyModal initialData={editingEscrow} onClose={() => { setEscrowModalOpen(false); setEditingEscrow(null); }} onSave={async (item) => { if (!onCreateEscrow && !onUpdateEscrow) return; setBusy(true); try { if (editingEscrow) { await onUpdateEscrow?.({ id: editingEscrow.id as Id<"escrowPolicies">, ...item }); setToast("Escrow policy updated."); } else { await onCreateEscrow?.(item); setToast("Escrow policy created."); } setEscrowModalOpen(false); setEditingEscrow(null); } catch (err) { setToast(formatErrorMessage(err, "Failed to save escrow policy.")); } finally { setBusy(false); } }} />}
+      {saModalOpen && <ServiceAreaModal baseLocation={saBase} destinations={saDests} onClose={() => setSaModalOpen(false)} onSave={async (newBase, newDests) => { if (!onUpdateServiceArea) return; setBusy(true); try { await onUpdateServiceArea({ baseLocation: newBase, destinations: newDests }); setSaBase(newBase); setSaDests(newDests); setToast("Service area updated."); setSaModalOpen(false); } catch (err) { setToast(formatErrorMessage(err, "Failed to update service area.")); } finally { setBusy(false); } }} />}
+      {cancelModalOpen && <CancellationPolicyModal initialData={editingCancel} onClose={() => { setCancelModalOpen(false); setEditingCancel(null); }} onSave={async (item) => { if (!onCreateCancellation && !onUpdateCancellation) return; setBusy(true); try { if (editingCancel) { await onUpdateCancellation?.({ id: editingCancel.id as Id<"cancellationPolicies">, ...item }); setToast("Cancellation policy updated."); } else { await onCreateCancellation?.(item); setToast("Cancellation policy created."); } setCancelModalOpen(false); setEditingCancel(null); } catch (err) { setToast(formatErrorMessage(err, "Failed to save cancellation policy.")); } finally { setBusy(false); } }} />}
+      {kycModalOpen && <KycTierModal initialData={editingKyc} onClose={() => { setKycModalOpen(false); setEditingKyc(null); }} onSave={async (item) => { if (!onCreateKycTier && !onUpdateKycTier) return; setBusy(true); try { if (editingKyc) { await onUpdateKycTier?.({ id: editingKyc.id as Id<"kycTiers">, ...item }); setToast("KYC tier updated."); } else { await onCreateKycTier?.(item); setToast("KYC tier created."); } setKycModalOpen(false); setEditingKyc(null); } catch (err) { setToast(formatErrorMessage(err, "Failed to save KYC tier.")); } finally { setBusy(false); } }} />}
+      {termModalOpen && <TermConditionsModal initialData={editingTerm} onClose={() => { setTermModalOpen(false); setEditingTerm(null); }} onSave={async (item, status) => { if (!onCreateSetting && !onUpdateSetting) return; setBusy(true); try { const body = buildSettingBody(item.version, status, item.content); if (editingTerm) { await onUpdateSetting?.({ id: editingTerm.id as Id<"settings">, title: item.title, body }); setToast("T&C updated."); } else { const key = `terms_${Date.now()}`; await onCreateSetting?.({ key, title: item.title, body }); setToast("T&C created."); } setTermModalOpen(false); setEditingTerm(null); } catch (err) { setToast(formatErrorMessage(err, "Failed to save T&C.")); } finally { setBusy(false); } }} />}
       {viewingTerm && <ViewTermConditionsModal item={viewingTerm} onClose={() => setViewingTerm(null)} onUpdate={() => { const itemToEdit = viewingTerm; setViewingTerm(null); setEditingTerm(itemToEdit); setTermModalOpen(true); }} />}
-      {privacyModalOpen && <PrivacyPolicyModal initialData={editingPrivacy} onClose={() => { setPrivacyModalOpen(false); setEditingPrivacy(null); }} onSave={async (item, status) => { if (!onCreateSetting && !onUpdateSetting) return; setBusy(true); try { const body = buildSettingBody(item.version, status, item.content); if (editingPrivacy) { await onUpdateSetting?.({ id: editingPrivacy.id as Id<"settings">, title: item.title, body }); setToast("Privacy policy updated."); } else { const key = `privacy_${Date.now()}`; await onCreateSetting?.({ key, title: item.title, body }); setToast("Privacy policy created."); } setPrivacyModalOpen(false); setEditingPrivacy(null); } catch { setToast("Failed to save privacy policy."); } finally { setBusy(false); } }} />}
+      {privacyModalOpen && <PrivacyPolicyModal initialData={editingPrivacy} onClose={() => { setPrivacyModalOpen(false); setEditingPrivacy(null); }} onSave={async (item, status) => { if (!onCreateSetting && !onUpdateSetting) return; setBusy(true); try { const body = buildSettingBody(item.version, status, item.content); if (editingPrivacy) { await onUpdateSetting?.({ id: editingPrivacy.id as Id<"settings">, title: item.title, body }); setToast("Privacy policy updated."); } else { const key = `privacy_${Date.now()}`; await onCreateSetting?.({ key, title: item.title, body }); setToast("Privacy policy created."); } setPrivacyModalOpen(false); setEditingPrivacy(null); } catch (err) { setToast(formatErrorMessage(err, "Failed to save privacy policy.")); } finally { setBusy(false); } }} />}
       {viewingPrivacy && <ViewPrivacyPolicyModal item={viewingPrivacy} onClose={() => setViewingPrivacy(null)} onUpdate={() => { const itemToEdit = viewingPrivacy; setViewingPrivacy(null); setEditingPrivacy(itemToEdit); setPrivacyModalOpen(true); }} />}
     </section>
   );
+}
+
+function MobileConfigModal({ config, onClose, onSave }: { config: MobileProductConfig; onClose: () => void; onSave: (config: MobileProductConfig) => void }) {
+  const [value, setValue] = useState(JSON.stringify(config, null, 2));
+  const [error, setError] = useState("");
+  return <div className="figma-settings-modal-overlay" onClick={onClose}>
+    <div className="figma-settings-modal" onClick={event => event.stopPropagation()}>
+      <div className="figma-settings-modal-header"><h2>Mobile app options</h2><button type="button" className="figma-settings-modal-close" onClick={onClose} aria-label="Close"><X size={20} /></button></div>
+      <form className="figma-settings-modal-form" onSubmit={event => { event.preventDefault(); try { setError(""); onSave(JSON.parse(value) as MobileProductConfig); } catch { setError("Enter valid JSON before saving."); } }}>
+        <div className="figma-settings-field"><label>Product configuration</label><textarea rows={22} spellCheck={false} value={value} onChange={event => setValue(event.target.value)} /></div>
+        <p>Controls parcel choices, wallet presets and limits, supported banks, and residence options shown in the mobile app.</p>
+        {error && <p role="alert" className="error-message">{error}</p>}
+        <div className="figma-settings-modal-actions"><button type="submit" className="btn-save">Save options</button></div>
+      </form>
+    </div>
+  </div>;
 }
 
 function FeeConfigModal({ config, onClose, onSave }: { config?: FeeConfig; onClose: () => void; onSave: (args: { platformFeePercent: number; baseFeeNaira: number; distanceRateNairaPerKm: number; minFeeNaira: number; categoryMultipliers?: Record<string, number>; weightMultipliers?: { minKg: number; maxKg: number; multiplier: number }[] }) => void }) {
@@ -345,7 +384,7 @@ function FeeConfigModal({ config, onClose, onSave }: { config?: FeeConfig; onClo
           <div className="figma-settings-section-label">Weight-based pricing (per kg tier)</div>
           {weightTiers.map((tier, i) => <div key={i} className="figma-settings-tier-row"><input type="number" min="0" placeholder="Min kg" value={tier.minKg} onChange={(e) => updateTier(i, "minKg", e.target.value)} /><span className="figma-settings-tier-sep">–</span><input type="number" min="0" placeholder="Max kg" value={tier.maxKg} onChange={(e) => updateTier(i, "maxKg", e.target.value)} /><span className="figma-settings-tier-sep">×</span><input type="number" min="0" max="10" step="0.1" placeholder="Multiplier" value={tier.multiplier} onChange={(e) => updateTier(i, "multiplier", e.target.value)} />{weightTiers.length > 1 && <button type="button" className="figma-settings-tier-remove" onClick={() => removeTier(i)} aria-label="Remove tier"><X size={16} /></button>}</div>)}
           <button type="button" className="figma-settings-tier-add" onClick={addTier}>+ Add weight tier</button>
-          <div className="figma-settings-modal-actions"><button type="button" className="btn-cancel" onClick={onClose}>Cancel</button><button type="submit" className="btn-save">Save</button></div>
+          <div className="figma-settings-modal-actions"><button type="submit" className="btn-save">Save</button></div>
         </form>
       </div>
     </div>
@@ -364,7 +403,7 @@ function EscrowPolicyModal({ initialData, onClose, onSave }: { initialData: { id
           <div className="figma-settings-field"><label>Policy Name</label><input type="text" value={policyName} onChange={(e) => setPolicyName(e.target.value)} autoFocus /></div>
           <div className="figma-settings-field"><label>Policy Type</label><div className="figma-settings-select-wrap"><select value={type} onChange={(e) => setType(e.target.value)}><option value="Time Based">Time Based</option><option value="Confirmation Based">Confirmation Based</option><option value="Milestone Based">Milestone Based</option></select><ChevronDown size={18} className="select-arrow" /></div></div>
           <div className="figma-settings-field"><label>Release Time</label><input type="text" value={releaseTime} onChange={(e) => setReleaseTime(e.target.value)} /></div>
-          <div className="figma-settings-modal-actions"><button type="button" className="btn-cancel" onClick={onClose}>Cancel</button><button type="submit" className="btn-save">Save</button></div>
+          <div className="figma-settings-modal-actions"><button type="submit" className="btn-save">Save</button></div>
         </form>
       </div>
     </div>
@@ -390,7 +429,7 @@ function ServiceAreaModal({ baseLocation, destinations, onClose, onSave }: { bas
             </div>
             <div className="figma-settings-cat-add"><input type="text" placeholder="Add destination" value={newDest} onChange={(e) => setNewDest(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDest(); } }} /><button type="button" className="figma-settings-tier-add" onClick={addDest}>+ Add</button></div>
           </div>
-          <div className="figma-settings-modal-actions"><button type="button" className="btn-cancel" onClick={onClose}>Cancel</button><button type="submit" className="btn-save">Save</button></div>
+          <div className="figma-settings-modal-actions"><button type="submit" className="btn-save">Save</button></div>
         </form>
       </div>
     </div>
@@ -411,7 +450,7 @@ function CancellationPolicyModal({ initialData, onClose, onSave }: { initialData
           <div className="figma-settings-field"><label>Refund Type</label><div className="figma-settings-select-wrap"><select value={refundType} onChange={(e) => setRefundType(e.target.value)}><option value="Full Refund">Full Refund</option><option value="Partial Refund">Partial Refund</option><option value="No Refund">No Refund</option></select><ChevronDown size={18} className="select-arrow" /></div></div>
           {refundType === "Partial Refund" && <div className="figma-settings-field"><label>Refund %</label><input type="number" min="0" max="100" value={refundPercent} onChange={(e) => setRefundPercent(e.target.value)} /></div>}
           <div className="figma-settings-field"><label>Timing / Window</label><input type="text" value={window} onChange={(e) => setWindow(e.target.value)} placeholder="e.g. Up to 24hrs before departure" /></div>
-          <div className="figma-settings-modal-actions"><button type="button" className="btn-cancel" onClick={onClose}>Cancel</button><button type="submit" className="btn-save">Save</button></div>
+          <div className="figma-settings-modal-actions"><button type="submit" className="btn-save">Save</button></div>
         </form>
       </div>
     </div>
@@ -443,7 +482,7 @@ function KycTierModal({ initialData, onClose, onSave }: { initialData: { id: str
           <div className="figma-settings-field"><label>Max Carry Capacity (kg)</label><input type="number" min="0" max="2000" value={maxCapacity} onChange={(e) => setMaxCapacity(e.target.value)} placeholder="e.g. 45 — travellers at this tier may carry up to this weight per trip" /></div>
           <div className="figma-settings-field"><label>Max Shipment Value (₦)</label><input type="number" min="0" value={maxValue} onChange={(e) => setMaxValue(e.target.value)} placeholder="0 = no limit" /></div>
           <div className="figma-settings-field"><label>Description (optional)</label><textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description of this tier" /></div>
-          <div className="figma-settings-modal-actions"><button type="button" className="btn-cancel" onClick={onClose}>Cancel</button><button type="submit" className="btn-save">Save</button></div>
+          <div className="figma-settings-modal-actions"><button type="submit" className="btn-save">Save</button></div>
         </form>
       </div>
     </div>
@@ -481,7 +520,7 @@ function ViewTermConditionsModal({ item, onClose, onUpdate }: { item: { id: stri
           <div className="figma-settings-view-group"><div className="figma-settings-view-label">Title</div><div className="figma-settings-view-val">{item.title}</div></div>
           <div className="figma-settings-view-group"><div className="figma-settings-view-label">Terms &amp; Conditions</div><ul className="figma-settings-view-bullets">{bulletItems.map((point, index) => <li key={index}>{point}</li>)}</ul></div>
         </div>
-        <div className="figma-settings-modal-actions"><button type="button" className="btn-cancel" onClick={onClose}>Cancel</button><button type="button" className="btn-update" onClick={onUpdate}>Update</button></div>
+        <div className="figma-settings-modal-actions"><button type="button" className="btn-update" onClick={onUpdate}>Update</button></div>
       </div>
     </div>
   );
@@ -518,7 +557,7 @@ function ViewPrivacyPolicyModal({ item, onClose, onUpdate }: { item: { id: strin
           <div className="figma-settings-view-group"><div className="figma-settings-view-label">Title</div><div className="figma-settings-view-val">{item.title}</div></div>
           <div className="figma-settings-view-group"><div className="figma-settings-view-label">Data we collect</div><ul className="figma-settings-view-bullets">{bulletItems.map((point, index) => <li key={index}>{point}</li>)}</ul></div>
         </div>
-        <div className="figma-settings-modal-actions"><button type="button" className="btn-cancel" onClick={onClose}>Cancel</button><button type="button" className="btn-update" onClick={onUpdate}>Update</button></div>
+        <div className="figma-settings-modal-actions"><button type="button" className="btn-update" onClick={onUpdate}>Update</button></div>
       </div>
     </div>
   );

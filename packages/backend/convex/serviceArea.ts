@@ -9,7 +9,7 @@ export const DEFAULT_SERVICE_AREA = {
 };
 
 export async function getServiceArea(ctx: QueryCtx | MutationCtx) {
-  const row = await ctx.db.query("serviceAreaSettings").withIndex("by_key", q => q.eq("key", "primary")).unique();
+  const row = await ctx.db.query("serviceAreaSettings").withIndex("by_key", q => q.eq("key", "primary")).first();
   return row ? { baseLocation: row.baseLocation, destinations: row.destinations } : DEFAULT_SERVICE_AREA;
 }
 
@@ -45,7 +45,7 @@ export const update = mutation({
       destinations.push(value);
     }
     if (!destinations.length) fail("Configure at least one destination.");
-    const existing = await ctx.db.query("serviceAreaSettings").withIndex("by_key", q => q.eq("key", "primary")).unique();
+    const existing = await ctx.db.query("serviceAreaSettings").withIndex("by_key", q => q.eq("key", "primary")).first();
     const value = { key: "primary", baseLocation, destinations, updatedAt: Date.now(), updatedBy: admin._id };
     if (existing) await ctx.db.patch(existing._id, value);
     else await ctx.db.insert("serviceAreaSettings", value);

@@ -4,7 +4,7 @@ import type { PermissionKey } from "@passenger/core";
 import { mutation, action } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { requireUser, isStaff, isAdmin, requireAdmin, requirePermission, audit } from "./lib";
+import { requireUser, isStaff, isAdmin, requireAdmin, requirePermission, audit, fail } from "./lib";
 import { createAccount, retrieveAccount, modifyAccountCredentials } from "@convex-dev/auth/server";
 import { api } from "./_generated/api";
 
@@ -28,13 +28,13 @@ async function recordAction(
 
 const nameRule = (value: string, label = "Role title", max = 60) => {
   const name = value.trim();
-  if (!name || name.length > max) throw new Error(`${label} must be 1–${max} characters.`);
+  if (!name || name.length > max) fail(`${label} must be 1–${max} characters.`);
   return name;
 };
 
 const emailRule = (value: string) => {
   const email = value.trim();
-  if (email.length < 5 || email.length > 200 || !email.includes("@")) throw new Error("Enter a valid email address.");
+  if (email.length < 5 || email.length > 200 || !email.includes("@")) fail("Enter a valid email address.");
   return email;
 };
 
@@ -45,7 +45,7 @@ export const createRole = mutation({
     await requirePermission(ctx, user, PERMISSIONS.SECURITY_MANAGE);
     const name = nameRule(args.name);
     const existing = await ctx.db.query("adminRoles").withIndex("by_created").collect();
-    if (existing.some(role => role.name.trim().toLowerCase() === name.toLowerCase())) throw new Error("An admin role with that title already exists.");
+    if (existing.some(role => role.name.trim().toLowerCase() === name.toLowerCase())) fail("An admin role with that title already exists.");
     const now = Date.now();
     const id = await ctx.db.insert("adminRoles", { name, createdAt: now, updatedAt: now });
     await audit(ctx, user, "security.role.created", `Created admin role: ${name}`);
@@ -61,9 +61,9 @@ export const updateRole = mutation({
     await requirePermission(ctx, user, PERMISSIONS.SECURITY_MANAGE);
     const name = nameRule(args.name);
     const existing = await ctx.db.get(args.id);
-    if (!existing) throw new Error("Admin role not found.");
+    if (!existing) fail("Admin role not found.");
     const probe = await ctx.db.query("adminRoles").withIndex("by_created").collect();
-    if (probe.some(role => role._id !== args.id && role.name.trim().toLowerCase() === name.toLowerCase())) throw new Error("An admin role with that title already exists.");
+    if (probe.some(role => role._id !== args.id && role.name.trim().toLowerCase() === name.toLowerCase())) fail("An admin role with that title already exists.");
     await ctx.db.patch(args.id, { name, updatedAt: Date.now() });
     await audit(ctx, user, "security.role.updated", `Renamed admin role: ${existing.name} → ${name}`);
     await recordAction(ctx, user, `Renamed admin role: ${existing.name} → ${name}`);
@@ -76,7 +76,7 @@ export const removeRole = mutation({
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SECURITY_MANAGE);
     const role = await ctx.db.get(args.id);
-    if (!role) throw new Error("Admin role not found.");
+    if (!role) fail("Admin role not found.");
     const members = await ctx.db.query("teamMembers").withIndex("by_adminRole", q => q.eq("adminRoleId", args.id)).collect();
     for (const member of members) await ctx.db.delete(member._id);
     const grants = await ctx.db.query("permissionGrants").withIndex("by_adminRole", q => q.eq("adminRoleId", args.id)).collect();
@@ -93,7 +93,7 @@ export const createTeamMember = mutation({
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SECURITY_MANAGE);
     const role = await ctx.db.get(args.adminRoleId);
-    if (!role) throw new Error("Admin role not found.");
+    if (!role) fail("Admin role not found.");
     const name = nameRule(args.name, "Name", 120);
     const email = emailRule(args.email);
     const roleTitle = nameRule(args.roleTitle, "Role title", 100);
@@ -111,9 +111,9 @@ export const updateTeamMember = mutation({
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SECURITY_MANAGE);
     const existing = await ctx.db.get(args.id);
-    if (!existing) throw new Error("Team member not found.");
+    if (!existing) fail("Team member not found.");
     const role = await ctx.db.get(args.adminRoleId);
-    if (!role) throw new Error("Admin role not found.");
+    if (!role) fail("Admin role not found.");
     const name = nameRule(args.name, "Name", 120);
     const email = emailRule(args.email);
     const roleTitle = nameRule(args.roleTitle, "Role title", 100);
@@ -129,7 +129,7 @@ export const removeTeamMember = mutation({
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SECURITY_MANAGE);
     const member = await ctx.db.get(args.id);
-    if (!member) throw new Error("Team member not found.");
+    if (!member) fail("Team member not found.");
     await ctx.db.delete(args.id);
     await audit(ctx, user, "security.member.deleted", `Removed team member: ${member.name}`);
     await recordAction(ctx, user, `Removed team member: ${member.name}`);
@@ -143,7 +143,7 @@ export const createPermission = mutation({
     await requirePermission(ctx, user, PERMISSIONS.SECURITY_MANAGE);
     const name = nameRule(args.name, "Permission", 120);
     const existing = await ctx.db.query("permissions").withIndex("by_created").collect();
-    if (existing.some(permission => permission.name.trim().toLowerCase() === name.toLowerCase())) throw new Error("A permission with that name already exists.");
+    if (existing.some(permission => permission.name.trim().toLowerCase() === name.toLowerCase())) fail("A permission with that name already exists.");
     const now = Date.now();
     const id = await ctx.db.insert("permissions", { name, createdAt: now, updatedAt: now });
     await audit(ctx, user, "security.permission.created", `Created permission: ${name}`);
@@ -159,9 +159,9 @@ export const updatePermission = mutation({
     await requirePermission(ctx, user, PERMISSIONS.SECURITY_MANAGE);
     const name = nameRule(args.name, "Permission", 120);
     const existing = await ctx.db.get(args.id);
-    if (!existing) throw new Error("Permission not found.");
+    if (!existing) fail("Permission not found.");
     const probe = await ctx.db.query("permissions").withIndex("by_created").collect();
-    if (probe.some(permission => permission._id !== args.id && permission.name.trim().toLowerCase() === name.toLowerCase())) throw new Error("A permission with that name already exists.");
+    if (probe.some(permission => permission._id !== args.id && permission.name.trim().toLowerCase() === name.toLowerCase())) fail("A permission with that name already exists.");
     await ctx.db.patch(args.id, { name, updatedAt: Date.now() });
     await audit(ctx, user, "security.permission.updated", `Renamed permission: ${existing.name} → ${name}`);
     await recordAction(ctx, user, `Renamed permission: ${existing.name} → ${name}`);
@@ -174,7 +174,7 @@ export const removePermission = mutation({
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SECURITY_MANAGE);
     const existing = await ctx.db.get(args.id);
-    if (!existing) throw new Error("Permission not found.");
+    if (!existing) fail("Permission not found.");
     const grants = await ctx.db.query("permissionGrants").withIndex("by_permission", q => q.eq("permissionId", args.id)).collect();
     for (const grant of grants) await ctx.db.delete(grant._id);
     await ctx.db.delete(args.id);
@@ -189,9 +189,9 @@ export const setPermissionGrant = mutation({
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SECURITY_MANAGE);
     const permission = await ctx.db.get(args.permissionId);
-    if (!permission) throw new Error("Permission not found.");
+    if (!permission) fail("Permission not found.");
     const role = await ctx.db.get(args.adminRoleId);
-    if (!role) throw new Error("Admin role not found.");
+    if (!role) fail("Admin role not found.");
     const roleTitle = nameRule(args.roleTitle, "Role title", 100);
     const grant = (await ctx.db.query("permissionGrants").withIndex("by_permission", q => q.eq("permissionId", args.permissionId)).collect()).find(g => g.adminRoleId === args.adminRoleId && g.roleTitle === roleTitle);
     if (args.granted && !grant) {
@@ -215,7 +215,7 @@ export const recordStaffLogin = mutation({
   args: { deviceInfo: v.optional(v.string()), ipAddress: v.optional(v.string()), location: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    if (!isStaff(user)) throw new Error("Administrator access required.");
+    if (!isStaff(user)) fail("Administrator access required.");
     await ctx.db.insert("securityEvents", {
       kind: "login",
       actorId: user._id,
@@ -371,11 +371,11 @@ export const inviteTeamMember = action({
   returns: v.object({ tempPassword: v.string(), memberId: v.id("teamMembers") }),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Authentication required.");
+    if (!identity) fail("Authentication required.");
     const tempPassword = generateTempPassword();
     const now = Date.now();
     const email = args.email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid email address.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail("Enter a valid email address.");
     const memberId: Id<"teamMembers"> = await ctx.runMutation(api.security.createTeamMember, { name: args.name, email, roleTitle: args.roleTitle, adminRoleId: args.adminRoleId, mustChangePassword: true });
     const profile = { email, subject: email, name: args.name.trim(), phone: "", verification: "required" as const, joinedAt: now };
     try {
@@ -392,11 +392,11 @@ export const setOwnPassword = action({
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Authentication required.");
+    if (!identity) fail("Authentication required.");
     const email = (identity.email ?? "").trim().toLowerCase();
-    if (!email) throw new Error("No email on your account.");
+    if (!email) fail("No email on your account.");
     if (args.newPassword.length < 10 || !/[a-z]/.test(args.newPassword) || !/[A-Z]/.test(args.newPassword) || !/\d/.test(args.newPassword)) {
-      throw new Error("Use at least 10 characters with uppercase, lowercase, and a number.");
+      fail("Use at least 10 characters with uppercase, lowercase, and a number.");
     }
     await retrieveAccount(ctx, { provider: "password", account: { id: email, secret: args.currentPassword } });
     await modifyAccountCredentials(ctx, { provider: "password", account: { id: email, secret: args.newPassword } });
@@ -411,7 +411,7 @@ export const clearMustChangePassword = mutation({
     const user = await requireUser(ctx);
     const email = args.email.trim().toLowerCase();
     const callerEmail = (user.email ?? "").trim().toLowerCase();
-    if (!isAdmin(user) && callerEmail !== email) throw new Error("You can only change your own password.");
+    if (!isAdmin(user) && callerEmail !== email) fail("You can only change your own password.");
     const members = await ctx.db.query("teamMembers").collect();
     const member = members.find(m => m.email.toLowerCase() === email);
     if (member && member.mustChangePassword) {

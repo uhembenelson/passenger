@@ -1,8 +1,8 @@
 import { v } from "convex/values";
-import { calculateDeliveryFee, validateShipment } from "@passenger/core";
+import { calculateDeliveryFee } from "@passenger/core";
 import type { CreateShipmentInput } from "@passenger/core";
 import { mutation } from "./_generated/server";
-import { audit, fail, getFeeConfig, getTierLimits, requireSender, requireUser, requireVerified, shipment } from "./lib";
+import { audit, fail, getFeeConfig, getTierLimits, requireSender, requireUser, requireVerified, safeNormalizePhone, safeValidateShipment, shipment } from "./lib";
 import { validateEvidence } from "./evidence";
 import { deductForShipment, refundForShipment } from "./wallet";
 
@@ -36,7 +36,7 @@ export const update = mutation({
       fail("Only parcels awaiting review, requiring changes, or still open may be edited.");
     }
 
-    validateShipment(args satisfies CreateShipmentInput);
+    safeValidateShipment(args satisfies CreateShipmentInput);
     const limits = await getTierLimits(ctx, user);
     if (args.valueNaira > limits.maxShipmentValueNaira) {
       fail(`Your ${limits.tier} permits declaring parcel value up to ₦${limits.maxShipmentValueNaira.toLocaleString()}. Request a tier upgrade to send higher-value items.`);
@@ -64,7 +64,7 @@ export const update = mutation({
       valueNaira: args.valueNaira,
       feeNaira,
       receiverName: args.receiverName.trim(),
-      receiverPhone: args.receiverPhone.trim(),
+      receiverPhone: safeNormalizePhone(args.receiverPhone),
       pickupInstructions: args.pickupInstructions.trim(),
       dropoffInstructions: args.dropoffInstructions.trim(),
       readyAt: args.readyAt,

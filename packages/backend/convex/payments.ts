@@ -8,9 +8,25 @@ import { internal } from "./_generated/api";
 import { fail, subject } from "./lib";
 function secret(): string { const key = process.env.PAYSTACK_SECRET_KEY; if (!key) fail("Live payments are not configured on this deployment."); return key; }
 async function provider(path: string, key: string, init?: RequestInit): Promise<any> {
-  const response = await fetch(`https://api.paystack.co${path}`, { ...init, headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", ...init?.headers }, signal: AbortSignal.timeout(15000) });
+  let response: Response;
+  try {
+    response = await fetch(`https://api.paystack.co${path}`, {
+      ...init,
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", ...init?.headers },
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch {
+    fail("We could not connect to Paystack. Please check your connection and try again.");
+  }
   if (!response.ok) fail("Paystack request failed. Reconcile the existing reference before retrying.");
-  const body = await response.json(); if (body?.status !== true || !body.data) fail("Paystack could not confirm this request. Existing reference preserved."); return body.data;
+  let body: any;
+  try {
+    body = await response.json();
+  } catch {
+    fail("Paystack returned an invalid response. Existing reference preserved.");
+  }
+  if (body?.status !== true || !body.data) fail("Paystack could not confirm this request. Existing reference preserved.");
+  return body.data;
 }
 async function verify(ctx: ActionCtx, reference: string, key: string): Promise<string> {
   const data = await provider(`/transaction/verify/${encodeURIComponent(reference)}`, key);
@@ -67,17 +83,13 @@ export const receiveWebhook = internalAction({ args: { body: v.string(), signatu
       const data = event.data;
       if (typeof data?.reference !== "string" || data.reference.length > 200 || data.status !== "success" || !Number.isSafeInteger(data.amount) || data.currency !== "NGN" || (typeof data.id !== "number" && typeof data.id !== "string")) return { status: 400 };
       if (data.reference.startsWith("wallet-")) {
-        const amountNaira = Math.floor(data.amount / 100);
-        const userSubject = data.metadata?.subject;
-        if (userSubject) {
-          const user = await ctx.runQuery(internal.wallet.getUserForTopUp, { sub: userSubject });
-          if (user) {
-            await ctx.runMutation(internal.wallet.recordTopUp, {
-              userId: user._id,
-              amountNaira,
-              reference: data.reference,
-            });
-          }
+        const deposit = await ctx.runQuery(internal.wallet.depositByReference, { reference: data.reference });
+        if (deposit) {
+          await ctx.runMutation(internal.wallet.recordTopUp, {
+            userId: deposit.userId,
+            amountNaira: data.amount / 100,
+            reference: data.reference,
+          });
         }
       } else {
         await ctx.runMutation(internal.paymentState.confirmPaid, { reference: data.reference, amountKobo: data.amount, currency: data.currency, providerTransactionId: String(data.id) });

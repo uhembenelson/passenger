@@ -9,13 +9,29 @@ import { financeAccess, operationDto, operationKind } from "./financeState";
 
 function secret() { const key = process.env.PAYSTACK_SECRET_KEY; if (!key) fail("Live Paystack banking and finance are not configured. No simulated transfer is available."); return key; }
 async function provider(path: string, init?: RequestInit): Promise<any> {
-  const response = await fetch(`https://api.paystack.co${path}`, { ...init, headers: { Authorization: `Bearer ${secret()}`, "Content-Type": "application/json", ...init?.headers }, signal: AbortSignal.timeout(15000) });
+  let response: Response;
+  try {
+    response = await fetch(`https://api.paystack.co${path}`, {
+      ...init,
+      headers: { Authorization: `Bearer ${secret()}`, "Content-Type": "application/json", ...init?.headers },
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch {
+    fail("We could not connect to Paystack. Please check your connection and try again.");
+  }
   if (!response.ok) fail("Paystack could not confirm this request. Reconcile existing operations before retrying.");
-  const body = await response.json(); if (body?.status !== true || body.data == null) fail("Paystack returned an unconfirmed response."); return body.data;
+  let body: any;
+  try {
+    body = await response.json();
+  } catch {
+    fail("Paystack returned an invalid response.");
+  }
+  if (body?.status !== true || body.data == null) fail("Paystack returned an unconfirmed response.");
+  return body.data;
 }
 export const quote = query({ args: { feeNaira: v.number() }, handler: async (ctx, args) => { await requireUser(ctx); return feeQuote(args.feeNaira); } });
 export const bankAccount = query({ args: {}, handler: async (ctx) => {
-  const u = await requireUser(ctx); const bank = await ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", u._id)).unique();
+  const u = await requireUser(ctx); const bank = await ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", u._id)).first();
   return bank ? { accountName: bank.accountName, bankCode: bank.bankCode, last4: bank.last4, ready: !!bank.recipientCode, verifiedAt: bank.verifiedAt } : null;
 } });
 export const history = query({ args: { shipmentId: v.id("shipments") }, handler: async (ctx, args) => {
@@ -87,8 +103,8 @@ async function dispatch(ctx: ActionCtx, op: Doc<"payouts">): Promise<ReturnType<
   } catch {
     await ctx.runMutation(internal.financeState.uncertain, { operationId: op._id });
     // Do not throw away the operation ID: callers can show its real pending/uncertain state and reconcile safely.
-    const current = await ctx.runQuery(internal.financeState.authorizeOperation, { subject: await subject(ctx), operationId: op._id });
-    return operationDto(current);
+    const current = await ctx.runQuery(internal.financeState.lookup, { kind: op.kind, reference: op.reference });
+    return operationDto(current ?? op);
   }
 }
 export const requestPayout = action({ args: { shipmentId: v.id("shipments") }, handler: async (ctx, args): Promise<ReturnType<typeof operationDto>> => {
@@ -113,4 +129,38 @@ export const retry = action({ args: { operationId: v.id("payouts") }, handler: a
 export const receiveVerifiedEvent = internalAction({ args: { kind: operationKind, reference: v.optional(v.string()), providerId: v.optional(v.string()), providerTransactionId: v.optional(v.string()) }, handler: async (ctx, args): Promise<void> => {
   const op = await ctx.runQuery(internal.financeState.lookup, args);
   if (op) await verifiedOperation(ctx, op, args.kind === "refund" ? args.providerId : undefined);
+} });
+
+// Earnings belong to the signed-in traveller, including payouts already released.
+export const earnings = query({ args: {}, handler: async (ctx) => {
+  const user = await requireUser(ctx);
+  const shipments = await ctx.db.query("shipments").withIndex("by_traveller", q => q.eq("travellerId", user._id)).collect();
+  const bank = await ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", user._id)).first();
+  const items = [];
+  for (const s of shipments) {
+    if ((!s.deliveredAt && s.paymentStatus !== "released") || !["held", "released", "payout_pending", "payout_failed"].includes(s.paymentStatus)) continue;
+    const payments = await ctx.db.query("payments").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).collect();
+    const payment = payments.filter(p => p.status === "paid" && !p.quarantined).sort((a, b) => b.createdAt - a.createdAt)[0];
+    const operations = await ctx.db.query("payouts").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).collect();
+    const payout = operations.filter(p => p.kind === "payout").sort((a, b) => b.createdAt - a.createdAt)[0];
+    const disputes = await ctx.db.query("disputes").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).collect();
+    const amountKobo = payout?.amountKobo ?? payment?.travellerNetKobo ?? (payment ? payment.amountKobo - Math.round(payment.amountKobo / 10) : feeQuote(s.feeNaira).travellerNetKobo);
+    const status = s.paymentStatus === "released" ? "paid" : s.paymentStatus === "payout_failed" ? "failed" : s.paymentStatus === "payout_pending" ? "processing" : disputes.some(d => d.status === "open") || s.refundApproved ? "held" : !bank?.recipientCode ? "bank_required" : user.verification !== "verified" || user.suspended ? "verification_required" : !payment?.providerTransactionId ? "held" : "scheduled";
+    items.push({ id: s._id, tripId: s.tripId, reference: s.reference, origin: s.origin, destination: s.destination, amountKobo, status, deliveredAt: s.deliveredAt ?? s.updatedAt, payoutAt: s.deliveredAt ? Math.max(s.deliveredAt + 86400000, s.disputeUntil ?? 0) : null });
+  }
+  return items.sort((a, b) => b.deliveredAt - a.deliveredAt);
+} });
+
+export const automaticPayout = internalAction({ args: { shipmentId: v.id("shipments") }, handler: async (ctx, args): Promise<void> => {
+  if (!process.env.PAYSTACK_SECRET_KEY) return;
+  const owner = await ctx.runQuery(internal.financeState.automaticOwner, args);
+  if (!owner) return;
+  try {
+    const op = await ctx.runMutation(internal.financeState.prepare, { subject: owner, shipmentId: args.shipmentId, kind: "payout" });
+    if (op.status === "prepared") await dispatch(ctx, op);
+    else if (op.status === "pending" || op.status === "uncertain") await verifiedOperation(ctx, op);
+  } catch (error) {
+    // The next sweep rechecks eligibility. Failed transfers require reconciliation, never a blind retry.
+    console.warn("Automatic payout deferred", args.shipmentId, error instanceof Error ? error.message : "Unavailable");
+  }
 } });

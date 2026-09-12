@@ -5,4 +5,6 @@ const crons = cronJobs();
 
 crons.interval("expire offers and reservations", { minutes: 5 }, internal.maintenance.expire, {});
 
+crons.interval("process automatic traveller payouts", { minutes: 5 }, internal.financeState.sweepPayouts, {});
+
 export default crons;

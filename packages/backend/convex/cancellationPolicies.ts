@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { PERMISSIONS } from "@passenger/core";
 import { query, mutation } from "./_generated/server";
-import { requireUser, requirePermission, audit } from "./lib";
+import { requireUser, requirePermission, audit, fail } from "./lib";
 
 export const list = query({
   args: {},
@@ -23,9 +23,9 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
-    if (!args.ruleName.trim()) throw new Error("Rule name is required.");
-    if (!args.refundType.trim()) throw new Error("Refund type is required.");
-    if (args.refundPercent < 0 || args.refundPercent > 100) throw new Error("Refund percent must be between 0 and 100.");
+    if (!args.ruleName.trim()) fail("Rule name is required.");
+    if (!args.refundType.trim()) fail("Refund type is required.");
+    if (args.refundPercent < 0 || args.refundPercent > 100) fail("Refund percent must be between 0 and 100.");
     const now = Date.now();
     const id = await ctx.db.insert("cancellationPolicies", {
       ruleName: args.ruleName.trim(),
@@ -46,9 +46,9 @@ export const update = mutation({
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     const existing = await ctx.db.get(args.id);
-    if (!existing) throw new Error("Cancellation policy not found.");
-    if (!args.ruleName.trim()) throw new Error("Rule name is required.");
-    if (args.refundPercent < 0 || args.refundPercent > 100) throw new Error("Refund percent must be between 0 and 100.");
+    if (!existing) fail("Cancellation policy not found.");
+    if (!args.ruleName.trim()) fail("Rule name is required.");
+    if (args.refundPercent < 0 || args.refundPercent > 100) fail("Refund percent must be between 0 and 100.");
     await ctx.db.patch(args.id, {
       ruleName: args.ruleName.trim(),
       refundType: args.refundType.trim(),
@@ -66,7 +66,7 @@ export const remove = mutation({
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     const existing = await ctx.db.get(args.id);
-    if (!existing) throw new Error("Cancellation policy not found.");
+    if (!existing) fail("Cancellation policy not found.");
     await ctx.db.delete(args.id);
     await audit(ctx, user, "cancellation.deleted", `Deleted cancellation policy: ${existing.ruleName}`);
   },

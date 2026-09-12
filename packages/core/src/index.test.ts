@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ALLOWED_TRANSITIONS, assertTransition, calculateDeliveryFee, findMatchingTrips, formatErrorMessage, matchExplanation, money, normalizeCity, routeMatches, validateShipment, validateTrip } from "./index";
+import { ALLOWED_TRANSITIONS, assertTransition, calculateDeliveryFee, findMatchingTrips, formatErrorMessage, matchExplanation, money, normalizeCity, normalizePhone, routeMatches, validateShipment, validateTrip } from "./index";
 import type { CreateShipmentInput, CreateTripInput } from "./index";
 
 const shipment: CreateShipmentInput = { origin: "Jos", destination: "Abuja", description: "Sealed university documents", category: "Documents", weightKg: 2, valueNaira: 20000, receiverName: "Chidi", receiverPhone: "+2348030000107", pickupInstructions: "Meet at the main gate by the security desk.", dropoffInstructions: "Call on arrival and meet at the reception.", readyAt: 1500, deliveryDeadline: 2500, evidenceIds: ["evidence-1"], safetyConsent: true };
@@ -95,5 +95,43 @@ describe("error message formatting", () => {
   test("falls back on empty or unrecognized internal error", () => {
     expect(formatErrorMessage(null)).toBe("We couldn't finish that. Please try again.");
     expect(formatErrorMessage("")).toBe("We couldn't finish that. Please try again.");
+  });
+
+  test("sanitizes raw Convex action errors with uncaught error traces", () => {
+    const actionErr = `[CONVEX A(accounts:requestPhoneVerification)] [Request ID: ca1b192547f80d4d] Server Error
+Uncaught Error: Use an international phone number starting with +.
+    at normalizePhone (../../../core/src/index.ts:116:400)
+    at handler (../convex/accounts.ts:311:35)
+
+  Called by client`;
+    expect(formatErrorMessage(actionErr)).toBe("Use an international phone number starting with +.");
+  });
+});
+
+describe("phone normalization", () => {
+  test("normalizes 11-digit local Nigerian numbers", () => {
+    expect(normalizePhone("08132417465")).toBe("+2348132417465");
+    expect(normalizePhone("07012345678")).toBe("+2347012345678");
+  });
+
+  test("normalizes 10-digit Nigerian numbers without leading 0", () => {
+    expect(normalizePhone("8132417465")).toBe("+2348132417465");
+    expect(normalizePhone("7012345678")).toBe("+2347012345678");
+    expect(normalizePhone("9012345678")).toBe("+2349012345678");
+  });
+
+  test("normalizes numbers with redundant 0 after country code", () => {
+    expect(normalizePhone("+23408132417465")).toBe("+2348132417465");
+    expect(normalizePhone("+234 081 324 17465")).toBe("+2348132417465");
+  });
+
+  test("accepts valid international numbers", () => {
+    expect(normalizePhone("+14155552671")).toBe("+14155552671");
+    expect(normalizePhone("+2348132417465")).toBe("+2348132417465");
+  });
+
+  test("rejects invalid or placeholder numbers", () => {
+    expect(() => normalizePhone("+2340000000000")).toThrow();
+    expect(() => normalizePhone("123")).toThrow();
   });
 });

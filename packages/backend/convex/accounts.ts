@@ -1,8 +1,8 @@
 import { v } from "convex/values";
-import { isPlaceholderPhone, normalizePhone, type Person } from "@passenger/core";
+import { isPlaceholderPhone, type Person } from "@passenger/core";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { audit, fail, findUserBySubject, person, personDto, requireActive, requireUser, subject } from "./lib";
+import { audit, fail, findUserBySubject, person, personDto, requireActive, requireUser, safeNormalizePhone, subject } from "./lib";
 import { documentType } from "./schema";
 import { validateEvidence } from "./evidence";
 
@@ -38,7 +38,7 @@ export const ensureProfile = mutation({
     const name = args.name.trim();
     if (!name || name.length > 120) fail("Name must be 1–120 characters.");
 
-    const phone = normalizePhone(args.phone);
+    const phone = safeNormalizePhone(args.phone);
     const id = await ctx.db.insert("users", {
       subject: sub,
       name,
@@ -202,7 +202,7 @@ export const submitIdentity = mutation({
     const name = args.name.trim();
     if (!name || name.length > 120) fail("Name must be 1–120 characters.");
 
-    const phone = normalizePhone(args.phone);
+    const phone = safeNormalizePhone(args.phone);
     await validateEvidence(ctx, args.evidenceIds, user._id, "identity");
     await ctx.db.patch(user._id, {
       name,
@@ -308,7 +308,7 @@ export const requestPhoneVerification = action({
     if (!target) fail("Complete your profile first.");
     if (target.suspended) fail("Your account is suspended. Active delivery and support records remain accessible.");
 
-    const phone = normalizePhone(args.phone);
+    const phone = safeNormalizePhone(args.phone);
     if (isPlaceholderPhone(phone)) fail("Enter a valid mobile phone number.");
     const code = randomDigits(PHONE_CODE_LENGTH);
     const requestedAt = Date.now();

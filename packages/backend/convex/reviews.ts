@@ -6,7 +6,11 @@ export const list = query({
   args: {},
   handler: async (ctx) => {
     const user = await requireUser(ctx);
-    const reviews = await ctx.db.query("reviews").collect();
+    const [given, received] = await Promise.all([
+      ctx.db.query("reviews").withIndex("by_author", q => q.eq("authorId", user._id)).collect(),
+      ctx.db.query("reviews").withIndex("by_target", q => q.eq("targetId", user._id)).collect(),
+    ]);
+    const reviews = [...new Map([...given, ...received].map(review => [review._id, review])).values()];
     return reviews
       .filter(review => review.authorId === user._id || review.targetId === user._id)
       .map(review => ({
@@ -25,7 +29,7 @@ export const create = mutation({
   args: {
     shipmentId: v.id("shipments"),
     rating: v.number(),
-    comment: v.string(),
+    comment: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
@@ -48,7 +52,8 @@ export const create = mutation({
     }
 
     const targetId = user._id === parcel.senderId ? parcel.travellerId : parcel.senderId;
-    const comment = note(args.comment, "Review", 5);
+    if (targetId === user._id) fail("You cannot rate yourself.");
+    const comment = note(args.comment ?? "", "Review", 0);
 
     const id = await ctx.db.insert("reviews", {
       shipmentId: parcel._id,

@@ -1,3 +1,4 @@
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -31,7 +32,7 @@ async function eligibility(ctx: MutationCtx, s: Doc<"shipments">, p: Doc<"paymen
     const eligibleAt = Math.max(s.disputeUntil ?? 0, receiptAt ? receiptAt + 24 * 60 * 60 * 1000 : 0);
     if (!eligibleAt || eligibleAt > Date.now()) fail("The 24-hour receipt/adjudication dispute window has not elapsed.");
     const traveller = await ctx.db.get(s.travellerId); if (!traveller) fail("Traveller unavailable."); requireVerified(traveller);
-    const bank = await ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", s.travellerId!)).unique();
+    const bank = await ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", s.travellerId!)).first();
     if (!bank?.recipientCode || !bank.verifiedAt) fail("Traveller must resolve and verify their bank recipient before payout.");
     return bank;
   }
@@ -39,7 +40,7 @@ async function eligibility(ctx: MutationCtx, s: Doc<"shipments">, p: Doc<"paymen
 export const bankOwner = internalQuery({ args: { subject: v.string() }, handler: async (ctx, args) => { const u = await userBySubject(ctx, args.subject); requireVerified(u); return { userId: u._id, name: u.name }; } });
 export const saveBank = internalMutation({ args: { subject: v.string(), bankCode: v.string(), accountName: v.string(), last4: v.string(), recipientCode: v.string() }, handler: async (ctx, args) => {
   const u = await userBySubject(ctx, args.subject); requireVerified(u);
-  const existing = await ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", u._id)).unique();
+  const existing = await ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", u._id)).first();
   const data = { userId: u._id, bankCode: args.bankCode, accountName: args.accountName, last4: args.last4, recipientCode: args.recipientCode, currency: "NGN" as const, verifiedAt: Date.now(), updatedAt: Date.now() };
   if (existing) await ctx.db.patch(existing._id, data); else await ctx.db.insert("bankAccounts", data);
   await audit(ctx, u, "bank.recipient_verified", `Paystack resolved bank ${args.bankCode}, account ending ${args.last4}, and independently verified the transfer recipient. Full bank account number is not retained.`);
@@ -68,7 +69,7 @@ export const authorizeOperation = internalQuery({ args: { subject: v.string(), o
   await financeAccess(ctx, args.subject, op.shipmentId); return op;
 } });
 export const lookup = internalQuery({ args: { kind: operationKind, reference: v.optional(v.string()), providerId: v.optional(v.string()), providerTransactionId: v.optional(v.string()) }, handler: async (ctx, args) => {
-  if (args.reference) { const op = await ctx.db.query("payouts").withIndex("by_reference", q => q.eq("reference", args.reference!)).unique(); if (op?.kind === args.kind) return op; }
+  if (args.reference) { const op = await ctx.db.query("payouts").withIndex("by_reference", q => q.eq("reference", args.reference!)).first(); if (op?.kind === args.kind) return op; }
   // Refund webhook carries provider refund/transaction IDs rather than our transfer reference.
   if (args.kind === "refund" && args.providerId) {
     const ops = await ctx.db.query("payouts").collect();
@@ -143,4 +144,20 @@ export const prepareRetry = internalMutation({ args: { subject: v.string(), oper
   await ctx.db.patch(id, { reference: `passenger-${id}` });
   await audit(ctx, user, "finance.refund_retry", `New refund attempt after independent terminal-failure verification of ${op.reference}.`, s._id);
   return (await ctx.db.get(id))!;
+} });
+
+export const automaticOwner = internalQuery({ args: { shipmentId: v.id("shipments") }, handler: async (ctx, args) => {
+  const s = await ctx.db.get(args.shipmentId);
+  if (!s?.travellerId || !s.deliveredAt || !["held", "payout_pending"].includes(s.paymentStatus)) return null;
+  return (await ctx.db.get(s.travellerId))?.subject ?? null;
+} });
+
+export const sweepPayouts = internalMutation({ args: { cursor: v.optional(v.string()) }, handler: async (ctx, args) => {
+  const page = await ctx.db.query("shipments").paginate({ cursor: args.cursor ?? null, numItems: 100 });
+  for (const s of page.page) {
+    if (s.deliveredAt && s.deliveredAt + 86400000 <= Date.now() && ["held", "payout_pending"].includes(s.paymentStatus)) {
+      await ctx.scheduler.runAfter(0, internal.finance.automaticPayout, { shipmentId: s._id });
+    }
+  }
+  if (!page.isDone) await ctx.scheduler.runAfter(0, internal.financeState.sweepPayouts, { cursor: page.continueCursor });
 } });

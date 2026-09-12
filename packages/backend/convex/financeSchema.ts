@@ -31,8 +31,10 @@ export const financeTables = {
   }).index("by_reference", ["reference"]).index("by_shipment", ["shipmentId"]).index("by_payment", ["paymentId"]),
 };
 
+import { fail } from "./lib";
+
 export function feeQuote(feeNaira: number) {
-  if (!Number.isSafeInteger(feeNaira) || feeNaira <= 0 || !Number.isSafeInteger(feeNaira * 100)) throw new Error("Fee must be a positive whole-naira amount.");
+  if (!Number.isSafeInteger(feeNaira) || feeNaira <= 0 || !Number.isSafeInteger(feeNaira * 100)) fail("Fee must be a positive whole-naira amount.");
   const grossKobo = feeNaira * 100;
   const platformFeeKobo = grossKobo / 10;
   return { grossKobo, platformFeeKobo, travellerNetKobo: grossKobo - platformFeeKobo, platformFeePercent: 10 as const };

@@ -10,7 +10,7 @@ export interface WalletTransaction { id: string; userId: string; kind: WalletTra
 export interface Person { id: string; name: string; phone: string; email?: string; image?: string; tier?: string; phoneVerificationTime?: number; activationDestination?: "name" | "routes"; verification: VerificationStatus; role: "member" | "admin" | "compliance"; joinedAt: number; suspended?: boolean; suspensionReason?: string; mustChangePassword?: boolean; identityNote?: string; identitySubmittedAt?: number; documentType?: DocumentType; identityEvidenceIds?: string[]; rating?: number; reviewCount?: number; successfulDeliveries?: number; walletBalanceNaira?: number; bvn?: string; residenceState?: string; residenceLga?: string; residenceAddress?: string; streetPhotoUrl?: string; housePhotoUrl?: string; }
 export interface Trip { id: string; travellerId: string; travellerName: string; origin: string; destination: string; stops?: string[]; departureAt: number; arrivalAt?: number; capacityKg: number; reservedKg?: number; legReservedKg?: number[]; acceptedCategories?: string[]; maxParcelWeightKg?: number; handlingNotes?: string; verified: boolean; status?: "active" | "cancelled" | "completed"; }
 export interface FeeQuote { grossNaira: number; grossKobo: number; platformFeeKobo: number; travellerNetKobo: number; platformFeePercent: 10; }
-export interface Shipment { id: string; reference: string; senderId: string; senderName: string; senderVerified?: boolean; travellerId?: string; travellerName?: string; origin: string; destination: string; description: string; category: string; weightKg: number; valueNaira: number; feeNaira: number; receiverName: string; receiverPhone: string; status: ShipmentStatus; paymentStatus: PaymentStatus; createdAt: number; updatedAt: number; tripId?: string; pickupInstructions?: string; dropoffInstructions?: string; readyAt?: number; preferredPickupAt?: number; pickupFlexBeforeMinutes?: number; pickupFlexAfterMinutes?: number; deliveryDeadline?: number; evidenceIds?: string[]; safetyConsent?: boolean; reviewNote?: string; payByAt?: number; handoverAt?: number; deliveredAt?: number; latestLatitude?: number; latestLongitude?: number; latestLocationLabel?: string; latestLocationAt?: number; locationCheckInCount?: number; locationCheckInTarget?: number; locationCheckInRemaining?: number; missedLocationCheckIns?: number; nextLocationCheckInAt?: number; locationCheckInState?: LocationCheckInState; disputeUntil?: number; exception?: string; cancellationReason?: string; refundApproved?: boolean; releaseApproved?: boolean; quote?: FeeQuote; }
+export interface Shipment { id: string; reference: string; senderId: string; senderName: string; senderVerified?: boolean; travellerId?: string; travellerName?: string; origin: string; destination: string; description: string; category: string; weightKg: number; valueNaira: number; feeNaira: number; receiverName: string; receiverPhone: string; status: ShipmentStatus; paymentStatus: PaymentStatus; createdAt: number; updatedAt: number; tripId?: string; pickupInstructions?: string; dropoffInstructions?: string; readyAt?: number; preferredPickupAt?: number; pickupFlexBeforeMinutes?: number; pickupFlexAfterMinutes?: number; deliveryDeadline?: number; evidenceIds?: string[]; safetyConsent?: boolean; reviewNote?: string; payByAt?: number; handoverEvidenceIds?: string[]; deliveryEvidenceIds?: string[]; receiverPickupSmsStatus?: "pending" | "sent" | "failed"; receiverDeliverySmsStatus?: "pending" | "sent" | "failed"; handoverAt?: number; deliveredAt?: number; latestLatitude?: number; latestLongitude?: number; latestLocationLabel?: string; latestLocationAt?: number; latestSafetyCheckInAt?: number; locationCheckInCount?: number; locationCheckInTarget?: number; locationCheckInRemaining?: number; missedLocationCheckIns?: number; nextLocationCheckInAt?: number; locationCheckInState?: LocationCheckInState; disputeUntil?: number; exception?: string; cancellationReason?: string; refundApproved?: boolean; releaseApproved?: boolean; quote?: FeeQuote; }
 export interface Offer { id: string; shipmentId: string; tripId: string; travellerId: string; travellerName: string; feeNaira: number; expiresAt: number; createdAt: number; status: OfferStatus; note: string; quote: FeeQuote; }
 export interface AuditEntry { id: string; shipmentId?: string; actorName: string; action: string; detail: string; createdAt: number; }
 export interface Dispute { id: string; shipmentId: string; reason: string; status: "open" | "resolved"; createdAt: number; previousStatus?: ShipmentStatus; resolution?: "refund" | "release" | "resume" | "cancel"; note?: string; informationRequest?: string; resolvedAt?: number; }
@@ -18,8 +18,15 @@ export interface Notification { id: string; title: string; body: string; shipmen
 export interface Message { id: string; shipmentId: string; authorId: string; authorName: string; body: string; createdAt: number; }
 export interface Review { id: string; shipmentId: string; authorId: string; targetId: string; rating: number; comment: string; createdAt: number; }
 export interface ServiceAreaConfig { baseLocation: string; destinations: string[]; }
+export interface MobileProductConfig {
+  parcelTypes: { label: string; weightKg: number; category: string }[];
+  wallet: { topUpPresetsNaira: number[]; withdrawalPresetsNaira: number[]; minTopUpNaira: number; maxTopUpNaira: number; defaultTopUpNaira: number };
+  banks: { code: string; name: string }[];
+  residence: { states: string[]; localGovernmentAreas: string[]; defaultState: string; defaultLocalGovernmentArea: string };
+}
 export type SupportChatStatus = "unresolved" | "resolved" | "closed";
-export interface SupportChat { id: string; userId: string; userName?: string; userImage?: string; subject?: string; status: SupportChatStatus; lastMessage?: string; lastMessageAt: number; createdAt: number; resolvedAt?: number; closedAt?: number; resolution?: string; resolutionNote?: string; assignedTo?: string; assignedByName?: string; resolvedBy?: string; resolvedByName?: string; qaReviewedBy?: string; qaReviewedByName?: string; qaScore?: "approved" | "needs_work"; qaNote?: string; qaReviewedAt?: number; activeViewedBy?: string; activeViewedByName?: string; activeViewedAt?: number; }
+export type SupportContextKind = "delivery" | "trip" | "other";
+export interface SupportChat { contextKind?: SupportContextKind; shipmentId?: string; tripId?: string; deletedAt?: number; id: string; userId: string; userName?: string; userImage?: string; subject?: string; status: SupportChatStatus; lastMessage?: string; lastMessageAt: number; createdAt: number; resolvedAt?: number; closedAt?: number; resolution?: string; resolutionNote?: string; assignedTo?: string; assignedByName?: string; resolvedBy?: string; resolvedByName?: string; qaReviewedBy?: string; qaReviewedByName?: string; qaScore?: "approved" | "needs_work"; qaNote?: string; qaReviewedAt?: number; activeViewedBy?: string; activeViewedByName?: string; activeViewedAt?: number; }
 export interface SupportMessage { id: string; chatId: string; authorId: string; body: string; createdAt: number; }
 export interface SupportActivityEntry { id: string; chatId: string; actorId?: string; actorName: string; action: string; detail: string; createdAt: number; }
 export interface AgentScoreboardEntry { agentName: string; openAssigned: number; resolved: number; reopened: number; avgFirstResponseMs: number | null; qaTotal: number; qaApproved: number; qaNeedsWork: number; }
@@ -38,7 +45,7 @@ export interface SystemSetting { id: string; key: string; title: string; body: s
 export interface FeeConfig { platformFeePercent: number; baseFeeNaira: number; distanceRateNairaPerKm: number; minFeeNaira: number; categoryMultipliers?: Record<string, number>; weightMultipliers?: { minKg: number; maxKg: number; multiplier: number }[]; updatedAt: number; }
 export interface SupportUserStats { shipmentsSent: number; shipmentsCarried: number; activeShipments: number; trips: number; activeTrips: number; openDisputes: number; openChats: number; walletBalanceNaira: number; }
 export interface SupportUserDetails { user: Person; stats: SupportUserStats; shipments: Shipment[]; trips: Trip[]; walletTransactions: WalletTransaction[]; reviewsReceived: Review[]; reviewsGiven: Review[]; disputes: Dispute[]; events: AuditEntry[]; notifications: Notification[]; }
-export interface DashboardSnapshot { viewer: Person | null; people: Person[]; trips: Trip[]; shipments: Shipment[]; events: AuditEntry[]; disputes: Dispute[]; offers?: Offer[]; notifications?: Notification[]; serviceArea?: ServiceAreaConfig; walletTransactions?: WalletTransaction[]; reviews?: Review[]; supportChats?: SupportChat[]; supportMessages?: SupportMessage[]; faqs?: Faq[]; settings?: SystemSetting[]; feeConfig?: FeeConfig; escrowPolicies?: EscrowPolicy[]; cancellationPolicies?: CancellationPolicy[]; kycTiers?: KycTier[]; adminRoles?: AdminRole[]; teamMembers?: TeamMember[]; permissions?: Permission[]; permissionGrants?: PermissionGrant[]; suspiciousAccounts?: SuspiciousAccount[]; adminLogins?: AdminLoginRecord[]; adminActions?: AdminActionRecord[]; viewerPermissions?: PermissionKey[]; }
+export interface DashboardSnapshot { viewer: Person | null; people: Person[]; trips: Trip[]; shipments: Shipment[]; events: AuditEntry[]; disputes: Dispute[]; offers?: Offer[]; notifications?: Notification[]; serviceArea?: ServiceAreaConfig; mobileConfig?: MobileProductConfig; walletTransactions?: WalletTransaction[]; reviews?: Review[]; supportChats?: SupportChat[]; supportMessages?: SupportMessage[]; faqs?: Faq[]; settings?: SystemSetting[]; feeConfig?: FeeConfig; escrowPolicies?: EscrowPolicy[]; cancellationPolicies?: CancellationPolicy[]; kycTiers?: KycTier[]; adminRoles?: AdminRole[]; teamMembers?: TeamMember[]; permissions?: Permission[]; permissionGrants?: PermissionGrant[]; suspiciousAccounts?: SuspiciousAccount[]; adminLogins?: AdminLoginRecord[]; adminActions?: AdminActionRecord[]; viewerPermissions?: PermissionKey[]; }
 export interface CreateShipmentInput { origin: string; destination: string; description: string; category: string; weightKg: number; valueNaira: number; receiverName: string; receiverPhone: string; pickupInstructions: string; dropoffInstructions: string; readyAt: number; preferredPickupAt?: number; pickupFlexBeforeMinutes?: number; pickupFlexAfterMinutes?: number; deliveryDeadline: number; evidenceIds: string[]; safetyConsent: boolean; }
 export interface CreateTripInput { origin: string; destination: string; stops: string[]; departureAt: number; arrivalAt: number; capacityKg: number; acceptedCategories?: string[]; maxParcelWeightKg?: number; handlingNotes?: string; }
 
@@ -107,7 +114,16 @@ export function isValidPhone(value: string) {
   const digits = text.replace(/\D/g, "");
   return /^\+?[\d\s()-]{10,20}$/.test(text) && digits.length >= 10 && digits.length <= 15;
 }
-export function normalizePhone(value: string) { if (!isValidPhone(value)) throw new Error("Enter a valid phone number."); const digits = value.replace(/\D/g, ""); if (digits.length === 11 && digits.startsWith("0")) return `+234${digits.slice(1)}`; if (!value.trim().startsWith("+") && !digits.startsWith("234")) throw new Error("Use an international phone number starting with +."); return `+${digits}`; }
+export function normalizePhone(value: string) {
+  if (!isValidPhone(value)) throw new Error("Enter a valid phone number.");
+  const digits = value.replace(/\D/g, "");
+  if (digits.length === 11 && digits.startsWith("0")) return `+234${digits.slice(1)}`;
+  if (digits.length === 10 && /^[789]/.test(digits)) return `+234${digits}`;
+  if (digits.length === 14 && digits.startsWith("2340") && /^[789]/.test(digits.slice(4))) return `+234${digits.slice(4)}`;
+  if (digits.startsWith("234") && (digits.length === 13 || digits.length === 14)) return `+${digits.startsWith("2340") ? "234" + digits.slice(4) : digits}`;
+  if (value.trim().startsWith("+")) return `+${digits}`;
+  throw new Error("Use an international phone number starting with +.");
+}
 export function tripRoute(trip: { origin: string; destination: string; stops?: string[] }) { return [trip.origin, ...(trip.stops ?? []), trip.destination]; }
 export function routeSegment(shipment: { origin: string; destination: string }, trip: { origin: string; destination: string; stops?: string[] }): { pickupIndex: number; dropoffIndex: number } | null { const cities = tripRoute(trip).map(normalizeCity); const pickupIndex = cities.indexOf(normalizeCity(shipment.origin)); const dropoffIndex = cities.indexOf(normalizeCity(shipment.destination)); return pickupIndex >= 0 && dropoffIndex > pickupIndex ? { pickupIndex, dropoffIndex } : null; }
 export function routeMatches(a: { origin: string; destination: string }, b: { origin: string; destination: string; stops?: string[] }) { return routeSegment(a, b) !== null; }
@@ -231,13 +247,13 @@ export function sanitizeErrorMessage(message: string, fallback = "We couldn't fi
   const cleaned = message
     .replace(/\[CONVEX[^\]]*\]\s*/g, "")
     .replace(/\[Request ID:[^\]]*\]\s*/g, "")
-    .replace(/Server Error\s*/g, "")
-    .split(/\n\s+at |\n\s*Called by client/)[0]!
+    .replace(/Server Error:?\s*/gi, "")
+    .split(/\n\s*at |\n\s*Called by client/i)[0]!
     .replace(/^Uncaught (Convex)?Error:\s*/i, "")
     .replace(/^Error:\s*/i, "")
     .trim();
 
-  if (!cleaned || /^[a-z]+Error:\s*/i.test(cleaned) || cleaned.includes("convex/")) {
+  if (!cleaned || /^[a-z]+Error:\s*/i.test(cleaned) || cleaned.includes("convex/") || cleaned.includes(".ts:") || cleaned.includes(".js:")) {
     return fallback;
   }
 

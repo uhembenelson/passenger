@@ -1,7 +1,36 @@
 import { v } from "convex/values";
 import { PERMISSIONS } from "@passenger/core";
 import { query, mutation } from "./_generated/server";
-import { requireUser, requirePermission, audit } from "./lib";
+import { requireUser, requirePermission, audit, fail } from "./lib";
+import { MOBILE_PRODUCT_CONFIG_KEY } from "./productConfig";
+
+const mobileConfigValidator = v.object({
+  parcelTypes: v.array(v.object({ label: v.string(), weightKg: v.number(), category: v.string() })),
+  wallet: v.object({ topUpPresetsNaira: v.array(v.number()), withdrawalPresetsNaira: v.array(v.number()), minTopUpNaira: v.number(), maxTopUpNaira: v.number(), defaultTopUpNaira: v.number() }),
+  banks: v.array(v.object({ code: v.string(), name: v.string() })),
+  residence: v.object({ states: v.array(v.string()), localGovernmentAreas: v.array(v.string()), defaultState: v.string(), defaultLocalGovernmentArea: v.string() }),
+});
+
+export const updateMobileProductConfig = mutation({
+  args: { config: mobileConfigValidator },
+  handler: async (ctx, { config }) => {
+    const user = await requireUser(ctx);
+    await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
+    if (!config.parcelTypes.length || config.parcelTypes.some(item => !item.label.trim() || !item.category.trim() || item.weightKg <= 0 || item.weightKg > 25)) fail("Add at least one valid parcel type with a weight up to 25 kg.");
+    if (!config.banks.length || config.banks.some(bank => !bank.code.trim() || !bank.name.trim())) fail("Add at least one bank with a code and name.");
+    if (!config.residence.states.length || !config.residence.localGovernmentAreas.length) fail("Add at least one state and local government area.");
+    if (!config.residence.states.includes(config.residence.defaultState) || !config.residence.localGovernmentAreas.includes(config.residence.defaultLocalGovernmentArea)) fail("Residence defaults must be included in their lists.");
+    const { wallet } = config;
+    if (!Number.isSafeInteger(wallet.minTopUpNaira) || !Number.isSafeInteger(wallet.maxTopUpNaira) || wallet.minTopUpNaira < 100 || wallet.maxTopUpNaira > 500000 || wallet.minTopUpNaira > wallet.maxTopUpNaira) fail("Top-up limits must be whole amounts between ₦100 and ₦500,000.");
+    if (wallet.defaultTopUpNaira < wallet.minTopUpNaira || wallet.defaultTopUpNaira > wallet.maxTopUpNaira) fail("The default top-up must be within the configured limits.");
+    const body = JSON.stringify(config);
+    const existing = await ctx.db.query("settings").withIndex("by_key", q => q.eq("key", MOBILE_PRODUCT_CONFIG_KEY)).first();
+    const now = Date.now();
+    if (existing) await ctx.db.patch(existing._id, { title: "Mobile product configuration", body, updatedAt: now });
+    else await ctx.db.insert("settings", { key: MOBILE_PRODUCT_CONFIG_KEY, title: "Mobile product configuration", body, createdAt: now, updatedAt: now });
+    await audit(ctx, user, "settings.mobile_product_updated", "Updated mobile parcel, wallet, bank, and residence options.");
+  },
+});
 
 export const list = query({
   args: {},
@@ -46,10 +75,10 @@ export const create = mutation({
       .query("settings")
       .withIndex("by_key", (q) => q.eq("key", args.key))
       .collect();
-    if (existing.length) throw new Error(`A setting with key "${args.key}" already exists.`);
-    if (!args.key.trim()) throw new Error("Setting key is required.");
-    if (!args.title.trim()) throw new Error("Title is required.");
-    if (!args.body.trim()) throw new Error("Body content is required.");
+    if (existing.length) fail(`A setting with key "${args.key}" already exists.`);
+    if (!args.key.trim()) fail("Setting key is required.");
+    if (!args.title.trim()) fail("Title is required.");
+    if (!args.body.trim()) fail("Body content is required.");
     const now = Date.now();
     const id = await ctx.db.insert("settings", {
       key: args.key.trim().toLowerCase().replace(/\s+/g, "_"),
@@ -69,9 +98,9 @@ export const update = mutation({
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     const existing = await ctx.db.get(args.id);
-    if (!existing) throw new Error("Setting not found.");
-    if (!args.title.trim()) throw new Error("Title is required.");
-    if (!args.body.trim()) throw new Error("Body content is required.");
+    if (!existing) fail("Setting not found.");
+    if (!args.title.trim()) fail("Title is required.");
+    if (!args.body.trim()) fail("Body content is required.");
     await ctx.db.patch(args.id, {
       title: args.title.trim(),
       body: args.body.trim(),
@@ -87,7 +116,7 @@ export const remove = mutation({
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     const existing = await ctx.db.get(args.id);
-    if (!existing) throw new Error("Setting not found.");
+    if (!existing) fail("Setting not found.");
     await ctx.db.delete(args.id);
     await audit(ctx, user, "settings.deleted", `Deleted setting: ${existing.title}`);
   },
@@ -132,13 +161,13 @@ export const updateFeeConfig = mutation({
     const user = await requireUser(ctx);
     await requirePermission(ctx, user, PERMISSIONS.SETTINGS_MANAGE);
     if (args.platformFeePercent < 0 || args.platformFeePercent > 50)
-      throw new Error("Platform fee must be between 0 and 50%.");
+      fail("Platform fee must be between 0 and 50%.");
     if (args.baseFeeNaira < 0 || args.baseFeeNaira > 100000)
-      throw new Error("Base fee must be between 0 and 100,000.");
+      fail("Base fee must be between 0 and 100,000.");
     if (args.distanceRateNairaPerKm < 0 || args.distanceRateNairaPerKm > 1000)
-      throw new Error("Distance rate must be between 0 and 1,000.");
+      fail("Distance rate must be between 0 and 1,000.");
     if (args.minFeeNaira < 0 || args.minFeeNaira > 100000)
-      throw new Error("Minimum fee must be between 0 and 100,000.");
+      fail("Minimum fee must be between 0 and 100,000.");
     const all = await ctx.db.query("feeConfig").collect();
     const existing = all[0];
     const data = {

@@ -1,15 +1,16 @@
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { calculateDeliveryFee, validateShipment, PERMISSIONS } from "@passenger/core";
+import { calculateDeliveryFee, PERMISSIONS } from "@passenger/core";
 import type { CreateShipmentInput, DashboardSnapshot, PermissionKey } from "@passenger/core";
 import { tripArgs, createDefinition as createTripDefinition } from "./journeys";
 import { query, mutation } from "./_generated/server";
-import { findUserBySubject, isAdmin, isCompliance, isStaff, offerDto, participant, personDto, requireUser, requireVerified, shipmentDto, tripDto, audit, requireSender, shipment, releaseCapacity, transition, fail, effectiveChatStatus } from "./lib";
+import { findUserBySubject, isAdmin, isCompliance, isStaff, offerDto, participant, personDto, requireUser, requireVerified, safeNormalizePhone, safeValidateShipment, shipmentDto, tripDto, audit, requireSender, shipment, releaseCapacity, transition, fail, effectiveChatStatus } from "./lib";
 import { validateEvidence } from "./evidence";
 import { proposeOffer } from "./offers";
 import { assertSupportedRoute, getServiceArea } from "./serviceArea";
 import { getFeeConfig, getTierLimits } from "./lib";
 import { deductForShipment, refundForShipment } from "./wallet";
+import { getMobileProductConfig } from "./productConfig";
 
 const MEMBER_FEED_LIMIT = 200;
 const ADMIN_SNAPSHOT_LIMIT = 500;
@@ -48,6 +49,22 @@ export const myTripsPage = query({
   },
 });
 
+export const mySentParcelsPage = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx);
+    const result = await ctx.db
+      .query("shipments")
+      .withIndex("by_sender", q => q.eq("senderId", viewer._id))
+      .order("desc")
+      .paginate(args.paginationOpts);
+    return {
+      ...result,
+      page: await Promise.all(result.page.map(record => shipmentDto(ctx, record, true))),
+    };
+  },
+});
+
 export const availableShipmentsPage = query({
   args: { paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
@@ -71,7 +88,8 @@ export const dashboard = query({
   handler: async (ctx, args): Promise<DashboardSnapshot> => {
     const identity = await ctx.auth.getUserIdentity();
     const serviceArea = await getServiceArea(ctx);
-    const empty: DashboardSnapshot = { viewer: null, people: [], trips: [], shipments: [], events: [], disputes: [], offers: [], notifications: [], serviceArea, walletTransactions: [], reviews: [], supportChats: [], supportMessages: [], faqs: [], settings: [], feeConfig: undefined, escrowPolicies: [], cancellationPolicies: [], kycTiers: [], adminRoles: [], teamMembers: [], permissions: [], permissionGrants: [], suspiciousAccounts: [], adminLogins: [], adminActions: [], viewerPermissions: [] };
+    const mobileConfig = await getMobileProductConfig(ctx);
+    const empty: DashboardSnapshot = { viewer: null, people: [], trips: [], shipments: [], events: [], disputes: [], offers: [], notifications: [], serviceArea, mobileConfig, walletTransactions: [], reviews: [], supportChats: [], supportMessages: [], faqs: [], settings: [], feeConfig: undefined, escrowPolicies: [], cancellationPolicies: [], kycTiers: [], adminRoles: [], teamMembers: [], permissions: [], permissionGrants: [], suspiciousAccounts: [], adminLogins: [], adminActions: [], viewerPermissions: [] };
     if (!identity) return empty;
 
     const viewer = await findUserBySubject(ctx, identity.subject);
@@ -145,7 +163,7 @@ export const dashboard = query({
     const supportChats = await Promise.all(rawSupportChats.map(async (c) => {
       const user = await ctx.db.get(c.userId);
       const msgs = await ctx.db.query("supportMessages").withIndex("by_chat", q => q.eq("chatId", c._id)).order("desc").take(1);
-      return { id: c._id, userId: c.userId, userName: user?.name ?? "Unknown", userImage: user?.image, subject: c.subject, status: effectiveChatStatus(c), lastMessage: msgs[0]?.body ?? "", lastMessageAt: c.lastMessageAt, createdAt: c.createdAt, resolvedAt: c.resolvedAt, closedAt: c.closedAt, resolution: c.resolution, resolutionNote: c.resolutionNote, assignedTo: c.assignedTo, assignedByName: c.assignedByName, resolvedBy: c.resolvedBy, resolvedByName: c.resolvedByName, qaReviewedBy: c.qaReviewedBy, qaReviewedByName: c.qaReviewedByName, qaScore: c.qaScore, qaNote: c.qaNote, qaReviewedAt: c.qaReviewedAt, activeViewedBy: c.activeViewedBy, activeViewedAt: c.activeViewedAt };
+      return { contextKind: c.contextKind, shipmentId: c.shipmentId, tripId: c.tripId, deletedAt: c.deletedAt, id: c._id, userId: c.userId, userName: user?.name ?? "Unknown", userImage: user?.image, subject: c.subject, status: effectiveChatStatus(c), lastMessage: msgs[0]?.body ?? "", lastMessageAt: c.lastMessageAt, createdAt: c.createdAt, resolvedAt: c.resolvedAt, closedAt: c.closedAt, resolution: c.resolution, resolutionNote: c.resolutionNote, assignedTo: c.assignedTo, assignedByName: c.assignedByName, resolvedBy: c.resolvedBy, resolvedByName: c.resolvedByName, qaReviewedBy: c.qaReviewedBy, qaReviewedByName: c.qaReviewedByName, qaScore: c.qaScore, qaNote: c.qaNote, qaReviewedAt: c.qaReviewedAt, activeViewedBy: c.activeViewedBy, activeViewedAt: c.activeViewedAt };
     }));
     const supportMessages = adminView
       ? (await ctx.db.query("supportMessages").order("desc").take(ADMIN_SNAPSHOT_LIMIT)).map(m => ({ id: m._id, chatId: m.chatId, authorId: m.authorId, body: m.body, createdAt: m.createdAt }))
@@ -250,6 +268,7 @@ export const dashboard = query({
       offers: await Promise.all(offers.map(o => offerDto(ctx, o))),
       notifications: [],
       serviceArea,
+      mobileConfig,
       walletTransactions: walletTransactions.map(t => ({
         id: t._id,
         userId: t.userId,
@@ -305,7 +324,7 @@ export const createShipment = mutation({
     const user = await requireUser(ctx);
     requireVerified(user);
     await assertSupportedRoute(ctx, args.origin, args.destination);
-    validateShipment(args satisfies CreateShipmentInput);
+    safeValidateShipment(args satisfies CreateShipmentInput);
     const limits = await getTierLimits(ctx, user);
     if (args.valueNaira > limits.maxShipmentValueNaira) {
       fail(`Your ${limits.tier} permits declaring parcel value up to ₦${limits.maxShipmentValueNaira.toLocaleString()}. Request a tier upgrade to send higher-value items.`);
@@ -324,7 +343,7 @@ export const createShipment = mutation({
       destination: args.destination.trim(),
       description: args.description.trim(),
       receiverName: args.receiverName.trim(),
-      receiverPhone: args.receiverPhone.trim(),
+      receiverPhone: safeNormalizePhone(args.receiverPhone),
       pickupInstructions: args.pickupInstructions.trim(),
       dropoffInstructions: args.dropoffInstructions.trim(),
       senderId: user._id,

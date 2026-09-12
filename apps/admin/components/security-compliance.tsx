@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowLeft, Check, EllipsisVertical, X } from "lucide-react";
-import { PERMISSIONS, type AdminRole, type TeamMember, type Permission, type PermissionGrant, type SuspiciousAccount, type AdminLoginRecord, type AdminActionRecord, type PermissionKey } from "@passenger/core";
+import { formatErrorMessage, PERMISSIONS, type AdminRole, type TeamMember, type Permission, type PermissionGrant, type SuspiciousAccount, type AdminLoginRecord, type AdminActionRecord, type PermissionKey } from "@passenger/core";
 import type { Id } from "@passenger/backend/convex/_generated/dataModel";
 
 export type SecurityTab = "roles" | "suspicious" | "audit";
@@ -95,7 +95,7 @@ export function SecurityCompliance({
       await operation();
       return true;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The server rejected this change.");
+      setError(formatErrorMessage(cause, "The server rejected this change."));
       return false;
     }
   };
@@ -750,9 +750,6 @@ function AddAdminRoleModal({
           </div>
 
           <div className="figma-settings-modal-actions">
-            <button type="button" className="btn-cancel" onClick={onClose}>
-              Cancel
-            </button>
             <button type="submit" className="btn-save" disabled={busy}>
               {busy ? "Saving…" : "Save"}
             </button>
@@ -809,7 +806,7 @@ function AddTeamMemberModal({
         onClose();
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The server rejected this change.");
+      setError(formatErrorMessage(cause, "The server rejected this change."));
     } finally {
       setBusy(false);
     }
@@ -915,9 +912,6 @@ function AddTeamMemberModal({
           {error && <p role="alert" className="error-message">{error}</p>}
 
           <div className="figma-settings-modal-actions">
-            <button type="button" className="btn-cancel" onClick={onClose}>
-              Cancel
-            </button>
             <button type="submit" className="btn-save" disabled={busy}>
               {busy ? "Saving…" : initialData ? "Save" : generatePassword ? "Invite member" : "Add member"}
             </button>
@@ -978,9 +972,6 @@ function AddPermissionModal({
           </div>
 
           <div className="figma-settings-modal-actions">
-            <button type="button" className="btn-cancel" onClick={onClose}>
-              Cancel
-            </button>
             <button type="submit" className="btn-save" disabled={busy}>
               {busy ? "Saving…" : "Save"}
             </button>

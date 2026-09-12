@@ -5,7 +5,7 @@ import { ConvexAuthProvider, useAuthActions } from "@convex-dev/auth/react";
 import { ConvexReactClient, useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@passenger/backend/convex/_generated/api";
 import type { Id } from "@passenger/backend/convex/_generated/dataModel";
-import type { DashboardSnapshot } from "@passenger/core";
+import { formatErrorMessage, type DashboardSnapshot } from "@passenger/core";
 import { Eye, EyeOff, LoaderCircle, ShieldCheck, Waypoints } from "lucide-react";
 import { Dashboard, type AdminAction } from "./dashboard";
 
@@ -35,7 +35,7 @@ function ForcePasswordChange({ onChangePassword }: { onChangePassword: (args: { 
       await onChangePassword({ currentPassword: current, newPassword: next });
       setDone(true);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "We could not update your password.");
+      setError(formatErrorMessage(cause, "We could not update your password."));
     } finally {
       setBusy(false);
     }
@@ -54,7 +54,7 @@ function ForcePasswordChange({ onChangePassword }: { onChangePassword: (args: { 
 }
 class LiveBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   state = { error: null as string | null };
-  static getDerivedStateFromError(error: Error) { return { error: error.message || "The workspace could not be loaded." }; }
+  static getDerivedStateFromError(error: Error) { return { error: formatErrorMessage(error, "The workspace could not be loaded.") }; }
   render() { if (this.state.error) return <Gate title="We couldn’t load your workspace"><p>Check your connection and administrator permissions. No operational action has been confirmed.</p><div role="alert" className="error-message">{this.state.error}</div><button className="button primary" onClick={() => window.location.reload()}>Retry connection</button></Gate>; return this.props.children; }
 }
 export function AdminRoot() {
@@ -101,7 +101,7 @@ function AuthForm() {
     try {
       await signIn("password", { flow: "signIn", email: email.trim().toLowerCase(), password });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Authentication failed.");
+      setError(formatErrorMessage(cause, "Authentication failed."));
     } finally {
       setBusy(false);
     }
@@ -119,7 +119,7 @@ function AuthForm() {
       await signIn("password", { flow: "reset", email: email.trim().toLowerCase() });
       setScreen("sent");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "We could not send a reset email.");
+      setError(formatErrorMessage(cause, "We could not send a reset email."));
     } finally {
       setBusy(false);
     }
@@ -137,7 +137,7 @@ function AuthForm() {
       if (newPassword !== confirmPassword) throw new Error("Passwords do not match.");
       await signIn("password", { flow: "reset-verification", email: email.trim().toLowerCase(), code: resetCode.trim(), newPassword });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "We could not reset your password.");
+      setError(formatErrorMessage(cause, "We could not reset your password."));
     } finally {
       setBusy(false);
     }
@@ -260,5 +260,5 @@ function ProfileSetup() {
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  return <Gate title="Complete your account"><p>Create your Passenger profile. This does not grant administrator access.</p><form className="form-stack" aria-busy={busy} onSubmit={async e => { e.preventDefault(); setBusy(true); setError(""); try { await ensureProfile({ name: name.trim(), phone: phone.trim() }); } catch (e) { setError(e instanceof Error ? e.message : "Profile creation failed."); } finally { setBusy(false); } }}><label>Full name<input required maxLength={120} disabled={busy} value={name} onChange={e => setName(e.target.value)} autoComplete="name" /></label><label>Phone number<input required type="tel" minLength={10} maxLength={20} disabled={busy} value={phone} onChange={e => setPhone(e.target.value)} autoComplete="tel" /></label>{error && <p role="alert" className="error-message">{error}</p>}<button className="button primary" disabled={busy}>{busy ? "Creating profile…" : "Create profile"}</button></form><SignOutButton /></Gate>;
+  return <Gate title="Complete your account"><p>Create your Passenger profile. This does not grant administrator access.</p><form className="form-stack" aria-busy={busy} onSubmit={async e => { e.preventDefault(); setBusy(true); setError(""); try { await ensureProfile({ name: name.trim(), phone: phone.trim() }); } catch (e) { setError(formatErrorMessage(e, "Profile creation failed.")); } finally { setBusy(false); } }}><label>Full name<input required maxLength={120} disabled={busy} value={name} onChange={e => setName(e.target.value)} autoComplete="name" /></label><label>Phone number<input required type="tel" minLength={10} maxLength={20} disabled={busy} value={phone} onChange={e => setPhone(e.target.value)} autoComplete="tel" /></label>{error && <p role="alert" className="error-message">{error}</p>}<button className="button primary" disabled={busy}>{busy ? "Creating profile…" : "Create profile"}</button></form><SignOutButton /></Gate>;
 }

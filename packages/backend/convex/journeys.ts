@@ -1,5 +1,4 @@
 import { v } from "convex/values";
-import { validateTrip } from "@passenger/core";
 import { mutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
@@ -13,6 +12,7 @@ import {
   releaseCapacity,
   requireUser,
   requireVerified,
+  safeValidateTrip,
 } from "./lib";
 import { assertSupportedRoute } from "./serviceArea";
 import { refundForShipment } from "./wallet";
@@ -36,7 +36,7 @@ export const createDefinition = {
     requireVerified(user);
 
     await assertSupportedRoute(ctx, args.origin, args.destination);
-    validateTrip(args);
+    safeValidateTrip(args);
 
     const limits = await getTierLimits(ctx, user);
     if (args.capacityKg > limits.maxCapacityKg) {
@@ -97,7 +97,7 @@ export const update = mutation({
     }
 
     await assertSupportedRoute(ctx, args.origin, args.destination);
-    validateTrip(args);
+    safeValidateTrip(args);
 
     const limits = await getTierLimits(ctx, user);
     if (args.capacityKg > limits.maxCapacityKg) {

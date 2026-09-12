@@ -461,13 +461,6 @@ export function NotificationsManagement() {
 
               <div className="figma-notifications-modal-actions">
                 <button
-                  type="button"
-                  className="figma-notifications-btn-secondary"
-                  onClick={() => setIsScheduleModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
                   type="submit"
                   className="figma-notifications-btn-primary"
                 >
@@ -668,13 +661,6 @@ export function NotificationsManagement() {
               </div>
 
               <div className="figma-notifications-modal-actions">
-                <button
-                  type="button"
-                  className="figma-notifications-btn-secondary"
-                  onClick={() => setEditItem(null)}
-                >
-                  Cancel
-                </button>
                 <button
                   type="submit"
                   className="figma-notifications-btn-primary"

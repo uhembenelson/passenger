@@ -42,7 +42,7 @@ export const forReconcile = internalQuery({ args: { subject: v.string(), shipmen
   return attempts.sort((a, b) => b.createdAt - a.createdAt).map(p => ({ reference: p.reference, amountKobo: p.amountKobo, status: p.status, superseded: !!p.supersededAt }));
 } });
 export const recordVerification = internalMutation({ args: { reference: v.string(), providerStatus: v.string(), amountKobo: v.number(), currency: v.string() }, handler: async (ctx, args) => {
-  const p = await ctx.db.query("payments").withIndex("by_reference", q => q.eq("reference", args.reference)).unique(); if (!p) return;
+  const p = await ctx.db.query("payments").withIndex("by_reference", q => q.eq("reference", args.reference)).first(); if (!p) return;
   if (args.amountKobo !== p.amountKobo || args.currency !== p.currency) fail("Provider payment amount/currency mismatch.");
   if (p.status === "paid") return;
   const status = args.providerStatus === "failed" ? "failed" : args.providerStatus === "abandoned" ? "abandoned" : "pending";
@@ -51,7 +51,7 @@ export const recordVerification = internalMutation({ args: { reference: v.string
   if (!p.supersededAt && s.status === "matched" && ["unpaid", "pending", "failed"].includes(s.paymentStatus)) await ctx.db.patch(s._id, { paymentStatus: status === "pending" ? "pending" : "failed", updatedAt: Date.now() });
 } });
 export const confirmPaid = internalMutation({ args: { reference: v.string(), amountKobo: v.number(), currency: v.string(), providerTransactionId: v.string() }, handler: async (ctx, args): Promise<{ accepted: boolean; quarantined?: boolean }> => {
-  const payment = await ctx.db.query("payments").withIndex("by_reference", q => q.eq("reference", args.reference)).unique();
+  const payment = await ctx.db.query("payments").withIndex("by_reference", q => q.eq("reference", args.reference)).first();
   if (!payment) return { accepted: false };
   if (args.currency !== payment.currency || !Number.isSafeInteger(args.amountKobo) || args.amountKobo !== payment.amountKobo) fail("Provider payment amount/currency mismatch.");
   if (payment.status === "paid") { if (payment.providerTransactionId !== args.providerTransactionId) fail("Provider transaction does not match the settled reference."); return { accepted: true, quarantined: !!payment.quarantined }; }

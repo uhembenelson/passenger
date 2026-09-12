@@ -1,11 +1,52 @@
 import { ConvexError } from "convex/values";
-import type { Offer, Person, Shipment, ShipmentStatus, Trip, FeeConfig, PermissionKey } from "@passenger/core";
-import { assertTransition, quoteFee, routeSegment, tripRoute } from "@passenger/core";
+import type { Offer, Person, Shipment, ShipmentStatus, Trip, FeeConfig, PermissionKey, CreateShipmentInput, CreateTripInput } from "@passenger/core";
+import { assertTransition, normalizePhone, quoteFee, routeSegment, tripRoute, validateShipment, validateTrip } from "@passenger/core";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
 
 export function fail(message: string): never {
   throw new ConvexError(message);
+}
+
+export function safeNormalizePhone(value: string): string {
+  try {
+    return normalizePhone(value);
+  } catch (e) {
+    fail(e instanceof Error ? e.message : "Enter a valid phone number.");
+  }
+}
+
+export function safeValidateShipment(input: CreateShipmentInput, now?: number): void {
+  try {
+    validateShipment(input, now);
+  } catch (e) {
+    fail(e instanceof Error ? e.message : "Invalid parcel details.");
+  }
+}
+
+export function safeValidateTrip(input: CreateTripInput, now?: number): void {
+  try {
+    validateTrip(input, now);
+  } catch (e) {
+    fail(e instanceof Error ? e.message : "Invalid trip details.");
+  }
+}
+
+export function safeQuoteFee(feeNaira: number) {
+  try {
+    return quoteFee(feeNaira);
+  } catch {
+    const grossNaira = Math.max(0, Math.floor(feeNaira || 0));
+    const grossKobo = grossNaira * 100;
+    const platformFeeKobo = Math.round(grossKobo / 10);
+    return {
+      grossNaira,
+      grossKobo,
+      platformFeeKobo,
+      travellerNetKobo: grossKobo - platformFeeKobo,
+      platformFeePercent: 10,
+    };
+  }
 }
 
 export async function getFeeConfig(ctx: QueryCtx | MutationCtx): Promise<FeeConfig | undefined> {
@@ -248,7 +289,11 @@ export async function notifyParticipants(ctx: MutationCtx, shipment: Doc<"shipme
 }
 
 export async function transition(ctx: MutationCtx, shipment: Doc<"shipments">, status: ShipmentStatus) {
-  assertTransition(shipment.status, status);
+  try {
+    assertTransition(shipment.status, status);
+  } catch (err) {
+    fail(err instanceof Error ? err.message : `Cannot transition parcel from ${shipment.status} to ${status}.`);
+  }
   await ctx.db.patch(shipment._id, { status, updatedAt: Date.now() });
 }
 
@@ -320,7 +365,7 @@ export async function offerDto(ctx: QueryCtx, offer: Doc<"offers">): Promise<Off
     createdAt: offer.createdAt,
     status: offer.status,
     note: offer.note,
-    quote: quoteFee(offer.feeNaira),
+    quote: safeQuoteFee(offer.feeNaira),
   };
 }
 
@@ -398,7 +443,7 @@ export async function shipmentDto(ctx: QueryCtx, shipment: Doc<"shipments">, pri
     pickupFlexBeforeMinutes: shipment.pickupFlexBeforeMinutes,
     pickupFlexAfterMinutes: shipment.pickupFlexAfterMinutes,
     deliveryDeadline: shipment.deliveryDeadline,
-    quote: quoteFee(shipment.feeNaira),
+    quote: safeQuoteFee(shipment.feeNaira),
     ...locationCheckInSummary(shipment, trip),
     ...(privateFields
       ? {
@@ -409,11 +454,16 @@ export async function shipmentDto(ctx: QueryCtx, shipment: Doc<"shipments">, pri
           reviewNote: shipment.reviewNote,
           payByAt: shipment.payByAt,
           handoverAt: shipment.handoverAt,
+          handoverEvidenceIds: shipment.handoverEvidenceIds,
+          deliveryEvidenceIds: shipment.deliveryEvidenceIds,
+          receiverPickupSmsStatus: shipment.receiverPickupSmsStatus,
+          receiverDeliverySmsStatus: shipment.receiverDeliverySmsStatus,
           deliveredAt: shipment.deliveredAt,
           latestLatitude: shipment.latestLatitude,
           latestLongitude: shipment.latestLongitude,
           latestLocationLabel: shipment.latestLocationLabel,
           latestLocationAt: shipment.latestLocationAt,
+          latestSafetyCheckInAt: shipment.latestSafetyCheckInAt,
           disputeUntil: shipment.disputeUntil,
           exception: shipment.exception,
           cancellationReason: shipment.cancellationReason,
