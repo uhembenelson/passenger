@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { isMapPoint, parcelMapUrl } from '../packages/backend/convex/parcelMapData';
+import { isMapPoint, parcelMapUrl, mapViewport } from '../packages/backend/convex/parcelMapData';
 
 describe('parcel tracking map', () => {
   test('accepts zero coordinates and rejects absent or invalid GPS fixes', () => {
@@ -27,4 +27,20 @@ describe('parcel tracking map', () => {
     expect(result.roadRoute).toBe(false);
     expect(result.url).toContain('pin-l+e58b25(4,7)');
   });
+});
+
+test('fullscreen map matches portrait aspect and reserves overlay space', () => {
+  const viewport = mapViewport({ width: 390, height: 844 });
+  expect(viewport.width).toBe(390);
+  expect(viewport.height).toBe(844);
+  const [top, right, bottom, left] = viewport.padding.split(',').map(Number);
+  expect(top).toBeGreaterThanOrEqual(230);
+  expect(bottom).toBeGreaterThanOrEqual(240);
+  expect(right).toBe(left);
+  expect(top + bottom).toBeLessThan(viewport.height);
+});
+test('large screens retain their aspect ratio within Mapbox limits', () => {
+  const viewport = mapViewport({ width: 2560, height: 1600 });
+  expect(viewport.width).toBe(1280);
+  expect(viewport.height).toBe(800);
 });

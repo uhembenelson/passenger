@@ -1,15 +1,16 @@
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { mutation, query } from "./_generated/server";
-import { fail, requireUser } from "./lib";
+import { fail, participant, requireUser, shipmentDto } from "./lib";
 
 export const listPage = query({
-  args: { paginationOpts: paginationOptsValidator },
+  args: { paginationOpts: paginationOptsValidator, unreadOnly: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    const result = await ctx.db
-      .query("notifications")
-      .withIndex("by_user", q => q.eq("userId", user._id))
+    const source = args.unreadOnly
+      ? ctx.db.query("notifications").withIndex("by_user_read", q => q.eq("userId", user._id).eq("readAt", undefined))
+      : ctx.db.query("notifications").withIndex("by_user", q => q.eq("userId", user._id));
+    const result = await source
       .order("desc")
       .paginate(args.paginationOpts);
 
@@ -33,9 +34,9 @@ export const unreadCount = query({
     const user = await requireUser(ctx);
     const notifications = await ctx.db
       .query("notifications")
-      .withIndex("by_user", q => q.eq("userId", user._id))
+      .withIndex("by_user_read", q => q.eq("userId", user._id).eq("readAt", undefined))
       .collect();
-    return notifications.filter(n => !n.readAt).length;
+    return notifications.length;
   },
 });
 
@@ -58,7 +59,7 @@ export const markRead = mutation({
 
     const notifications = await ctx.db
       .query("notifications")
-      .withIndex("by_user", q => q.eq("userId", user._id))
+      .withIndex("by_user_read", q => q.eq("userId", user._id).eq("readAt", undefined))
       .collect();
 
     for (const notification of notifications) {
@@ -66,5 +67,16 @@ export const markRead = mutation({
         await ctx.db.patch(notification._id, { readAt: now });
       }
     }
+  },
+});
+
+// Resolve older notification links independently of the bounded dashboard feed.
+export const delivery = query({
+  args: { shipmentId: v.id("shipments") },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const parcel = await ctx.db.get(args.shipmentId);
+    if (!parcel || !participant(parcel, user)) return null;
+    return shipmentDto(ctx, parcel, true);
   },
 });

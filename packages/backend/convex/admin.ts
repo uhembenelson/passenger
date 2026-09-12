@@ -3,7 +3,7 @@ import { PERMISSIONS } from "@passenger/core";
 import { mutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { audit, fail, noOpenDispute, note, releaseCapacity, requireAdmin, requirePermission, requireUser, shipment, transition } from "./lib";
+import { audit, fail, noOpenDispute, note, notify, releaseCapacity, requireAdmin, requirePermission, requireUser, shipment, transition } from "./lib";
 import { stripLegacyTripPricePerKg } from "./maintenance";
 
 export const reviewUser = mutation({
@@ -29,6 +29,7 @@ export const reviewUser = mutation({
     if (args.decision === "verified" && args.tier) patch.tier = args.tier;
     if (args.decision === "verified" && !user.tier) patch.tier = args.tier ?? "Tier 1";
     await ctx.db.patch(user._id, patch);
+    await notify(ctx, user._id, args.decision === "verified" ? "Identity verified" : "Identity needs changes", args.decision === "verified" ? "Your identity review is complete. Your account is verified." : detail);
     await audit(ctx, admin, "user.reviewed", `Manual identity review for ${user._id}: ${args.decision}.${patch.tier ? ` Assigned ${patch.tier}.` : ""} ${detail}`);
   },
 });

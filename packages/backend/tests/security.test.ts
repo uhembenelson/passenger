@@ -16,9 +16,9 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.stubEnv("ADMIN_CLERK_SUBJECTS", "admin");
   vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_test_backend_only");
-  vi.stubEnv("TWILIO_ACCOUNT_SID", "AC123456789");
-  vi.stubEnv("TWILIO_AUTH_TOKEN", "twilio-test-token");
-  vi.stubEnv("TWILIO_FROM_NUMBER", "+15005550006");
+  vi.stubEnv("TERMII_API_KEY", "AC123456789");
+  vi.stubEnv("TERMII_SENDER_ID", "Passenger");
+  vi.stubEnv("TERMII_CHANNEL", "generic");
   vi.unstubAllGlobals();
 });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
@@ -38,7 +38,7 @@ async function fixture() {
   const tr = await traveller.mutation(api.accounts.ensureProfile, { name: "Traveller", phone: "+2348000000003" });
   const o = await outsider.mutation(api.accounts.ensureProfile, { name: "Outsider", phone: "+2348000000004" });
   for (const user of [s, tr]) await admin.mutation(api.admin.reviewUser, { userId: user.id as Id<"users">, decision: "verified", note: "Identity checked out of band." });
-  await t.run(ctx => ctx.db.patch(s.id as Id<"users">, { walletBalanceNaira: 50000 }));
+  await t.run(ctx => ctx.db.patch(s.id as Id<"users">, { walletBalanceNaira: 50000, walletVerifiedBalanceNaira: 50000 }));
   const evidenceId = await evidence(sender, s.id as Id<"users">, "initial");
   const shipmentId = await sender.mutation(api.marketplace.createShipment, shipmentInput([evidenceId]));
   await admin.mutation(api.admin.reviewShipment, { shipmentId, decision: "approve", note: "Package contents reviewed." });
@@ -47,12 +47,16 @@ async function fixture() {
 }
 const offerInput = () => ({ expiresAt: Date.now() + 60 * 60 * 1000, note: "Can collect before noon." });
 async function acceptOffer(f: Awaited<ReturnType<typeof fixture>>) { await f.traveller.mutation(api.marketplace.matchShipment, { shipmentId: f.shipmentId, tripId: f.tripId, ...offerInput() }); const offer = await f.t.run(ctx => ctx.db.query("offers").first()); await f.sender.mutation(api.offers.accept, { offerId: offer!._id }); }
-async function prepareUnpaidMatched(f: Awaited<ReturnType<typeof fixture>>) { await acceptOffer(f); await f.t.run(ctx => ctx.db.patch(f.shipmentId, { status: "matched", paymentStatus: "unpaid", payByAt: Date.now() + 1800000 })); }
+async function prepareUnpaidMatched(f: Awaited<ReturnType<typeof fixture>>) { await acceptOffer(f); await f.t.run(async ctx => {
+  // This fixture models a legacy direct checkout, not a wallet-funded parcel.
+  for (const p of await ctx.db.query("payments").withIndex("by_shipment", q => q.eq("shipmentId", f.shipmentId)).collect()) await ctx.db.delete(p._id);
+  await ctx.db.patch(f.shipmentId, { status: "matched", paymentStatus: "unpaid", payByAt: Date.now() + 1800000 });
+}); }
 async function funded() { const f = await fixture(); await acceptOffer(f); return f; }
 const digest = (id: Id<"shipments">, kind: "handover" | "delivery", code: string) => createHash("sha256").update(`${id}:${kind}:${code}`).digest("hex");
 function requiredCode(code: string | undefined) { expect(code).toBeDefined(); return code!; }
 function smsCodeFromBody(body: string) {
-  const message = new URLSearchParams(body).get("Body") ?? "";
+  const message = JSON.parse(body).sms ?? "";
   const code = message.match(/\b(\d{8})\b/)?.[1];
   expect(code).toBeDefined();
   return code!;
@@ -64,7 +68,7 @@ async function prove(f: Awaited<ReturnType<typeof funded>>, kind: "handover" | "
     return code;
   }
 
-  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ sid: "SM123", status: "queued" }), { status: 200 }));
+  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ code: "ok", message_id: "SM123", status: "queued" }), { status: 200 }));
   try {
     expect(await f.sender.action(api.deliveries.issueCode, { shipmentId: f.shipmentId, kind })).toEqual({});
     const smsBody = String(fetch.mock.calls.at(-1)?.[1]?.body ?? "");
@@ -127,11 +131,12 @@ describe("identity and least privilege", () => {
     const t = convexTest(schema, modules);
     const member = t.withIdentity(identity("phone-change"));
     const profile = await member.mutation(api.accounts.ensureProfile, { name: "Phone Member", phone: "+2348000000040" });
-    vi.stubEnv("TWILIO_ACCOUNT_SID", "");
+    const smsFetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ code: "ok", message_id: "phone-123" })));
     const request = await member.action(api.accounts.requestPhoneVerification, { phone: "+2348000000041" });
-    expect(request.previewCode).toMatch(/^\d{6}$/);
+    expect(request).not.toHaveProperty("previewCode");
+    const phoneCode = JSON.parse(String(smsFetch.mock.calls.at(-1)?.[1]?.body)).sms.match(/\b(\d{6})\b/)[1];
     expect((await t.run(ctx => ctx.db.get(profile.id as Id<"users">)))?.phone).toBe("+2348000000040");
-    await member.mutation(api.accounts.confirmPhoneVerification, { code: request.previewCode! });
+    await member.action(api.accounts.confirmPhoneVerification, { code: phoneCode });
     const updated = await t.run(ctx => ctx.db.get(profile.id as Id<"users">));
     expect(updated?.phone).toBe("+2348000000041");
     expect(updated?.phoneVerificationTime).toBeTypeOf("number");
@@ -161,10 +166,11 @@ describe("identity and least privilege", () => {
       .rejects.toThrow("valid");
 
     // Attempting to verify a real phone number when multiple users share a phone must NOT throw unique() error
-    vi.stubEnv("TWILIO_ACCOUNT_SID", "");
+    const smsFetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ code: "ok", message_id: "phone-123" })));
     const req = await member1.action(api.accounts.requestPhoneVerification, { phone: "+2348011223344" });
-    expect(req.previewCode).toMatch(/^\d{6}$/);
-    await member1.mutation(api.accounts.confirmPhoneVerification, { code: req.previewCode! });
+    expect(req).not.toHaveProperty("previewCode");
+    const phoneCode = JSON.parse(String(smsFetch.mock.calls.at(-1)?.[1]?.body)).sms.match(/\b(\d{6})\b/)[1];
+    await member1.action(api.accounts.confirmPhoneVerification, { code: phoneCode });
 
     // Now user 1 has verified +2348011223344. Another user trying to verify that same number must be blocked.
     await expect(member2.action(api.accounts.requestPhoneVerification, { phone: "+2348011223344" }))
@@ -284,7 +290,7 @@ describe("one-time delivery proof", () => {
   it("sends the receiver code by SMS without returning plaintext to the sender", async () => {
     const f = await funded();
     await prove(f, "handover");
-    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ sid: "SM999", status: "queued" }), { status: 200 }));
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ code: "ok", message_id: "SM999", status: "queued" }), { status: 200 }));
     try {
       expect(await f.sender.action(api.deliveries.issueCode, { shipmentId: f.shipmentId, kind: "delivery" })).toEqual({});
       const body = String(fetch.mock.calls.at(-1)?.[1]?.body ?? "");
@@ -299,7 +305,7 @@ describe("one-time delivery proof", () => {
   it("fails clearly when receiver SMS delivery is not configured", async () => {
     const f = await funded();
     await prove(f, "handover");
-    vi.stubEnv("TWILIO_ACCOUNT_SID", "");
+    vi.stubEnv("TERMII_API_KEY", "");
     await expect(f.sender.action(api.deliveries.issueCode, { shipmentId: f.shipmentId, kind: "delivery" })).rejects.toThrow("SMS delivery is not configured");
     const stored = await f.t.run(ctx => ctx.db.query("codes").withIndex("by_shipment_kind", q => q.eq("shipmentId", f.shipmentId).eq("kind", "delivery")).unique());
     expect(stored?.smsStatus).toBe("failed");
@@ -385,9 +391,9 @@ describe("wallet funding and holds", () => {
     const t = convexTest(schema, modules);
     vi.stubEnv("ADMIN_CLERK_SUBJECTS", "admin");
     vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_test_backend_only");
-    vi.stubEnv("TWILIO_ACCOUNT_SID", "AC123456789");
-    vi.stubEnv("TWILIO_AUTH_TOKEN", "twilio-test-token");
-    vi.stubEnv("TWILIO_FROM_NUMBER", "+15005550006");
+    vi.stubEnv("TERMII_API_KEY", "AC123456789");
+    vi.stubEnv("TERMII_SENDER_ID", "Passenger");
+    vi.stubEnv("TERMII_CHANNEL", "generic");
     const admin = t.withIdentity(identity("admin"));
     const sender = t.withIdentity(identity("sender"));
     await admin.mutation(api.accounts.ensureProfile, { name: "Admin", phone: "+2348000000001" });
@@ -404,11 +410,11 @@ describe("wallet funding and holds", () => {
     expect(senderUser?.walletBalanceNaira).toBe(walletBalanceAfterParcelHold);
     // Reserve a provider deposit before accepting settlement.
     await f.t.mutation(internal.wallet.reserveTopUp, { userId: f.senderId, amountKobo: 1000000, reference: "test-topup-1" });
-    await f.t.mutation(internal.wallet.recordTopUp, { userId: f.senderId, amountNaira: 10000, reference: "test-topup-1" });
+    await f.t.mutation(internal.wallet.recordTopUp, { userId: f.senderId, amountNaira: 10000, reference: "test-topup-1", providerTransactionId: "test-provider-1" });
     const after = await f.t.run(ctx => ctx.db.get(f.senderId));
     expect(after?.walletBalanceNaira).toBe(walletBalanceAfterParcelHold + 10000);
     // Top-up is idempotent.
-    await f.t.mutation(internal.wallet.recordTopUp, { userId: f.senderId, amountNaira: 10000, reference: "test-topup-1" });
+    await f.t.mutation(internal.wallet.recordTopUp, { userId: f.senderId, amountNaira: 10000, reference: "test-topup-1", providerTransactionId: "test-provider-1" });
     expect((await f.t.run(ctx => ctx.db.get(f.senderId)))?.walletBalanceNaira).toBe(walletBalanceAfterParcelHold + 10000);
     // Verify wallet transaction was recorded.
     const txns = await f.t.run(ctx => ctx.db.query("walletTransactions").withIndex("by_user", q => q.eq("userId", f.senderId)).collect());
@@ -600,7 +606,7 @@ describe("handover photos and receiver updates", () => {
     expect(await f.t.run(ctx => ctx.db.get(f.shipmentId))).toMatchObject({ status: "in_transit", handoverEvidenceIds: [photo], handoverAt: expect.any(Number), receiverPickupSmsStatus: "pending" });
     expect(await f.sender.query(api.evidence.get, { evidenceId: photo })).toMatchObject({ id: photo, url: expect.any(String) });
     expect(await f.outsider.query(api.evidence.get, { evidenceId: photo })).toBeNull();
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ sid: "SM-test" }), { status: 200 }));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ code: "ok", message_id: "SM-test" }), { status: 200 }));
     await f.sender.action(api.deliveries.issueCode, { shipmentId: f.shipmentId, kind: "delivery" });
     const receiverCode = smsCodeFromBody(String(fetchMock.mock.calls.at(-1)?.[1]?.body));
     await f.traveller.action(api.deliveries.confirmDelivery, { shipmentId: f.shipmentId, code: receiverCode, evidenceIds: [photo] });
@@ -612,9 +618,9 @@ describe("handover photos and receiver updates", () => {
   it("records receiver SMS success or failure without undoing handover", async () => {
     const f = await funded();
     await prove(f, "handover");
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ sid: "SM-status", status: "queued" }), { status: 200 }));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ code: "ok", message_id: "SM-status", status: "queued" }), { status: 200 }));
     await f.t.action(internal.sms.sendParcelMilestone, { shipmentId: f.shipmentId, kind: "handover", receiverPhone: baseShipmentInput.receiverPhone, reference: "TEST-PARCEL" });
-    expect(new URLSearchParams(String(fetchMock.mock.calls[0]?.[1]?.body)).get("Body")).toContain("has been collected");
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).sms).toContain("has been collected");
     expect(await f.t.run(ctx => ctx.db.get(f.shipmentId))).toMatchObject({ status: "in_transit", receiverPickupSmsStatus: "sent" });
     fetchMock.mockRejectedValue(new Error("SMS unavailable"));
     await f.t.action(internal.sms.sendParcelMilestone, { shipmentId: f.shipmentId, kind: "handover", receiverPhone: baseShipmentInput.receiverPhone, reference: "TEST-PARCEL" });

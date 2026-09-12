@@ -39,7 +39,9 @@ async function verify(ctx: ActionCtx, reference: string, key: string): Promise<s
 }
 async function checkout(ctx: ActionCtx, shipmentId: Id<"shipments">, retry = false): Promise<{ url: string }> {
   const identity = await ctx.auth.getUserIdentity(); if (!identity) fail("Sign in required.");
-  const key = secret(); const email = identity.email;
+  const key = secret();
+  await ctx.runMutation(internal.wallet.rateLimit, { subject: identity.subject.split("|")[0]!, kind: "checkout" });
+  const email = identity.email;
   if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail("A verified account email is required for payment.");
   const callback = process.env.PAYSTACK_CALLBACK_URL;
   if (callback && new URL(callback).protocol !== "https:") fail("Paystack callback must use HTTPS.");
@@ -68,6 +70,7 @@ export const retry = action({ args: { shipmentId: v.id("shipments") }, handler: 
 export const reconcile = action({ args: { shipmentId: v.id("shipments") }, handler: async (ctx, args): Promise<{ status: string; reference: string }> => {
   const attempts = await ctx.runQuery(internal.paymentState.forReconcile, { subject: await subject(ctx), shipmentId: args.shipmentId });
   if (!attempts.length) fail("No provider payment exists for this shipment.");
+  await ctx.runMutation(internal.wallet.rateLimit, { subject: await subject(ctx), kind: "reconcile" });
   const key = secret(); let result = { status: "pending", reference: attempts[0].reference };
   for (const attempt of attempts) { const status = await verify(ctx, attempt.reference, key); if (attempt.reference === result.reference) result = { status, reference: attempt.reference }; }
   return result;
@@ -89,11 +92,16 @@ export const receiveWebhook = internalAction({ args: { body: v.string(), signatu
             userId: deposit.userId,
             amountNaira: data.amount / 100,
             reference: data.reference,
+            providerTransactionId: String(data.id),
           });
         }
       } else {
         await ctx.runMutation(internal.paymentState.confirmPaid, { reference: data.reference, amountKobo: data.amount, currency: data.currency, providerTransactionId: String(data.id) });
       }
+    } else if (["charge.dispute.create", "charge.dispute.remind", "charge.dispute.resolve"].includes(event?.event)) {
+      const reference = event.data?.transaction?.reference;
+      if (typeof reference !== "string" || !event.data?.id) return { status: 400 };
+      await ctx.runMutation(internal.wallet.flagRisk, { reference, eventId: String(event.data.id), reversed: false });
     } else if (["transfer.success", "transfer.failed", "transfer.reversed", "refund.processed", "refund.failed", "refund.pending", "refund.processing"].includes(event?.event)) {
       const kind = event.event.startsWith("transfer.") ? "payout" : "refund";
       const reference = typeof event.data?.reference === "string" ? event.data.reference : undefined;
@@ -101,8 +109,35 @@ export const receiveWebhook = internalAction({ args: { body: v.string(), signatu
       const transaction = event.data?.transaction;
       const providerTransactionId = transaction !== undefined ? String(typeof transaction === "object" ? transaction?.id : transaction) : undefined;
       if (kind === "payout" && !reference || kind === "refund" && !providerId) return { status: 400 };
+      if (kind === "refund") await reviewRefund(ctx, providerId!, key);
       await ctx.runAction(internal.finance.receiveVerifiedEvent, { kind, reference, providerId, providerTransactionId });
     }
     return { status: 200 };
   } catch { return { status: 503 }; }
+} });
+
+async function reviewRefund(ctx: ActionCtx, id: string, key: string) {
+  const refund = await provider(`/refund/${encodeURIComponent(id)}`, key);
+  if (String(refund.id) !== id) fail("Refund ID mismatch.");
+  const transactionId = String(typeof refund.transaction === "object" ? refund.transaction?.id : refund.transaction);
+  const p = await ctx.runQuery(internal.wallet.depositByProviderId, { providerTransactionId: transactionId });
+  if (!p) return;
+  await ctx.runMutation(internal.wallet.flagRisk, { reference: p.reference, eventId: `refund-${id}`, reversed: false });
+  if (refund.status === "processed") await ctx.runMutation(internal.wallet.recordProviderRefund, { reference: p.reference, providerId: id, providerTransactionId: transactionId, amountKobo: refund.amount, currency: refund.currency });
+}
+export const sweepRefunds = internalAction({ args: { page: v.optional(v.number()) }, handler: async (ctx, args): Promise<void> => {
+  const key = process.env.PAYSTACK_SECRET_KEY; if (!key) return;
+  const page = args.page ?? 1;
+  try {
+    const refunds = await provider(`/refund?perPage=100&page=${page}`, key);
+    if (!Array.isArray(refunds)) fail("Invalid refund listing.");
+    for (const refund of refunds) {
+      const transactionId = String(typeof refund.transaction === "object" ? refund.transaction?.id : refund.transaction);
+      const p = await ctx.runQuery(internal.wallet.depositByProviderId, { providerTransactionId: transactionId });
+      if (p) await reviewRefund(ctx, String(refund.id), key);
+    }
+    if (refunds.length === 100) await ctx.scheduler.runAfter(0, internal.payments.sweepRefunds, { page: page + 1 });
+  } catch {
+    await ctx.runMutation(internal.wallet.raiseAlert, { key: "refund-reconciliation", detail: `Unable to finish Paystack refund reconciliation at page ${page}. Check provider access and retry.` });
+  }
 } });

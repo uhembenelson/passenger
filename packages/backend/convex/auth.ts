@@ -3,7 +3,7 @@ import { Password } from "@convex-dev/auth/providers/Password";
 import { convexAuth } from "@convex-dev/auth/server";
 import { ConvexError } from "convex/values";
 import type { DataModel } from "./_generated/dataModel";
-import { renderResetPasswordEmail, sendBrandedEmail } from "./emails";
+import { renderResetPasswordEmail, renderVerificationEmail, sendBrandedEmail } from "./emails";
 
 const PassengerResetEmail = Email<DataModel>({
   id: "password-reset",
@@ -28,8 +28,21 @@ const PassengerResetEmail = Email<DataModel>({
   },
 });
 
+const PassengerVerificationEmail = Email<DataModel>({
+  id: "email-verification",
+  maxAge: 10 * 60,
+  async sendVerificationRequest({ identifier, token, url }) {
+    // Use code entry so verification works across mobile and web without a deep link.
+    const appUrl = new URL(url);
+    appUrl.searchParams.delete("code");
+    const { html, text } = renderVerificationEmail({ email: identifier, code: token, appUrl: appUrl.toString() });
+    await sendBrandedEmail({ to: identifier, subject: "Verify your Passenger email", html, text });
+  },
+});
+
 const PassengerPassword = Password<DataModel>({
   reset: PassengerResetEmail as any,
+  verify: process.env.RESEND_API_KEY && process.env.AUTH_EMAIL_FROM ? PassengerVerificationEmail as any : undefined,
   profile(params) {
     const flow = String(params.flow ?? "");
     const email = String(params.email ?? "").trim().toLowerCase();

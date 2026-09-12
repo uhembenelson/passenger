@@ -35,9 +35,9 @@ const baseShipmentInput = {
 beforeEach(() => {
   vi.stubEnv("ADMIN_CLERK_SUBJECTS", "admin");
   vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_test_backend_only");
-  vi.stubEnv("TWILIO_ACCOUNT_SID", "AC123456789");
-  vi.stubEnv("TWILIO_AUTH_TOKEN", "twilio-test-token");
-  vi.stubEnv("TWILIO_FROM_NUMBER", "+15005550006");
+  vi.stubEnv("TERMII_API_KEY", "AC123456789");
+  vi.stubEnv("TERMII_SENDER_ID", "Passenger");
+  vi.stubEnv("TERMII_CHANNEL", "generic");
   vi.unstubAllGlobals();
 });
 
@@ -81,7 +81,7 @@ async function marketplaceFixture() {
     });
   }
 
-  await t.run(ctx => ctx.db.patch(s.id as Id<"users">, { walletBalanceNaira: 100000 }));
+  await t.run(ctx => ctx.db.patch(s.id as Id<"users">, { walletBalanceNaira: 100000, walletVerifiedBalanceNaira: 100000 }));
 
   const evidenceId = await createEvidence(sender, s.id as Id<"users">, "parcel-evidence");
   const shipmentId = await sender.mutation(api.marketplace.createShipment, {

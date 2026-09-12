@@ -333,7 +333,7 @@ export const createShipment = mutation({
 
     const feeConfig = await getFeeConfig(ctx);
     const feeNaira = calculateDeliveryFee(args, feeConfig);
-    const balance = user.walletBalanceNaira ?? 0;
+    const balance = user.walletVerifiedBalanceNaira ?? 0;
     if (balance < feeNaira) fail(`Insufficient wallet balance. You have ₦${balance.toLocaleString()} but ₦${feeNaira.toLocaleString()} is required for this parcel. Top up your wallet to continue.`);
 
     const now = Date.now();
@@ -381,7 +381,7 @@ export const cancelShipment = mutation({
     const user = await requireUser(ctx);
     const s = await shipment(ctx, args.shipmentId);
     requireSender(s, user);
-    if (await ctx.db.query("payments").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).first()) fail("Payment has been initialized; open a dispute for reconciliation instead.");
+    if ((await ctx.db.query("payments").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).collect()).some(p => p.source !== "wallet")) fail("Payment has been initialized; open a dispute for reconciliation instead.");
     if (!["pending_review", "rejected", "open", "matched", "funded"].includes(s.status)) fail("This shipment cannot be cancelled; contact support or open a dispute.");
     if (s.paymentStatus === "held") {
       await refundForShipment(ctx, user, s._id, s.feeNaira, "Sender cancelled parcel");

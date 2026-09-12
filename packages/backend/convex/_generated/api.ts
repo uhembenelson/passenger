@@ -16,6 +16,7 @@ import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
 import type * as deliveries from "../deliveries.js";
 import type * as deliveryCrypto from "../deliveryCrypto.js";
+import type * as deliveryProviders from "../deliveryProviders.js";
 import type * as deliveryState from "../deliveryState.js";
 import type * as emails from "../emails.js";
 import type * as escrowPolicies from "../escrowPolicies.js";
@@ -64,6 +65,7 @@ const fullApi: ApiFromModules<{
   crons: typeof crons;
   deliveries: typeof deliveries;
   deliveryCrypto: typeof deliveryCrypto;
+  deliveryProviders: typeof deliveryProviders;
   deliveryState: typeof deliveryState;
   emails: typeof emails;
   escrowPolicies: typeof escrowPolicies;

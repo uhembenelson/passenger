@@ -1,3 +1,4 @@
+import { paymentAlert, paymentMode, paymentRateLimit, refundForShipment } from "./wallet";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
@@ -16,7 +17,13 @@ export async function financeAccess(ctx: QueryCtx | MutationCtx, sub: string, sh
 }
 async function eligibility(ctx: MutationCtx, s: Doc<"shipments">, p: Doc<"payments">, kind: "payout" | "refund") {
   await noOpenDispute(ctx, s._id);
-  if (p.status !== "paid" || !p.providerTransactionId) fail("Independently verified provider-paid funds are required.");
+  if (p.status !== "paid" || (p.source !== "wallet" && !p.providerTransactionId)) fail("Independently verified provider-paid funds are required.");
+  if (p.source === "wallet") {
+    if (p.providerMode !== paymentMode()) fail("Wallet payment environment mismatch.");
+    const sender = await ctx.db.get(s.senderId);
+    if (kind === "payout" && (!sender || sender.walletBlocked || sender.suspended)) fail("Funding wallet is under payment review.");
+    if (p.amountKobo - (p.refundedKobo ?? 0) !== s.feeNaira * 100) fail("Wallet hold does not match the shipment fee.");
+  }
   const other = await ctx.db.query("payouts").withIndex("by_payment", q => q.eq("paymentId", p._id)).collect();
   if (other.some(o => o.kind !== kind && !["failed", "reversed"].includes(o.status))) fail("An opposite money operation already exists for these funds.");
   if (kind === "refund") {
@@ -31,7 +38,7 @@ async function eligibility(ctx: MutationCtx, s: Doc<"shipments">, p: Doc<"paymen
     const receiptAt = s.deliveredAt ?? (s.releaseApproved ? adjudicatedAt : 0);
     const eligibleAt = Math.max(s.disputeUntil ?? 0, receiptAt ? receiptAt + 24 * 60 * 60 * 1000 : 0);
     if (!eligibleAt || eligibleAt > Date.now()) fail("The 24-hour receipt/adjudication dispute window has not elapsed.");
-    const traveller = await ctx.db.get(s.travellerId); if (!traveller) fail("Traveller unavailable."); requireVerified(traveller);
+    const traveller = await ctx.db.get(s.travellerId); if (!traveller) fail("Traveller unavailable."); requireVerified(traveller); if (traveller.walletBlocked) fail("Traveller account is under payment review.");
     const bank = await ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", s.travellerId!)).first();
     if (!bank?.recipientCode || !bank.verifiedAt) fail("Traveller must resolve and verify their bank recipient before payout.");
     return bank;
@@ -55,10 +62,18 @@ export const prepare = internalMutation({ args: { subject: v.string(), shipmentI
   const same = existing.filter(o => o.kind === args.kind).sort((a, b) => b.createdAt - a.createdAt)[0];
   if (same) return same;
   const bank = await eligibility(ctx, s, p, args.kind);
+  await paymentRateLimit(ctx, `${user._id}:finance`);
+  if (p.source === "wallet" && args.kind === "refund") {
+    const sender = await ctx.db.get(s.senderId); if (!sender) fail("Sender not found.");
+    await refundForShipment(ctx, sender, s._id, (p.amountKobo - (p.refundedKobo ?? 0)) / 100, "Approved delivery refund");
+    const id = await ctx.db.insert("payouts", { shipmentId: s._id, paymentId: p._id, kind: "refund", reference: `wallet-refund-${p._id}`, amountKobo: p.amountKobo - (p.refundedKobo ?? 0), currency: "NGN", status: "success", actorId: user._id, createdAt: Date.now(), updatedAt: Date.now() });
+    await ctx.db.patch(s._id, { paymentStatus: "refunded", updatedAt: Date.now() });
+    return (await ctx.db.get(id))!;
+  }
   const amountKobo = args.kind === "refund" ? p.amountKobo : p.travellerNetKobo ?? p.amountKobo - Math.round(p.amountKobo / 10);
   if (!Number.isSafeInteger(amountKobo) || amountKobo <= 0) fail("Invalid server finance amount.");
   const now = Date.now();
-  const operationId = await ctx.db.insert("payouts", { shipmentId: s._id, paymentId: p._id, kind: args.kind, reference: "reserved", amountKobo, currency: "NGN", status: "prepared", actorId: user._id, recipientCode: bank?.recipientCode, providerTransactionId: p.providerTransactionId!, createdAt: now, updatedAt: now });
+  const operationId = await ctx.db.insert("payouts", { shipmentId: s._id, paymentId: p._id, kind: args.kind, reference: "reserved", amountKobo, currency: "NGN", status: "prepared", actorId: user._id, recipientCode: bank?.recipientCode, providerTransactionId: p.providerTransactionId, createdAt: now, updatedAt: now });
   const reference = `passenger-${operationId}`;
   await ctx.db.patch(operationId, { reference });
   await audit(ctx, user, `finance.${args.kind}_prepared`, `Provider operation ${reference} reserved for ${amountKobo} kobo. Payout is traveller net after the disclosed 10% platform fee.`, s._id);
@@ -91,6 +106,7 @@ export const dispatch = internalMutation({ args: { operationId: v.id("payouts") 
 export const uncertain = internalMutation({ args: { operationId: v.id("payouts") }, handler: async (ctx, args) => {
   const op = await ctx.db.get(args.operationId); if (!op || ["success", "failed", "reversed"].includes(op.status)) return;
   await ctx.db.patch(op._id, { status: "uncertain", lastError: "Provider outcome is uncertain. Reconcile this operation; do not initiate a duplicate.", updatedAt: Date.now() });
+  await paymentAlert(ctx, op.reference, `Uncertain ${op.kind} ${op.reference}. Reconcile before retrying.`);
   await audit(ctx, null, "finance.provider_uncertain", `Unconfirmed ${op.kind} ${op.reference}; reference retained and blind retry blocked.`, op.shipmentId);
 } });
 export const attachProvider = internalMutation({ args: { operationId: v.id("payouts"), providerId: v.string() }, handler: async (ctx, args) => {
@@ -122,6 +138,7 @@ export const applyVerified = internalMutation({ args: { operationId: v.id("payou
   }
   if (conflicts) paymentStatus = "reconciliation_required";
   await ctx.db.patch(s._id, { paymentStatus, updatedAt: now });
+  if (status === "failed" || status === "reversed" || conflicts) await paymentAlert(ctx, op.reference, `Paystack ${op.kind} ${op.reference}: ${status}. Review before retrying.`);
   await audit(ctx, null, `finance.${op.kind}_${status}`, `Independently verified Paystack ${op.kind} ${op.reference}, ${op.amountKobo} kobo, status ${args.providerStatus}.${conflicts ? " Conflicting successful operations require manual reconciliation." : ""}`, s._id);
   return operationDto((await ctx.db.get(op._id))!);
 } });
@@ -160,4 +177,14 @@ export const sweepPayouts = internalMutation({ args: { cursor: v.optional(v.stri
     }
   }
   if (!page.isDone) await ctx.scheduler.runAfter(0, internal.financeState.sweepPayouts, { cursor: page.continueCursor });
+} });
+
+export const operationById = internalQuery({ args: { operationId: v.id("payouts") }, handler: async (ctx, args) => ctx.db.get(args.operationId) });
+export const sweepOperations = internalMutation({ args: { cursor: v.optional(v.string()) }, handler: async (ctx, args) => {
+  const page = await ctx.db.query("payouts").paginate({ cursor: args.cursor ?? null, numItems: 100 });
+  for (const op of page.page) if (["pending", "uncertain"].includes(op.status)) {
+    await ctx.scheduler.runAfter(0, internal.finance.reconcileInternal, { operationId: op._id });
+    if (Date.now() - op.createdAt > 900000) await paymentAlert(ctx, op.reference, `Unresolved ${op.kind} ${op.reference}. Provider reconciliation required.`);
+  }
+  if (!page.isDone) await ctx.scheduler.runAfter(0, internal.financeState.sweepOperations, { cursor: page.continueCursor });
 } });

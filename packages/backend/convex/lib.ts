@@ -4,6 +4,10 @@ import { assertTransition, normalizePhone, quoteFee, routeSegment, tripRoute, va
 import type { Doc, Id } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
 
+export function smsConfigured() {
+  return !!(process.env.TERMII_API_KEY && process.env.TERMII_SENDER_ID);
+}
+
 export function fail(message: string): never {
   throw new ConvexError(message);
 }
@@ -203,13 +207,14 @@ export function person(user: Doc<"users">, privateFields = false, includeComplia
     suspended: user.suspended ?? false,
     ...(privateFields
       ? {
+          phoneVerificationEnabled: smsConfigured(),
           phoneVerificationTime: includeCompliance ? user.phoneVerificationTime : undefined,
           suspensionReason: user.suspensionReason,
           identityNote: includeCompliance ? user.identityNote : undefined,
           identitySubmittedAt: includeCompliance ? user.identitySubmittedAt : undefined,
           documentType: includeCompliance ? user.documentType : undefined,
           identityEvidenceIds: includeCompliance ? user.identityEvidenceIds : undefined,
-          walletBalanceNaira: user.walletBalanceNaira ?? 0,
+          walletBalanceNaira: Math.max(0, user.walletVerifiedBalanceNaira ?? 0),
           bvn: includeCompliance ? user.bvn : undefined,
           residenceState: includeCompliance ? user.residenceState : undefined,
           residenceLga: includeCompliance ? user.residenceLga : undefined,

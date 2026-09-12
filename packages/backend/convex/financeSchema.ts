@@ -4,6 +4,9 @@ import { v } from "convex/values";
 // Existing columns retain their original meaning. New columns are optional for live-data compatibility.
 export const financeTables = {
   payments: defineTable({
+    source: v.optional(v.literal("wallet")),
+    providerMode: v.optional(v.union(v.literal("test"), v.literal("live"))),
+    refundedKobo: v.optional(v.number()),
     shipmentId: v.id("shipments"), reference: v.string(), amountKobo: v.number(), currency: v.literal("NGN"),
     status: v.union(v.literal("pending"), v.literal("paid"), v.literal("failed"), v.literal("abandoned"), v.literal("reconciliation_required")),
     url: v.optional(v.string()), createdAt: v.number(), paidAt: v.optional(v.number()), providerTransactionId: v.optional(v.string()),
@@ -26,7 +29,7 @@ export const financeTables = {
     reference: v.string(), amountKobo: v.number(), currency: v.literal("NGN"),
     status: v.union(v.literal("prepared"), v.literal("pending"), v.literal("success"), v.literal("failed"), v.literal("reversed"), v.literal("uncertain")),
     actorId: v.id("users"), recipientCode: v.optional(v.string()), providerId: v.optional(v.string()),
-    providerTransactionId: v.string(), createdAt: v.number(), updatedAt: v.number(), dispatchedAt: v.optional(v.number()),
+    providerTransactionId: v.optional(v.string()), createdAt: v.number(), updatedAt: v.number(), dispatchedAt: v.optional(v.number()),
     verifiedAt: v.optional(v.number()), providerStatus: v.optional(v.string()), lastError: v.optional(v.string()),
   }).index("by_reference", ["reference"]).index("by_shipment", ["shipmentId"]).index("by_payment", ["paymentId"]),
 };

@@ -40,12 +40,14 @@ export const history = query({ args: { shipmentId: v.id("shipments") }, handler:
 } });
 export const banks = action({ args: {}, handler: async (ctx): Promise<Array<{ code: string; name: string }>> => {
   await ctx.runQuery(internal.financeState.bankOwner, { subject: await subject(ctx) });
+  await ctx.runMutation(internal.wallet.rateLimit, { subject: await subject(ctx), kind: "bank" });
   const data = await provider("/bank?currency=NGN&type=nuban&perPage=100");
   if (!Array.isArray(data)) fail("Invalid Paystack bank directory.");
   return data.filter(b => typeof b.code === "string" && typeof b.name === "string" && b.active !== false).map(b => ({ code: b.code, name: b.name }));
 } });
 export const setupBank = action({ args: { bankCode: v.string(), accountNumber: v.string() }, handler: async (ctx, args): Promise<{ accountName: string; bankCode: string; last4: string; ready: boolean }> => {
   const sub = await subject(ctx); await ctx.runQuery(internal.financeState.bankOwner, { subject: sub });
+  await ctx.runMutation(internal.wallet.rateLimit, { subject: sub, kind: "bank" });
   if (!/^\d{3,10}$/.test(args.bankCode) || !/^\d{10}$/.test(args.accountNumber)) fail("Choose a bank and provide a valid 10-digit Nigerian account number.");
   const resolved = await provider(`/bank/resolve?account_number=${encodeURIComponent(args.accountNumber)}&bank_code=${encodeURIComponent(args.bankCode)}`);
   if (resolved.account_number !== args.accountNumber || typeof resolved.account_name !== "string" || !resolved.account_name.trim()) fail("Paystack could not resolve these bank details.");
@@ -89,6 +91,7 @@ async function verifiedOperation(ctx: ActionCtx, op: Doc<"payouts">, refundId?: 
   });
 }
 async function dispatch(ctx: ActionCtx, op: Doc<"payouts">): Promise<ReturnType<typeof operationDto>> {
+  if (op.status === "success") return operationDto(op);
   secret();
   const reserved = await ctx.runMutation(internal.financeState.dispatch, { operationId: op._id });
   if (!reserved) return operationDto(op);
@@ -116,12 +119,15 @@ export const requestRefund = action({ args: { shipmentId: v.id("shipments"), pay
   return dispatch(ctx, op);
 } });
 export const reconcile = action({ args: { operationId: v.id("payouts") }, handler: async (ctx, args): Promise<ReturnType<typeof operationDto>> => {
+  await ctx.runMutation(internal.wallet.rateLimit, { subject: await subject(ctx), kind: "finance-check" });
   const op = await ctx.runQuery(internal.financeState.authorizeOperation, { subject: await subject(ctx), operationId: args.operationId });
-  if (op.status === "prepared") return operationDto(op);
+  if (op.status === "prepared" || op.status === "success" && !op.providerId) return operationDto(op);
   return verifiedOperation(ctx, op);
 } });
 export const retry = action({ args: { operationId: v.id("payouts") }, handler: async (ctx, args): Promise<ReturnType<typeof operationDto>> => {
-  const sub = await subject(ctx); const op = await ctx.runQuery(internal.financeState.authorizeOperation, { subject: sub, operationId: args.operationId });
+  const sub = await subject(ctx);
+  await ctx.runMutation(internal.wallet.rateLimit, { subject: sub, kind: "finance-check" });
+  const op = await ctx.runQuery(internal.financeState.authorizeOperation, { subject: sub, operationId: args.operationId });
   await verifiedOperation(ctx, op);
   const next = await ctx.runMutation(internal.financeState.prepareRetry, { subject: sub, operationId: op._id });
   return dispatch(ctx, next);
@@ -145,7 +151,9 @@ export const earnings = query({ args: {}, handler: async (ctx) => {
     const payout = operations.filter(p => p.kind === "payout").sort((a, b) => b.createdAt - a.createdAt)[0];
     const disputes = await ctx.db.query("disputes").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).collect();
     const amountKobo = payout?.amountKobo ?? payment?.travellerNetKobo ?? (payment ? payment.amountKobo - Math.round(payment.amountKobo / 10) : feeQuote(s.feeNaira).travellerNetKobo);
-    const status = s.paymentStatus === "released" ? "paid" : s.paymentStatus === "payout_failed" ? "failed" : s.paymentStatus === "payout_pending" ? "processing" : disputes.some(d => d.status === "open") || s.refundApproved ? "held" : !bank?.recipientCode ? "bank_required" : user.verification !== "verified" || user.suspended ? "verification_required" : !payment?.providerTransactionId ? "held" : "scheduled";
+    const fundingOwner = payment?.source === "wallet" ? await ctx.db.get(s.senderId) : null;
+    const fundingBlocked = payment?.source === "wallet" && (!fundingOwner || fundingOwner.walletBlocked || fundingOwner.suspended);
+    const status = s.paymentStatus === "released" ? "paid" : s.paymentStatus === "payout_failed" ? "failed" : s.paymentStatus === "payout_pending" ? "processing" : disputes.some(d => d.status === "open") || s.refundApproved || fundingBlocked ? "held" : !bank?.recipientCode ? "bank_required" : user.verification !== "verified" || user.suspended ? "verification_required" : (!payment || payment.source !== "wallet" && !payment.providerTransactionId) ? "held" : "scheduled";
     items.push({ id: s._id, tripId: s.tripId, reference: s.reference, origin: s.origin, destination: s.destination, amountKobo, status, deliveredAt: s.deliveredAt ?? s.updatedAt, payoutAt: s.deliveredAt ? Math.max(s.deliveredAt + 86400000, s.disputeUntil ?? 0) : null });
   }
   return items.sort((a, b) => b.deliveredAt - a.deliveredAt);
@@ -163,4 +171,11 @@ export const automaticPayout = internalAction({ args: { shipmentId: v.id("shipme
     // The next sweep rechecks eligibility. Failed transfers require reconciliation, never a blind retry.
     console.warn("Automatic payout deferred", args.shipmentId, error instanceof Error ? error.message : "Unavailable");
   }
+} });
+
+export const reconcileInternal = internalAction({ args: { operationId: v.id("payouts") }, handler: async (ctx, args): Promise<void> => {
+  if (!process.env.PAYSTACK_SECRET_KEY) return;
+  const op = await ctx.runQuery(internal.financeState.operationById, args);
+  if (!op || !["pending", "uncertain"].includes(op.status)) return;
+  try { await verifiedOperation(ctx, op); } catch { await ctx.runMutation(internal.wallet.raiseAlert, { key: op.reference, detail: `Unable to reconcile ${op.kind} ${op.reference}. Do not send another operation.` }); }
 } });

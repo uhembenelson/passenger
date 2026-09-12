@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { audit, fail, note, participant, requireUser, shipment } from "./lib";
+import { audit, fail, note, notify, participant, requireUser, shipment } from "./lib";
 
 export const list = query({
   args: {},
@@ -64,6 +64,7 @@ export const create = mutation({
       createdAt: Date.now(),
     });
 
+    await notify(ctx, targetId, "New delivery review", `${user.name} rated your delivery ${args.rating} out of 5.`, parcel._id);
     await audit(ctx, user, "review.created", `Delivery partner rated ${args.rating}/5.`, parcel._id);
     return id;
   },

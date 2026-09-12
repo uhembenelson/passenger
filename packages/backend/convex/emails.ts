@@ -164,6 +164,21 @@ export function renderResetPasswordEmail(args: { email: string; resetUrl: string
   return { html, text };
 }
 
+export function renderVerificationEmail(args: { email: string; appUrl: string; code: string }): { html: string; text: string } {
+  return {
+    html: emailShell({
+      microLabel: "Email verification",
+      headline: "Verify your email address.",
+      bodyHtml: `<p style="font-family:Arial,sans-serif; font-size:17px; line-height:1.7; color:#4B5563;">Enter this code in Passenger to verify ${escapeHtmlAttribute(args.email)}.</p>`,
+      cardHtml: `<tr><td class="pad" style="padding:32px 56px 0;"><p style="font-family:monospace; font-size:18px; line-height:1.6; overflow-wrap:anywhere; word-break:break-all; color:#248A56;">${escapeHtmlAttribute(args.code)}</p></td></tr>`,
+      ctaHref: escapeHtmlAttribute(args.appUrl),
+      ctaLabel: "Open Passenger",
+      noteHtml: "Your code expires in 10 minutes. If you did not request this email, you can ignore it.",
+    }),
+    text: `Verify your email address.\n\nEnter this code in Passenger for ${args.email}:\n${args.code}\n\nThe code expires in 10 minutes.\nOpen Passenger: ${args.appUrl}\n\nIf you did not request this email, you can ignore it.`,
+  };
+}
+
 export async function sendBrandedEmail(args: { to: string; subject: string; html: string; text?: string }): Promise<{ id: string }> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.AUTH_EMAIL_FROM;
@@ -193,7 +208,7 @@ export async function sendBrandedEmail(args: { to: string; subject: string; html
     throw new ConvexError("We could not connect to the email provider. Please check your connection and try again.");
   }
   const result = await response.json().catch(() => null) as { id?: string; message?: string } | null;
-  if (!response.ok || !result?.id) {
+  if (!response.ok || typeof result?.id !== "string" || !result.id) {
     throw new ConvexError(result?.message ?? "Passenger could not send the email. Check the email provider configuration and try again.");
   }
   return { id: result.id };

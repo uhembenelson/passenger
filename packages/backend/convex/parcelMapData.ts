@@ -69,8 +69,8 @@ export function mapViewport(viewport?: { width: number; height: number }) {
   const width = Math.max(100, Math.round(viewport.width * scale));
   const height = Math.max(100, Math.round(viewport.height * scale));
   // Reserve space for the floating route card and collapsed status panel.
-  const top = Math.round(Math.min(190 * scale, height * 0.25));
-  const bottom = Math.round(Math.min(240 * scale, height * 0.30));
+  const top = Math.round(Math.min(240 * scale, height * 0.30));
+  const bottom = Math.round(Math.min(260 * scale, height * 0.32));
   const side = Math.round(Math.min(48 * scale, width * 0.12));
   return { width, height, padding: `${top},${side},${bottom},${side}` };
 }

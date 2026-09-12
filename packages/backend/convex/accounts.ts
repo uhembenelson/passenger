@@ -2,11 +2,10 @@ import { v } from "convex/values";
 import { isPlaceholderPhone, type Person } from "@passenger/core";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { audit, fail, findUserBySubject, person, personDto, requireActive, requireUser, safeNormalizePhone, subject } from "./lib";
+import { audit, fail, findUserBySubject, person, personDto, requireActive, requireUser, safeNormalizePhone, smsConfigured, subject } from "./lib";
 import { documentType } from "./schema";
 import { validateEvidence } from "./evidence";
 
-const PHONE_CODE_LENGTH = 6;
 const PHONE_CODE_TTL_MS = 10 * 60 * 1000;
 const PHONE_RESEND_MS = 63 * 1000;
 
@@ -197,7 +196,7 @@ export const submitIdentity = mutation({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     requireActive(user);
-    if (!user.phoneVerificationTime) fail("Verify your phone number before submitting identity evidence.");
+    if (smsConfigured() && !user.phoneVerificationTime) fail("Verify your phone number before submitting identity evidence.");
 
     const name = args.name.trim();
     if (!name || name.length > 120) fail("Name must be 1–120 characters.");
@@ -291,7 +290,9 @@ export const storePhoneVerificationCode = internalMutation({
     );
     if (verifiedOwner) fail("That phone number is already connected to another account.");
 
+    if (user.phoneVerificationRequestedAt && Date.now() < user.phoneVerificationRequestedAt + PHONE_RESEND_MS) fail("Please wait before requesting another code.");
     await ctx.db.patch(user._id, {
+      phoneVerificationAttempts: 0,
       phoneVerificationPendingPhone: args.phone,
       phoneVerificationCode: args.code,
       phoneVerificationRequestedAt: args.requestedAt,
@@ -303,14 +304,18 @@ export const storePhoneVerificationCode = internalMutation({
 
 export const requestPhoneVerification = action({
   args: { phone: v.string() },
-  handler: async (ctx, args): Promise<{ phone: string; resendAt: number; expiresAt: number; previewCode?: string }> => {
+  handler: async (ctx, args): Promise<{ phone: string; resendAt: number; expiresAt: number; skipped?: boolean }> => {
     const target = await ctx.runQuery(internal.accounts.phoneVerificationTarget, { sub: await subject(ctx) });
     if (!target) fail("Complete your profile first.");
     if (target.suspended) fail("Your account is suspended. Active delivery and support records remain accessible.");
 
     const phone = safeNormalizePhone(args.phone);
     if (isPlaceholderPhone(phone)) fail("Enter a valid mobile phone number.");
-    const code = randomDigits(PHONE_CODE_LENGTH);
+    if (!smsConfigured()) {
+      await ctx.runMutation(internal.accounts.savePhoneWithoutOtp, { phone });
+      return { phone, resendAt: 0, expiresAt: 0, skipped: true };
+    }
+    const code: string = await ctx.runAction(internal.sms.generatePhoneCode, {});
     const requestedAt = Date.now();
     const expiresAt = requestedAt + PHONE_CODE_TTL_MS;
     const resendAt = requestedAt + PHONE_RESEND_MS;
@@ -323,16 +328,21 @@ export const requestPhoneVerification = action({
       expiresAt,
     });
 
-    if (smsConfigured()) {
-      await ctx.runAction(internal.sms.sendPhoneVerificationCode, { receiverPhone: phone, code });
-      return { phone, resendAt, expiresAt };
-    }
-
-    return { phone, resendAt, expiresAt, previewCode: code };
+    await ctx.runAction(internal.sms.sendPhoneVerificationCode, { receiverPhone: phone, code });
+    return { phone, resendAt, expiresAt };
   },
 });
 
-export const confirmPhoneVerification = mutation({
+export const confirmPhoneVerification = action({
+  args: { code: v.string() },
+  handler: async (ctx, args): Promise<{ verifiedAt: number }> => {
+    const result = await ctx.runMutation(internal.accounts.consumePhoneVerification, args);
+    if ("error" in result) fail(result.error!);
+    return { verifiedAt: result.verifiedAt! };
+  },
+});
+
+export const consumePhoneVerification = internalMutation({
   args: { code: v.string() },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
@@ -343,7 +353,11 @@ export const confirmPhoneVerification = mutation({
     if (!user.phoneVerificationCode || !user.phoneVerificationExpiresAt || user.phoneVerificationExpiresAt < Date.now()) {
       fail("This verification code has expired. Request a new code.");
     }
-    if (code !== user.phoneVerificationCode) fail("That code is not correct.");
+    if ((user.phoneVerificationAttempts ?? 0) >= 5) fail("Too many attempts. Request a new code.");
+    if (code !== user.phoneVerificationCode) {
+      await ctx.db.patch(user._id, { phoneVerificationAttempts: (user.phoneVerificationAttempts ?? 0) + 1 });
+      return { error: "That code is not correct." };
+    }
 
     const verifiedAt = Date.now();
     const pendingPhone = user.phoneVerificationPendingPhone;
@@ -371,12 +385,25 @@ export const confirmPhoneVerification = mutation({
   },
 });
 
-function smsConfigured() {
-  return !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && (process.env.TWILIO_FROM_NUMBER || process.env.TWILIO_MESSAGING_SERVICE_SID));
-}
-
-function randomDigits(length: number) {
-  let value = "";
-  while (value.length < length) value += Math.floor(Math.random() * 10).toString();
-  return value.slice(0, length);
-}
+export const savePhoneWithoutOtp = internalMutation({
+  args: { phone: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    requireActive(user);
+    if (smsConfigured()) fail("Phone verification is required.");
+    const phone = safeNormalizePhone(args.phone);
+    if (isPlaceholderPhone(phone)) fail("Enter a valid mobile phone number.");
+    const owners = await ctx.db.query("users").withIndex("phone", q => q.eq("phone", phone)).collect();
+    if (owners.some(owner => owner._id !== user._id && owner.phoneVerificationTime !== undefined)) fail("That phone number is already connected to another account.");
+    await ctx.db.patch(user._id, {
+      phone,
+      phoneVerificationTime: phone === user.phone ? user.phoneVerificationTime : undefined,
+      phoneVerificationCode: undefined,
+      phoneVerificationPendingPhone: undefined,
+      phoneVerificationExpiresAt: undefined,
+      phoneVerificationRequestedAt: undefined,
+      phoneVerificationAttempts: undefined,
+    });
+    await audit(ctx, user, "phone.updated", "Phone number saved without OTP because SMS is not configured.");
+  },
+});

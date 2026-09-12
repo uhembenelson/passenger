@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { mutation, query } from "./_generated/server";
-import { audit, fail, isAdmin, note, participant, requireUser, shipment } from "./lib";
+import { audit, fail, isAdmin, note, notify, participant, requireUser, shipment } from "./lib";
 
 export const listPage = query({
   args: { shipmentId: v.id("shipments"), paginationOpts: paginationOptsValidator },
@@ -56,6 +56,11 @@ export const send = mutation({
       createdAt: Date.now(),
     });
 
+    for (const recipient of new Set([parcel.senderId, parcel.travellerId])) {
+      if (recipient && recipient !== user._id) {
+        await notify(ctx, recipient, "New delivery message", `${user.name} sent a message about ${parcel.reference}.`, parcel._id);
+      }
+    }
     await audit(ctx, user, "message.sent", "Participant coordination message sent.", parcel._id);
     return id;
   },

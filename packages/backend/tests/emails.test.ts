@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderResetPasswordEmail, sendBrandedEmail } from "../convex/emails";
+import { renderResetPasswordEmail, renderVerificationEmail, sendBrandedEmail } from "../convex/emails";
 
 const fetchMock = vi.fn();
 
 beforeEach(() => {
+  fetchMock.mockReset();
   vi.unstubAllEnvs();
   vi.stubEnv("RESEND_API_KEY", "re_testkey");
   vi.stubEnv("AUTH_EMAIL_FROM", "transactions@passenger.test");
@@ -74,4 +75,19 @@ describe("password reset email", () => {
       sendBrandedEmail({ to: "ada@example.com", subject: "s", html }),
     ).rejects.toThrow(/own email address/);
   });
+});
+  it("rejects network failures and malformed success responses", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("timeout"));
+    await expect(sendBrandedEmail({ to: "ada@example.com", subject: "Reset", html: "<p>Reset</p>" })).rejects.toThrow("could not connect");
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 123 }) });
+    await expect(sendBrandedEmail({ to: "ada@example.com", subject: "Reset", html: "<p>Reset</p>" })).rejects.toThrow("could not send");
+  });
+
+it("renders signup verification with escaped recipient details and the code", () => {
+  const { html, text } = renderVerificationEmail({ email: "<ada>@example.com", appUrl: "https://app.example.com/?a=1&b=2", code: "verification-token" });
+  expect(html).toContain("Verify your email address.");
+  expect(html).toContain("&lt;ada&gt;@example.com");
+  expect(html).toContain("a=1&amp;b=2");
+  expect(html).toContain("verification-token");
+  expect(text).toContain("expires in 10 minutes");
 });
