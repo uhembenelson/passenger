@@ -1,5 +1,5 @@
 import { ConvexError } from "convex/values";
-import type { Offer, Person, Shipment, ShipmentStatus, Trip, FeeConfig, PermissionKey, CreateShipmentInput, CreateTripInput } from "@passenger/core";
+import type { Offer, Person, Shipment, ShipmentStatus, Trip, FeeConfig, PermissionKey, CreateShipmentInput, CreateTripInput, FeeQuote } from "@passenger/core";
 import { assertTransition, normalizePhone, quoteFee, routeSegment, tripRoute, validateShipment, validateTrip } from "@passenger/core";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
@@ -32,7 +32,7 @@ export function safeValidateTrip(input: CreateTripInput, now?: number): void {
   }
 }
 
-export function safeQuoteFee(feeNaira: number) {
+export function safeQuoteFee(feeNaira: number): FeeQuote {
   try {
     return quoteFee(feeNaira);
   } catch {
@@ -44,7 +44,7 @@ export function safeQuoteFee(feeNaira: number) {
       grossKobo,
       platformFeeKobo,
       travellerNetKobo: grossKobo - platformFeeKobo,
-      platformFeePercent: 10,
+      platformFeePercent: 10 as const,
     };
   }
 }

@@ -121,15 +121,16 @@ export const confirmSafe = mutation({
 });
 
 export const parcelMap = action({
-  args: { shipmentId: v.id("shipments") },
+  args: { shipmentId: v.id("shipments"), viewport: v.optional(v.object({ width: v.number(), height: v.number() })) },
   returns: v.object({ imageUri: v.string(), roadRoute: v.boolean() }),
   handler: async (ctx, args): Promise<{ imageUri: string; roadRoute: boolean }> => {
+    if (args.viewport && (!Number.isFinite(args.viewport.width) || !Number.isFinite(args.viewport.height) || args.viewport.width < 100 || args.viewport.height < 100 || args.viewport.width > 10000 || args.viewport.height > 10000)) fail("Invalid map size.");
     // Authorize before any paid provider calls. Never trust client coordinates.
     const record = await ctx.runQuery(internal.deliveryState.parcelMapShipment, args);
     const token = process.env.MAPBOX_ACCESS_TOKEN?.trim();
     if (!token) fail("Parcel maps are unavailable.");
     try {
-      return await renderParcelMap(record, token);
+      return await renderParcelMap(record, token, args.viewport);
     } catch {
       // Fetch errors may contain a provider URL with credentials.
       throw new ConvexError("Couldn't load the parcel map. Please try again.");

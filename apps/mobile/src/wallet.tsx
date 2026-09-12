@@ -135,7 +135,11 @@ export function TopUpSheet({
         setAction("opening");
         // Keep the reference before handing off to another app or browser tab.
         setErrorTitle("The payment page couldn't open");
-        await Linking.openURL(result.url);
+        try {
+          await Linking.openURL(result.url);
+        } catch {
+          throw new Error("Unable to open the checkout page on this device. Please check your browser settings.");
+        }
       }
     } catch (cause) { setError(errorMessage(cause)); setScreen("error"); }
     finally { inFlight.current = false; setAction(null); }

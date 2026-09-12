@@ -21,12 +21,13 @@ export async function drivingRoute(from: MapPoint, to: MapPoint, token: string, 
   return Array.isArray(points) && points.length >= 2 && points.every(isMapPoint) ? points : null;
 }
 
-export function parcelMapUrl(from: MapPoint, to: MapPoint, last: MapPoint | null, route: MapPoint[] | null, token: string) {
+export function parcelMapUrl(from: MapPoint, to: MapPoint, last: MapPoint | null, route: MapPoint[] | null, token: string, viewport?: { width: number; height: number }) {
+  const size = mapViewport(viewport);
   const make = (points: MapPoint[]) => {
     const line = { type: "Feature", properties: { stroke: "#437966", "stroke-width": 4, "stroke-opacity": 0.7 }, geometry: { type: "LineString", coordinates: points } };
     const overlays = [`geojson(${encodeURIComponent(JSON.stringify(line))})`, `pin-s-a+437966(${from.join(',')})`, `pin-s-b+7957a8(${to.join(',')})`];
     if (last) overlays.push(`pin-l+e58b25(${last.join(',')})`);
-    return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${overlays.join(',')}/auto/640x420?padding=60&access_token=${encodeURIComponent(token)}`;
+    return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${overlays.join(',')}/auto/${size.width}x${size.height}?padding=${size.padding}&access_token=${encodeURIComponent(token)}`;
   };
   const url = make(route ?? [from, to]);
   return url.length <= 8000 ? { url, roadRoute: !!route } : { url: make([from, to]), roadRoute: false };
@@ -36,7 +37,7 @@ export function parcelMapUrl(from: MapPoint, to: MapPoint, last: MapPoint | null
 export async function renderParcelMap(record: {
   origin: string; destination: string; latestLongitude?: number;
   latestLatitude?: number; latestLocationAt?: number;
-}, token: string): Promise<{ imageUri: string; roadRoute: boolean }> {
+}, token: string, viewport?: { width: number; height: number }): Promise<{ imageUri: string; roadRoute: boolean }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
   try {
@@ -48,7 +49,7 @@ export async function renderParcelMap(record: {
     try { route = await drivingRoute(from, to, token, controller.signal); } catch { /* Use an indicative line if directions fail. */ }
     const candidate = [record.latestLongitude, record.latestLatitude];
     const last = record.latestLocationAt && isMapPoint(candidate) ? candidate : null;
-    const { url, roadRoute } = parcelMapUrl(from, to, last, route, token);
+    const { url, roadRoute } = parcelMapUrl(from, to, last, route, token, viewport);
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok || !response.headers.get("content-type")?.startsWith("image/png")) throw new Error("Map unavailable");
     const bytes = new Uint8Array(await response.arrayBuffer());
@@ -60,4 +61,16 @@ export async function renderParcelMap(record: {
     }
     return { imageUri: `data:image/png;base64,${btoa(binary)}`, roadRoute };
   } finally { clearTimeout(timeout); }
+}
+
+export function mapViewport(viewport?: { width: number; height: number }) {
+  if (!viewport) return { width: 640, height: 420, padding: "60" };
+  const scale = Math.min(1, 1280 / Math.max(viewport.width, viewport.height));
+  const width = Math.max(100, Math.round(viewport.width * scale));
+  const height = Math.max(100, Math.round(viewport.height * scale));
+  // Reserve space for the floating route card and collapsed status panel.
+  const top = Math.round(Math.min(190 * scale, height * 0.25));
+  const bottom = Math.round(Math.min(240 * scale, height * 0.30));
+  const side = Math.round(Math.min(48 * scale, width * 0.12));
+  return { width, height, padding: `${top},${side},${bottom},${side}` };
 }

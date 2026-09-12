@@ -1,0 +1,11 @@
+import { oneoffContext } from '../../node_modules/convex/dist/esm/bundler/context.js';
+import { getDeploymentSelection } from '../../node_modules/convex/dist/esm/cli/lib/deploymentSelection.js';
+import { loadSelectedDeploymentCredentials } from '../../node_modules/convex/dist/esm/cli/lib/api.js';
+import { ConvexHttpClient } from '../../node_modules/convex/dist/esm/browser/http_client.js';
+process.chdir('packages/backend');
+const ctx = await oneoffContext({});
+const selection = await getDeploymentSelection(ctx, {});
+const deployment = await loadSelectedDeploymentCredentials(ctx, selection, { ensureLocalRunning: false });
+const client = new ConvexHttpClient(deployment.url);
+client.setAdminAuth(deployment.adminKey);
+console.log(await client.query('_system/frontend/fileStorageV2:numFiles', {}));

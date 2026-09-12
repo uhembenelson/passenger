@@ -40,7 +40,7 @@ export default function RootLayout({
       <head>
         <style dangerouslySetInnerHTML={{ __html: rootCssVariables }} />
       </head>
-      <body className="min-h-screen flex flex-col bg-[#FAFAFC] text-[#1F2937] font-sans antialiased selection:bg-[#BCF0D7] selection:text-[#153B27]">
+      <body className="min-h-screen flex flex-col bg-[var(--background)] text-[var(--foreground)] font-sans antialiased selection:bg-[var(--brand-tint)] selection:text-[var(--foreground)]">
         {children}
       </body>
     </html>

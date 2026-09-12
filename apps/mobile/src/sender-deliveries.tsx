@@ -70,7 +70,11 @@ export function NotificationsScreen({ navigation, notice: externalNotice, onNoti
       }
       const message = receiverCodeMessage(draft.reference, draft.code);
       const url = channel === "sms" ? receiverCodeSmsUrl(draft.receiverPhone, message) : receiverCodeWhatsAppUrl(draft.receiverPhone, message);
-      await Linking.openURL(url);
+      try {
+        await Linking.openURL(url);
+      } catch {
+        throw new Error(channel === "whatsapp" ? "Unable to open WhatsApp on this device." : "Unable to open your messaging app on this device.");
+      }
     } catch (error) {
       setShareError(errorMessage(error));
     } finally {

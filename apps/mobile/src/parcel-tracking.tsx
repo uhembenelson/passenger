@@ -1,54 +1,67 @@
-import React from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { Check, Clock3 } from "lucide-react-native";
+import React, { useState } from "react";
+import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Check, ChevronDown, ChevronUp, Clock3 } from "lucide-react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Shipment } from "@passenger/core";
-import { components, primitives, semantic } from "@passenger/design-tokens";
+import { semantic } from "@passenger/design-tokens";
 import { BackButton, Badge, Button, Txt, fontFamily, timeDate } from "./ui";
-import { CityIllustration } from "./illustrations";
 import { ParcelMap } from "./parcel-map";
 
 export function ParcelTracking({ shipment, onBack, onProblem }: { shipment: Shipment; onBack: () => void; onProblem: () => void }) {
-  const pickedUp = !!shipment.handoverAt || ["in_transit", "delivered"].includes(shipment.status);
-  const inTransit = !!shipment.latestLocationAt || shipment.status === "delivered";
-  const nearDestination = shipment.status === "delivered" || !!shipment.latestLocationLabel?.toLocaleLowerCase().includes(shipment.destination.toLocaleLowerCase());
+  const insets = useSafeAreaInsets();
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const [expanded, setExpanded] = useState(false);
+  const [roadRoute, setRoadRoute] = useState(true);
   const delivered = shipment.status === "delivered";
-  const steps = [
-    { title: "Parcel is picked up", time: shipment.handoverAt, done: pickedUp, checkIn: "Check-in 1:" },
-    { title: "Parcel is in transit", time: shipment.latestLocationAt, done: inTransit, checkIn: "Check-in 2:" },
-    { title: "Parcel is near destination", time: shipment.latestLocationAt, done: nearDestination, checkIn: "Check-in 3:" },
-    { title: "Parcel is delivered -\nPlease confirm if received!", time: shipment.deliveredAt, done: delivered },
+  const milestones = [
+    { title: "Picked up", time: shipment.handoverAt, done: !!shipment.handoverAt || ["in_transit", "delivered"].includes(shipment.status) },
+    { title: "Location reported", time: shipment.latestLocationAt, done: !!shipment.latestLocationAt },
+    { title: "Delivered", time: shipment.deliveredAt, done: delivered },
   ];
-
-  return <View style={p.screen}>
-    <View style={p.header}>
-      <BackButton accessibilityLabel="Back" onPress={onBack} />
-      <Txt pointerEvents="none" style={p.title}>Track your Parcel</Txt><View pointerEvents="none" style={p.headerBalance} />
-    </View>
-    <ScrollView contentContainerStyle={{ paddingBottom: primitives.space[10] }}>
-    <ParcelMap shipment={shipment} />
-    {shipment.latestLocationLabel && shipment.latestLocationAt ? <View style={p.latestLocation}>
-      <View style={p.locationIcon}><CityIllustration city={shipment.latestLocationLabel} size={40} /></View>
-      <View style={p.flex}><Txt style={p.locationLabel}>Latest parcel location</Txt><Txt style={p.locationPlace}>{shipment.latestLocationLabel}</Txt><Txt style={p.locationTime}>Updated {clockTime(shipment.latestLocationAt).toLowerCase()}</Txt></View>
-    </View> : null}
-    <View style={p.trackingSummary}>
-      {shipment.latestSafetyCheckInAt ? <Txt style={p.reportingCopy}>The traveller confirmed they and your parcel are safe · {timeDate(shipment.latestSafetyCheckInAt)}</Txt> : null}
-      <LocationReportingStatus shipment={shipment} viewerRole="sender" />
-      <Button title="Something went wrong" small variant="ghost" onPress={onProblem} />
-    </View>
-    <View style={p.timeline}>
-      {steps.map((step, index) => <View key={step.title} style={p.timelineStep}>
-        <View style={p.timelineRail}>
-          <View style={[p.statusDot, !step.done && p.statusDotPending]}><Check size={components.icon.size.sm} color={semantic.color.text.onPrimary} strokeWidth={components.icon.strokeWidth.strong} /></View>
-          {index < steps.length - 1 ? <View style={p.railLine} /> : null}
+  const status = delivered ? "Parcel delivered" : shipment.status === "in_transit" ? "Parcel on the way" : shipment.status === "cancelled" ? "Delivery cancelled" : "Awaiting pickup";
+  return <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onBack}>
+    <View style={p.screen} onLayout={event => {
+      const { width, height } = event.nativeEvent.layout;
+      setSize(previous => previous.width === Math.round(width) && previous.height === Math.round(height) ? previous : { width: Math.round(width), height: Math.round(height) });
+    }}>
+      <ParcelMap shipment={shipment} width={size.width} height={size.height} onRouteKind={setRoadRoute} />
+      <View pointerEvents="box-none" style={[p.top, { top: insets.top + 12 }]}>
+        <View style={p.header}>
+          <View style={p.back}><BackButton accessibilityLabel="Close parcel map" onPress={onBack} /></View>
+          <View style={p.titlePill}><Txt style={p.title}>Track your parcel</Txt><Txt style={p.small}>{shipment.reference}</Txt></View>
         </View>
-        <View style={p.stepContent}>
-          <View style={p.stepTitleRow}><Txt style={[p.stepTitle, !step.done && p.pendingTitle]}>{step.title}</Txt>{step.done && step.time ? <Txt style={p.stepTime}>{clockTime(step.time).toLowerCase()}</Txt> : null}</View>
-          {step.checkIn ? <View style={p.checkInRow}><Txt style={[p.checkInText, !step.done && p.pendingCheckIn]}>{step.checkIn}</Txt><View style={[p.statusPill, !step.done && p.pendingPill]}>{step.done ? <Check size={components.icon.size.sm} color={semantic.color.text.success} strokeWidth={components.icon.strokeWidth.regular} /> : <Clock3 size={components.icon.size.sm} color={semantic.color.text.warning} strokeWidth={components.icon.strokeWidth.regular} />}<Txt numberOfLines={1} style={[p.pillText, !step.done && p.pendingPillText]}>{step.done ? "Done" : "Pending"}</Txt></View></View> : null}
+        <View style={p.routeCard}>
+          <View style={p.routeRow}><View style={[p.dot, p.pickupDot]} /><Txt style={p.label}>Pickup</Txt><Txt numberOfLines={1} style={p.city}>{shipment.origin}</Txt></View>
+          <View style={p.routeRow}><View style={[p.dot, p.destinationDot]} /><Txt style={p.label}>Destination</Txt><Txt numberOfLines={1} style={p.city}>{shipment.destination}</Txt></View>
+          <Txt style={p.small}>Approximate city locations</Txt>
         </View>
-      </View>)}
+      </View>
+      <View style={[p.panel, { bottom: insets.bottom + 36, maxHeight: expanded ? '58%' : '34%' }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={expanded ? "Collapse parcel details" : "Expand parcel details"} accessibilityState={{ expanded }} onPress={() => setExpanded(value => !value)} style={p.panelHeader}>
+          <View style={p.flex}><Txt style={p.title}>{status}</Txt><Txt style={p.small}>{expanded ? 'Hide journey details' : 'View journey details'}</Txt></View>
+          {expanded ? <ChevronDown size={22} color={semantic.color.text.primary} /> : <ChevronUp size={22} color={semantic.color.text.primary} />}
+        </Pressable>
+        <ScrollView contentContainerStyle={p.panelContent}>
+          <View style={p.locationRow}><View style={[p.dot, p.locationDot]} /><View style={p.flex}>
+            <Txt style={p.label}>Last reported location</Txt>
+            <Txt style={p.location}>{shipment.latestLocationLabel || 'Waiting for a location check-in'}</Txt>
+            {shipment.latestLocationAt ? <Txt style={p.small}>Updated {timeDate(shipment.latestLocationAt)}</Txt> : null}
+          </View></View>
+          {expanded ? <>
+            <Txt style={p.small}>Location updates when the traveller checks in.</Txt>
+            <Txt style={p.small}>{roadRoute ? 'Suggested road route. The actual route may differ.' : 'The line connects the cities, not the actual route travelled.'}</Txt>
+            <LocationReportingStatus shipment={shipment} viewerRole="sender" />
+            {shipment.latestSafetyCheckInAt ? <Txt style={p.reportingCopy}>The traveller confirmed they and your parcel are safe · {timeDate(shipment.latestSafetyCheckInAt)}</Txt> : null}
+            {milestones.map(item => <View key={item.title} style={p.milestone}>
+              {item.done ? <Check size={18} color={semantic.color.brand.primary} /> : <Clock3 size={18} color={semantic.color.text.tertiary} />}
+              <View style={p.flex}><Txt style={p.location}>{item.title}</Txt><Txt style={p.small}>{item.time ? timeDate(item.time) : item.done ? 'Confirmed' : 'Pending'}</Txt></View>
+            </View>)}
+            <Button title="Something went wrong" small variant="ghost" onPress={onProblem} />
+          </> : null}
+        </ScrollView>
+      </View>
     </View>
-    </ScrollView>
-  </View>;
+  </Modal>;
 }
 
 export function LocationReportingStatus({ shipment, viewerRole, compact = false }: { shipment: Shipment; viewerRole: "traveller" | "sender"; compact?: boolean }) {
@@ -81,35 +94,28 @@ function clockTime(timestamp: number) {
 
 const p = StyleSheet.create({
   screen: { flex: 1, backgroundColor: semantic.color.background.app },
-  header: { height: primitives.space[16] + primitives.space[3], paddingHorizontal: primitives.space[4], flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  title: { fontSize: primitives.typography.size.bodyMd, lineHeight: primitives.typography.lineHeight.bodyMd, fontFamily: fontFamily.semibold },
-  headerBalance: { width: components.iconButton.size },
-  latestLocation: { marginHorizontal: primitives.space[4], marginBottom: primitives.space[2], padding: primitives.space[4], borderRadius: primitives.radius.lg, backgroundColor: semantic.color.background.surface, flexDirection: "row", alignItems: "center", gap: primitives.space[3] },
-  locationIcon: { width: primitives.space[10], height: primitives.space[10], borderRadius: primitives.radius.pill, backgroundColor: semantic.color.background.successSoft, alignItems: "center", justifyContent: "center" },
+  top: { position: 'absolute', left: 16, right: 16, maxWidth: 460, gap: 12 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  back: { backgroundColor: semantic.color.background.surface, borderRadius: 24, elevation: 3 },
+  titlePill: { backgroundColor: semantic.color.background.surface, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 },
+  title: { fontSize: 16, lineHeight: 22, fontFamily: fontFamily.semibold, color: semantic.color.text.primary },
+  small: { fontSize: 11, lineHeight: 16, color: semantic.color.text.tertiary },
+  routeCard: { backgroundColor: semantic.color.background.surface, borderRadius: 20, padding: 14, gap: 8, elevation: 3, shadowColor: '#172c24', shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 3 } },
+  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  pickupDot: { backgroundColor: '#437966' },
+  destinationDot: { backgroundColor: '#7957a8' },
+  locationDot: { backgroundColor: '#e58b25' },
+  label: { fontSize: 12, lineHeight: 18, color: semantic.color.text.tertiary },
+  city: { flex: 1, textAlign: 'right', fontFamily: fontFamily.semibold, fontSize: 14, color: semantic.color.text.primary },
+  panel: { position: 'absolute', left: 16, right: 16, maxWidth: 460, borderRadius: 24, backgroundColor: semantic.color.background.surface, elevation: 5, shadowColor: '#172c24', shadowOpacity: 0.15, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, overflow: 'hidden' },
+  panelHeader: { paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  panelContent: { paddingHorizontal: 18, paddingBottom: 18, gap: 12 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  location: { fontSize: 14, lineHeight: 20, fontFamily: fontFamily.medium, color: semantic.color.text.primary },
   flex: { flex: 1 },
-  locationLabel: { fontSize: primitives.typography.size.bodyXs, lineHeight: primitives.typography.lineHeight.bodyXs, color: semantic.color.text.tertiary, fontFamily: fontFamily.semibold },
-  locationPlace: { marginTop: primitives.space[1], fontSize: primitives.typography.size.bodySm, lineHeight: primitives.typography.lineHeight.bodySm, color: semantic.color.text.primary, fontFamily: fontFamily.semibold },
-  locationTime: { marginTop: primitives.space[1], fontSize: primitives.typography.size.bodyXs, lineHeight: primitives.typography.lineHeight.bodyXs, color: semantic.color.text.tertiary },
-  trackingSummary: { marginHorizontal: primitives.space[4], marginBottom: primitives.space[2] },
-  reportingSummary: { marginTop: primitives.space[3], gap: primitives.space[2] },
-  reportingSummaryCompact: { marginTop: primitives.space[4] },
-  reportingCopy: { fontSize: primitives.typography.size.bodyXs, lineHeight: primitives.typography.lineHeight.bodyXs, color: semantic.color.text.tertiary },
-  timeline: { paddingHorizontal: primitives.space[4], paddingTop: primitives.space[5], paddingBottom: primitives.space[10] },
-  timelineStep: { flexDirection: "row", minHeight: primitives.space[16] * 2 },
-  timelineRail: { width: primitives.space[7], alignItems: "center" },
-  statusDot: { width: primitives.space[5], height: primitives.space[5], borderRadius: primitives.radius.md, backgroundColor: semantic.color.brand.primary, alignItems: "center", justifyContent: "center", zIndex: 1 },
-  statusDotPending: { backgroundColor: semantic.color.background.successSoft },
-  railLine: { position: "absolute", top: primitives.space[5], bottom: primitives.space[0], width: primitives.borderWidth.md, backgroundColor: components.journeyCard.arrowBackground },
-  stepContent: { flex: 1, paddingLeft: primitives.space[3] },
-  stepTitleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: primitives.space[2] },
-  stepTitle: { flex: 1, fontSize: primitives.typography.size.bodyMd, lineHeight: primitives.typography.lineHeight.bodyMd, color: semantic.color.text.primary },
-  pendingTitle: { color: semantic.color.border.strong },
-  stepTime: { fontSize: primitives.typography.size.bodySm, lineHeight: primitives.typography.lineHeight.bodySm, color: semantic.color.text.primary },
-  checkInRow: { flexDirection: "row", alignItems: "center", gap: primitives.space[2], marginTop: primitives.space[10] },
-  checkInText: { fontSize: primitives.typography.size.bodySm, lineHeight: primitives.typography.lineHeight.bodySm, color: semantic.color.text.primary },
-  pendingCheckIn: { color: semantic.color.text.tertiary },
-  statusPill: { minHeight: components.button.height.sm, paddingHorizontal: primitives.space[3], borderRadius: primitives.radius.pill, backgroundColor: components.journeyCard.arrowBackground, flexDirection: "row", alignItems: "center", gap: primitives.space[1] },
-  pendingPill: { backgroundColor: semantic.color.background.warningSoft },
-  pillText: { fontSize: primitives.typography.size.bodySm, lineHeight: primitives.typography.lineHeight.bodySm, color: semantic.color.text.success },
-  pendingPillText: { color: semantic.color.text.warning },
+  milestone: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
+  reportingSummary: { gap: 8 },
+  reportingSummaryCompact: { marginTop: 16 },
+  reportingCopy: { fontSize: 12, lineHeight: 18, color: semantic.color.text.tertiary },
 });

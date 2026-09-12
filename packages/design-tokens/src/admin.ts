@@ -20,7 +20,7 @@ export const adminSemantic = {
     text: {
       primary: "#1F2937",
       secondary: primitives.color.neutral[700],
-      tertiary: primitives.color.neutral[500],
+      tertiary: primitives.color.neutral[700],
       inverse: primitives.color.white,
       sidebar: primitives.color.white,
       sidebarMuted: "#DCE5DC",

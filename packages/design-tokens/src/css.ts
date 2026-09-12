@@ -2,6 +2,9 @@ import { adminComponents, adminSemantic } from "./admin";
 import { components, primitives, semantic } from "./tokens";
 
 export const rootCssVariables = `:root {
+  --ds-color-action-primary: ${semantic.color.action.primary};
+  --ds-color-action-primary-hover: ${semantic.color.action.primaryHover};
+  --ds-color-action-on-primary: ${semantic.color.action.onPrimary};
   --ds-color-white: ${primitives.color.white};
   --ds-color-brand-primary: ${semantic.color.brand.primary};
   --ds-color-brand-primary-hover: ${semantic.color.brand.primaryHover};
@@ -48,6 +51,9 @@ export const rootCssVariables = `:root {
 }`;
 
 export const adminRootCssVariables = `:root {
+  --ds-color-action-primary: ${semantic.color.action.primary};
+  --ds-color-action-primary-hover: ${semantic.color.action.primaryHover};
+  --ds-color-action-on-primary: ${semantic.color.action.onPrimary};
   --ds-color-white: ${primitives.color.white};
   --ds-color-brand-primary: ${adminSemantic.color.brand.primary};
   --ds-color-brand-primary-hover: ${adminSemantic.color.brand.sidebar};
