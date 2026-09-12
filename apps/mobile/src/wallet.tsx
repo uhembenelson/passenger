@@ -23,7 +23,7 @@ export function WalletBalanceCard({ onTopUp }: { onTopUp: () => void }) {
             <Wallet size={20} color={colors.forest} strokeWidth={2} />
           </View>
           <View>
-            <Txt style={w.balanceLabel}>Available balance</Txt>
+            <Txt style={w.balanceLabel}>{wallet?.blocked ? "Wallet under review" : "Available balance"}</Txt>
             <Txt style={w.balanceAmount}>{money(balance)}</Txt>
           </View>
         </View>
@@ -49,6 +49,7 @@ export function TopUpSheet({
   onSuccess?: () => void;
 }) {
   const { topUpWallet, verifyWalletTopUp, offline, snapshot } = usePassenger();
+  const pendingDeposit = useQuery(api.wallet.pendingDeposit, {});
   const config = snapshot?.mobileConfig?.wallet;
   const minimum = config?.minTopUpNaira ?? 100;
   const maximum = config?.maxTopUpNaira ?? 500000;
@@ -94,6 +95,14 @@ export function TopUpSheet({
     })();
     return () => { active = false; };
   }, [storageKey]);
+
+  useEffect(() => {
+    if (pendingDeposit && !restoring) {
+      setPayment(pendingDeposit);
+      setSavedOnDevice(true);
+      setScreen(pendingDeposit.url ? "checkout" : "pending");
+    }
+  }, [pendingDeposit?.reference, pendingDeposit?.url, restoring]);
 
   const persist = async (value: typeof payment) => {
     try {
@@ -177,7 +186,7 @@ export function TopUpSheet({
     };
   }, [payment?.reference, screen === "success"]);
 
-  if (startAgain) return <FullScreenState title="Start a different deposit?" subtitle="If money has already left your account, keep checking the existing payment. Start again only if you haven't paid." primaryAction={{ label: "Keep this payment", onPress: () => setStartAgain(false) }} secondaryAction={{ label: "I haven't paid. Start again", onPress: () => { void persist(null); setPayment(null); setScreen("amount"); setStartAgain(false); setShowReference(false); setError(""); } }} onRequestClose={() => setStartAgain(false)} />;
+  if (startAgain) return <FullScreenState title="Start a different deposit?" subtitle="Check the existing payment first. A new amount is available only after Paystack confirms that checkout failed or was abandoned." primaryAction={{ label: "Keep this payment", onPress: () => setStartAgain(false) }} secondaryAction={{ label: "I haven't paid. Start again", onPress: () => { void persist(null); setPayment(null); setScreen("amount"); setStartAgain(false); setShowReference(false); setError(""); } }} onRequestClose={() => setStartAgain(false)} />;
 
   if (screen === "success") return <FullScreenState title="Money added to your wallet" subtitle={`Your balance is now ${money(newBalance ?? 0)}. You're ready to pay for deliveries.`} primaryAction={{ label: "Done", onPress: done }} onRequestClose={done} />;
 
@@ -185,13 +194,14 @@ export function TopUpSheet({
 
   if (restoring) return <PresentationSheet title="Add money" onClose={close} containerStyle={sheetStyle}><ContentSkeleton rows={1} /></PresentationSheet>;
 
-  if (screen === "amount") return <PresentationSheet title="Add money" onClose={close} containerStyle={sheetStyle} footer={<Button title={busy ? "Opening checkout…" : parsedAmount !== null ? `Continue with ${money(parsedAmount)}` : "Continue to payment"} variant="lime" busy={busy} disabled={parsedAmount === null || offline || restoring || currentBalance === undefined} onPress={() => void initialize()} />}>
+  if (screen === "amount") return <PresentationSheet title="Add money" onClose={close} containerStyle={sheetStyle} footer={<Button title={busy ? "Opening checkout…" : parsedAmount !== null ? `Continue with ${money(parsedAmount)}` : "Continue to payment"} variant="lime" busy={busy} disabled={parsedAmount === null || offline || restoring || currentBalance === undefined || pendingDeposit === undefined || wallet?.blocked} onPress={() => void initialize()} />}>
     <View style={{ gap: 16 }}>
       <Txt style={s.muted}>{currentBalance === undefined ? "Loading balance…" : `Wallet balance ${money(currentBalance)}`}</Txt>
       {shortfall > 0 && <Notice>Add at least {money(shortfall)} to cover this parcel.</Notice>}
       <Field label="Amount (₦)" value={amount} onChangeText={value => { edited.current = true; setAmount(value); }} keyboardType="number-pad" placeholder="5000" maxLength={12} editable={!restoring && !busy} style={w.amountInput} />
       {!!presets.length && <View style={s.wrap}>{presets.map(preset => <Pressable key={preset} accessibilityRole="radio" accessibilityLabel={money(preset)} accessibilityState={{ checked: parsedAmount === preset, disabled: restoring || busy }} disabled={restoring || busy} onPress={() => { edited.current = true; setAmount(String(preset)); }} style={({ pressed }) => [w.presetButton, parsedAmount === preset && w.presetButtonActive, (pressed || busy) && w.controlDimmed]}><Txt style={[w.presetText, parsedAmount === preset && w.presetTextActive]}>{money(preset)}</Txt></Pressable>)}</View>}
       {amount.trim() !== "" && parsedAmount === null ? <Txt accessibilityRole="alert" style={s.hint}>Enter a whole-naira amount between {money(minimum)} and {money(maximum)}.</Txt> : <Txt style={s.hint}>Secure checkout with Paystack.</Txt>}
+      {wallet?.blocked && <Notice tone="warning">Your wallet is under payment review. Contact support.</Notice>}
       {offline && <Notice tone="warning">Reconnect to add money.</Notice>}
     </View>
   </PresentationSheet>;
@@ -201,7 +211,7 @@ export function TopUpSheet({
   return <PresentationSheet title={title} onClose={close} containerStyle={sheetStyle} footer={<View style={{ gap: 8 }}>
     {payment ? <>
       <Button title={action === "checking" ? "Checking payment…" : screen === "pending" ? "Check again" : "Check payment"} variant="lime" busy={action === "checking"} disabled={busy || offline} onPress={() => void verify()} />
-      <Button title={action === "opening" ? "Opening checkout…" : "Return to checkout"} variant="ghost" busy={action === "opening"} disabled={busy || offline} onPress={() => void openCheckout(payment.url)} />
+      {!!payment.url && <Button title={action === "opening" ? "Opening checkout…" : "Return to checkout"} variant="ghost" busy={action === "opening"} disabled={busy || offline} onPress={() => void openCheckout(payment.url)} />}
     </> : <Button title="Try again" variant="lime" onPress={() => { setError(""); setScreen("amount"); }} />}
   </View>}>
     <View style={{ gap: 20 }}>

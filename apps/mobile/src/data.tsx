@@ -34,7 +34,7 @@ export interface PassengerData {
   bootstrapProfile: () => Promise<void>;
   completeActivation: () => Promise<void>;
   saveActivationName: (name: string) => Promise<void>;
-  requestPhoneVerification: (phone: string) => Promise<{ phone: string; resendAt: number; expiresAt: number; previewCode?: string }>;
+  requestPhoneVerification: (phone: string) => Promise<{ phone: string; resendAt: number; expiresAt: number; skipped?: boolean }>;
   confirmPhoneVerification: (code: string) => Promise<void>;
   updateParcelLocation: (shipmentId: string, input: { latitude: number; longitude: number; place: string }) => Promise<void>;
   updateContactDetails: (input: { email?: string; name?: string; image?: string }) => Promise<void>;
@@ -99,7 +99,7 @@ export function LiveDataProvider({ children }: React.PropsWithChildren) {
   const completeActivation = useMutation(api.accounts.completeActivation);
   const saveActivationName = useMutation(api.accounts.saveActivationName);
   const requestPhoneVerification = useAction(api.accounts.requestPhoneVerification);
-  const confirmPhoneVerification = useMutation(api.accounts.confirmPhoneVerification);
+  const confirmPhoneVerification = useAction(api.accounts.confirmPhoneVerification);
   const updateParcelLocation = useMutation(api.deliveries.updateLocation);
   const updateContactDetails = useMutation(api.accounts.updateContactDetails);
   const submitIdentity = useMutation(api.accounts.submitIdentity);

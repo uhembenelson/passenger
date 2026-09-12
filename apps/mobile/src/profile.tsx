@@ -152,7 +152,7 @@ export function Profile({
           onStepChange={setChangePasswordStep}
           onSuccess={() => {
             setChangePasswordStep(null);
-            showToast("Phone number verified.");
+            showToast(viewer.phoneVerificationEnabled === false ? "Phone number saved." : "Phone number verified.");
           }}
         />
       )}
@@ -424,7 +424,7 @@ function PersonalInformationView({
           onPress={onChangePassword}
           style={p.passwordRow}
         >
-          <Txt style={p.passwordRowText}>{viewer.phoneVerificationTime ? "Change verified phone number" : "Verify phone number"}</Txt>
+          <Txt style={p.passwordRowText}>{viewer.phoneVerificationEnabled === false ? "Change phone number" : viewer.phoneVerificationTime ? "Change verified phone number" : "Verify phone number"}</Txt>
           <ChevronRight size={18} color="#9CA3AF" />
         </Pressable>
         <View style={p.thinDivider} />
@@ -486,7 +486,8 @@ function ChangePasswordModal({
     setBusy(true);
     try {
       const result = await data.requestPhoneVerification(phone.trim());
-      setCode(result.previewCode ?? "");
+      if (result.skipped) { onSuccess(); return; }
+      setCode("");
       setCountdown(Math.max(0, Math.ceil((result.resendAt - Date.now()) / 1000)));
       onStepChange("otp");
     } catch (e) {
@@ -519,7 +520,8 @@ function ChangePasswordModal({
     setBusy(true);
     try {
       const result = await data.requestPhoneVerification(phone.trim());
-      setCode(result.previewCode ?? "");
+      if (result.skipped) { onSuccess(); return; }
+      setCode("");
       setCountdown(Math.max(0, Math.ceil((result.resendAt - Date.now()) / 1000)));
     } catch (e) {
       setError(errorMessage(e));
@@ -536,7 +538,7 @@ function ChangePasswordModal({
 
   return (
     <PresentationSheet
-      title={step === "phone" ? "Verify Phone Number" : "Enter verification code"}
+      title={step === "phone" ? (data.snapshot?.viewer?.phoneVerificationEnabled === false ? "Phone number" : "Verify phone number") : "Enter verification code"}
       onClose={onClose}
     >
       <View style={{ gap: 16 }}>
@@ -564,7 +566,7 @@ function ChangePasswordModal({
               {busy ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Txt style={p.greenButtonFullText}>Send OTP</Txt>
+                <Txt style={p.greenButtonFullText}>{data.snapshot?.viewer?.phoneVerificationEnabled === false ? "Save phone number" : "Send OTP"}</Txt>
               )}
             </Pressable>
           </View>
@@ -863,12 +865,12 @@ function AccountTierView({
       {/* Bottom Floating Upgrade Button */}
       {currentTier === "Tier 1" && viewer.verification !== "pending" && (
         <View style={tierStyles.footer}>
-          {!viewer.phoneVerificationTime ? <Notice tone="warning">Verify your phone number from Home before submitting identity evidence.</Notice> : null}
+          {(viewer.phoneVerificationEnabled !== false && !viewer.phoneVerificationTime) ? <Notice tone="warning">Verify your phone number from Home before submitting identity evidence.</Notice> : null}
           <Pressable
             accessibilityRole="button"
             onPress={() => setTier2ModalOpen(true)}
-            disabled={!viewer.phoneVerificationTime}
-            style={[tierStyles.greenPillButton, !viewer.phoneVerificationTime && { opacity: 0.5 }]}
+            disabled={(viewer.phoneVerificationEnabled !== false && !viewer.phoneVerificationTime)}
+            style={[tierStyles.greenPillButton, (viewer.phoneVerificationEnabled !== false && !viewer.phoneVerificationTime) && { opacity: 0.5 }]}
           >
             <Txt style={tierStyles.greenPillButtonText}>{viewer.verification === "rejected" ? "Resubmit identity" : "Verify my identity"}</Txt>
           </Pressable>

@@ -63,7 +63,7 @@ export function PassengerShell() {
     openForm("trip");
   };
   const closeForm = () => { setForm(null); setEditingShipment(undefined); setPrefill(undefined); setPrefillDraft(undefined); };
-  const phoneVerified = !!viewer.phoneVerificationTime;
+  const phoneReady = viewer.phoneVerificationEnabled === false || !!viewer.phoneVerificationTime;
   const mobileNavigation = <MobileNavigation page={page} onSelect={setPage} />;
   const selectedShipment = snapshot.shipments.find(item => item.id === selected);
   if (page === "notifications") return <SafeAreaView style={x.safe} edges={["top", "bottom"]}>
@@ -71,7 +71,7 @@ export function PassengerShell() {
   </SafeAreaView>;
   if (!desktop) {
     const mobileContent = page === "home"
-      ? (!phoneVerified || phoneVerificationCelebration
+      ? (!phoneReady || phoneVerificationCelebration
           ? <PhoneVerificationHome viewer={viewer} celebrating={phoneVerificationCelebration} navigation={mobileNavigation} onCelebrationChange={setPhoneVerificationCelebration} onFindTravellers={() => setPage("routes")} onScheduleTrip={openTripCreation} onOpenNotifications={() => setPage("notifications")} onSafety={() => setSafety(true)} />
           : <MobileHome
               viewer={viewer}

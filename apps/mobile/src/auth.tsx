@@ -90,6 +90,7 @@ export function AuthScreen() {
   const [mode, setMode] = useState<"signIn" | "signUp">(nextAuthMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
   const [resetCode, setResetCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
@@ -99,7 +100,7 @@ export function AuthScreen() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [screen, setScreen] = useState<"auth" | "privacy" | "forgot" | "reset">("auth");
+  const [screen, setScreen] = useState<"auth" | "privacy" | "forgot" | "reset" | "verify">("auth");
 
   const submit = async () => {
     setBusy(true);
@@ -111,10 +112,13 @@ export function AuthScreen() {
       if (password.trim().length === 0) throw new Error("Enter your password.");
       if (mode === "signUp" && !passwordMeetsRequirements(password)) throw new Error(PASSWORD_REQUIREMENTS_COPY);
       if (mode === "signUp" && !acceptedPolicy) throw new Error("Please agree to the privacy policy.");
-      await Promise.race([
-        signIn("password", { flow: mode, email: cleanEmail, password }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Creating your account is taking too long. Please check your connection and try again.")), AUTH_REQUEST_TIMEOUT_MS)),
-      ]);
+      const result = await signIn("password", { flow: mode, email: cleanEmail, password });
+      if (!result.signingIn) {
+        setEmail(cleanEmail);
+        setVerificationCode("");
+        setNotice(`We sent a verification code to ${cleanEmail}. Check your inbox and spam folder.`);
+        setScreen("verify");
+      }
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -175,9 +179,44 @@ export function AuthScreen() {
     }
   };
 
+  const verifyEmail = async (resend = false) => {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await signIn("password", {
+        flow: "email-verification",
+        email: email.trim().toLowerCase(),
+        ...(resend ? {} : { code: verificationCode.trim() }),
+      });
+      if (resend) {
+        setVerificationCode("");
+        setNotice("We sent a new verification code. Use the latest email.");
+      } else if (!result.signingIn) {
+        throw new Error("We could not verify your email. Request a new code and try again.");
+      }
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const isSignup = mode === "signUp";
   const passwordValid = passwordMeetsRequirements(password);
 
+  if (screen === "verify") return <AuthScaffold>
+    <AuthHeading title="Verify your email" />
+    <View style={a.formStack}>
+      <Txt style={a.noticeText}>Enter the code sent to {email}. It expires in 10 minutes.</Txt>
+      <AuthField label="Verification code" value={verificationCode} onChangeText={setVerificationCode} editable={!busy} autoCapitalize="none" autoCorrect={false} textContentType="oneTimeCode" />
+      {!!notice && <Txt style={a.noticeText}>{notice}</Txt>}
+      {!!error && <Txt accessibilityRole="alert" style={a.errorText}>{error}</Txt>}
+      <Button title="Verify email" onPress={() => void verifyEmail()} busy={busy} disabled={busy || !verificationCode.trim()} variant="lime" style={a.submitButton} />
+      <Button title="Send a new code" onPress={() => void verifyEmail(true)} disabled={busy} variant="secondary" />
+      <AuthLinkRow prompt="Need another email?" action="Back to log in" onPress={() => { if (busy) return; setScreen("auth"); setMode("signIn"); nextAuthMode = "signIn"; setError(""); setNotice(""); }} />
+    </View>
+  </AuthScaffold>;
   if (screen === "privacy") return <PrivacyPolicyScreen onBack={() => setScreen("auth")} />;
   if (screen === "forgot") return <AuthScaffold>
     <AuthHeading title="Reset your password" />

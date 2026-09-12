@@ -12,7 +12,7 @@ export function IdentityVerificationCard({ viewer }: { viewer: Person }) {
   const [open, setOpen] = useState(false);
   const pending = viewer.verification === "pending";
   const rejected = viewer.verification === "rejected";
-  const phoneRequired = !viewer.phoneVerificationTime;
+  const phoneRequired = (viewer.phoneVerificationEnabled !== false && !viewer.phoneVerificationTime);
   const action = pending ? "View review status" : phoneRequired ? "Verify phone first" : rejected ? "Resubmit identity" : "Verify identity";
   const close = () => setOpen(false);
   return <>

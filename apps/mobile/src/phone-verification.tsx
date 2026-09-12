@@ -55,8 +55,9 @@ export function PhoneVerificationHome(props: Props) {
     try {
       const trimmedPhone = phone.trim();
       const result = await data.requestPhoneVerification(trimmedPhone);
+      if (result.skipped) { setFlow("home"); onCelebrationChange(false); return; }
       setSubmittedPhone(result.phone || trimmedPhone);
-      setCode(result.previewCode ?? "");
+      setCode("");
       setResendAt(result.resendAt);
       setFlow("code");
       requestAnimationFrame(() => otpInputRef.current?.focus());

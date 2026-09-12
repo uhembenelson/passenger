@@ -33,9 +33,8 @@ export function ParcelMap({ shipment, width, height, onRouteKind }: { shipment: 
 
       {current.failed ? <View style={m.placeholder}>
         <Txt style={m.title}>Map unavailable</Txt>
-        <Txt style={m.caption}>{"We couldn't load the map. Your parcel updates are still available."}</Txt>
         <Button small variant="ghost" title="Retry map" onPress={() => setAttempt(value => value + 1)} />
-      </View> : current.url ? <Image key={current.url} source={{ uri: current.url }} style={m.image} resizeMode="stretch" accessibilityLabel={`Parcel journey map from ${origin} to ${destination}${last ? `, last reported near ${latestLocationLabel || 'the marked location'}` : ', awaiting a GPS check-in'}`} onError={() => setState({ key, failed: true })} /> : <View style={m.placeholder}><ActivityIndicator color={semantic.color.brand.primary} /><Txt style={m.caption}>Loading parcel map…</Txt></View>}
+      </View> : current.url ? <Image key={current.url} source={{ uri: current.url }} style={m.image} resizeMode="stretch" accessibilityLabel={`Parcel journey map from ${origin} to ${destination}${last ? `, last reported near ${latestLocationLabel || 'the marked location'}` : ', awaiting a GPS check-in'}`} onError={() => setState({ key, failed: true })} /> : <View style={m.placeholder}><ActivityIndicator accessibilityLabel="Loading parcel map" color={semantic.color.brand.primary} /></View>}
   </View>;
 }
 
@@ -43,6 +42,5 @@ const m = StyleSheet.create({
   map: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: semantic.color.background.app },
   image: { width: '100%', height: '100%' },
   title: { fontFamily: fontFamily.semibold, fontSize: 16, color: semantic.color.text.primary },
-  caption: { fontSize: 12, lineHeight: 18, color: semantic.color.text.tertiary, textAlign: 'center' },
   placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 12 },
 });

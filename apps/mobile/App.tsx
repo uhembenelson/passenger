@@ -55,8 +55,11 @@ function LiveRoot() {
 class AppErrorBoundary extends React.Component<React.PropsWithChildren, { error: string | null }> {
   state: { error: string | null } = { error: null };
   static getDerivedStateFromError(error: unknown) { return { error: errorMessage(error) }; }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("Passenger could not load.", error, info.componentStack);
+  }
   render() {
-    if (this.state.error) return <Centered title="Let's get you reconnected." detail="We couldn't load your account. No local success has been assumed. Check your connection and service configuration, then try again."><Notice tone="error">{this.state.error}</Notice><Button title="Try again" onPress={() => this.setState({ error: null })} /></Centered>;
+    if (this.state.error) return <Centered title="Let's get you reconnected." detail="Something went wrong. Please try again."><Button title="Try again" onPress={() => this.setState({ error: null })} /></Centered>;
     return this.props.children;
   }
 }

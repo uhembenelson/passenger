@@ -15,10 +15,9 @@ export function ParcelTracking({ shipment, onBack, onProblem }: { shipment: Ship
   const delivered = shipment.status === "delivered";
   const milestones = [
     { title: "Picked up", time: shipment.handoverAt, done: !!shipment.handoverAt || ["in_transit", "delivered"].includes(shipment.status) },
-    { title: "Location reported", time: shipment.latestLocationAt, done: !!shipment.latestLocationAt },
     { title: "Delivered", time: shipment.deliveredAt, done: delivered },
   ];
-  const status = delivered ? "Parcel delivered" : shipment.status === "in_transit" ? "Parcel on the way" : shipment.status === "cancelled" ? "Delivery cancelled" : "Awaiting pickup";
+  const status = delivered ? "Delivered" : shipment.status === "in_transit" ? "On the way" : shipment.status === "cancelled" ? "Delivery cancelled" : "Awaiting pickup";
   return <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onBack}>
     <View style={p.screen} onLayout={event => {
       const { width, height } = event.nativeEvent.layout;
@@ -26,37 +25,32 @@ export function ParcelTracking({ shipment, onBack, onProblem }: { shipment: Ship
     }}>
       <ParcelMap shipment={shipment} width={size.width} height={size.height} onRouteKind={setRoadRoute} />
       <View pointerEvents="box-none" style={[p.top, { top: insets.top + 12 }]}>
-        <View style={p.header}>
-          <View style={p.back}><BackButton accessibilityLabel="Close parcel map" onPress={onBack} /></View>
-          <View style={p.titlePill}><Txt style={p.title}>Track your parcel</Txt><Txt style={p.small}>{shipment.reference}</Txt></View>
-        </View>
+        <View style={p.back}><BackButton accessibilityLabel="Close parcel map" onPress={onBack} /></View>
         <View style={p.routeCard}>
           <View style={p.routeRow}><View style={[p.dot, p.pickupDot]} /><Txt style={p.label}>Pickup</Txt><Txt numberOfLines={1} style={p.city}>{shipment.origin}</Txt></View>
           <View style={p.routeRow}><View style={[p.dot, p.destinationDot]} /><Txt style={p.label}>Destination</Txt><Txt numberOfLines={1} style={p.city}>{shipment.destination}</Txt></View>
-          <Txt style={p.small}>Approximate city locations</Txt>
         </View>
       </View>
       <View style={[p.panel, { bottom: insets.bottom + 36, maxHeight: expanded ? '58%' : '34%' }]}>
         <Pressable accessibilityRole="button" accessibilityLabel={expanded ? "Collapse parcel details" : "Expand parcel details"} accessibilityState={{ expanded }} onPress={() => setExpanded(value => !value)} style={p.panelHeader}>
-          <View style={p.flex}><Txt style={p.title}>{status}</Txt><Txt style={p.small}>{expanded ? 'Hide journey details' : 'View journey details'}</Txt></View>
+          <View style={p.flex}><Txt style={p.title}>{status}</Txt></View>
           {expanded ? <ChevronDown size={22} color={semantic.color.text.primary} /> : <ChevronUp size={22} color={semantic.color.text.primary} />}
         </Pressable>
         <ScrollView contentContainerStyle={p.panelContent}>
           <View style={p.locationRow}><View style={[p.dot, p.locationDot]} /><View style={p.flex}>
-            <Txt style={p.label}>Last reported location</Txt>
-            <Txt style={p.location}>{shipment.latestLocationLabel || 'Waiting for a location check-in'}</Txt>
-            {shipment.latestLocationAt ? <Txt style={p.small}>Updated {timeDate(shipment.latestLocationAt)}</Txt> : null}
+            <Txt style={p.location}>{shipment.latestLocationLabel || 'Awaiting location'}</Txt>
+            {shipment.latestLocationAt ? <Txt style={p.small}>Last check-in {timeDate(shipment.latestLocationAt)}</Txt> : null}
           </View></View>
           {expanded ? <>
-            <Txt style={p.small}>Location updates when the traveller checks in.</Txt>
-            <Txt style={p.small}>{roadRoute ? 'Suggested road route. The actual route may differ.' : 'The line connects the cities, not the actual route travelled.'}</Txt>
+            <Txt style={p.small}>{roadRoute ? 'Suggested route · Approximate city pins' : 'City connection only · Approximate pins'}</Txt>
             <LocationReportingStatus shipment={shipment} viewerRole="sender" />
-            {shipment.latestSafetyCheckInAt ? <Txt style={p.reportingCopy}>The traveller confirmed they and your parcel are safe · {timeDate(shipment.latestSafetyCheckInAt)}</Txt> : null}
+            {shipment.latestSafetyCheckInAt ? <Txt style={p.reportingCopy}>Safety confirmed · {timeDate(shipment.latestSafetyCheckInAt)}</Txt> : null}
             {milestones.map(item => <View key={item.title} style={p.milestone}>
               {item.done ? <Check size={18} color={semantic.color.brand.primary} /> : <Clock3 size={18} color={semantic.color.text.tertiary} />}
               <View style={p.flex}><Txt style={p.location}>{item.title}</Txt><Txt style={p.small}>{item.time ? timeDate(item.time) : item.done ? 'Confirmed' : 'Pending'}</Txt></View>
             </View>)}
-            <Button title="Something went wrong" small variant="ghost" onPress={onProblem} />
+            <Txt style={p.small}>{shipment.reference}</Txt>
+            <Button title="Report a problem" small variant="ghost" onPress={onProblem} />
           </> : null}
         </ScrollView>
       </View>
@@ -94,13 +88,11 @@ function clockTime(timestamp: number) {
 
 const p = StyleSheet.create({
   screen: { flex: 1, backgroundColor: semantic.color.background.app },
-  top: { position: 'absolute', left: 16, right: 16, maxWidth: 460, gap: 12 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  top: { position: 'absolute', left: 16, right: 16, maxWidth: 460, gap: 12, flexDirection: 'row', alignItems: 'flex-start' },
   back: { backgroundColor: semantic.color.background.surface, borderRadius: 24, elevation: 3 },
-  titlePill: { backgroundColor: semantic.color.background.surface, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10 },
   title: { fontSize: 16, lineHeight: 22, fontFamily: fontFamily.semibold, color: semantic.color.text.primary },
   small: { fontSize: 11, lineHeight: 16, color: semantic.color.text.tertiary },
-  routeCard: { backgroundColor: semantic.color.background.surface, borderRadius: 20, padding: 14, gap: 8, elevation: 3, shadowColor: '#172c24', shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 3 } },
+  routeCard: { flex: 1, backgroundColor: semantic.color.background.surface, borderRadius: 20, padding: 14, gap: 8, elevation: 3, shadowColor: '#172c24', shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 3 } },
   routeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dot: { width: 10, height: 10, borderRadius: 5 },
   pickupDot: { backgroundColor: '#437966' },

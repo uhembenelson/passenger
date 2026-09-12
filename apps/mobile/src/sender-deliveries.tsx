@@ -1,6 +1,9 @@
 import React, { memo, useCallback, useMemo, useState } from "react";
 import { FlatList, Linking, Pressable, StyleSheet, View } from "react-native";
 import type { ListRenderItem } from "react-native";
+import { useQuery } from "convex/react";
+import { api } from "@passenger/backend/convex/_generated/api";
+import type { Id } from "@passenger/backend/convex/_generated/dataModel";
 import { X } from "lucide-react-native";
 import { Inbox } from "./social";
 import { shipmentActions } from "@passenger/core";
@@ -12,7 +15,7 @@ import { ShipmentForm } from "./forms";
 import { NeedsActionSheet } from "./needs-action-sheet";
 import { receiverCodeMessage, receiverCodeSmsUrl, receiverCodeWhatsAppUrl } from "./receiver-code-share";
 import { ReceiverCodeSheet } from "./receiver-code-sheet";
-import { Badge, Empty, JourneyRouteCard, Notice, Status, Txt, errorMessage, fontFamily, timeDate } from "./ui";
+import { Badge, ContentSkeleton, Empty, JourneyRouteCard, Notice, Sheet, Status, Txt, errorMessage, fontFamily, timeDate } from "./ui";
 
 type DeliveryTab = "attention" | "all";
 type FormState = { shipment?: Shipment };
@@ -27,7 +30,7 @@ export function NotificationsScreen({ navigation, notice: externalNotice, onNoti
   const data = usePassenger();
   const { snapshot } = data;
   const viewer = snapshot?.viewer;
-  if (!viewer) return null;
+
   const [tab, setTab] = useState<DeliveryTab>("attention");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [receiverCodeId, setReceiverCodeId] = useState<string | null>(null);
@@ -48,11 +51,12 @@ export function NotificationsScreen({ navigation, notice: externalNotice, onNoti
   const tripsById = useMemo(() => new Map((snapshot?.trips ?? []).map(trip => [trip.id, trip])), [snapshot?.trips]);
   const shipmentsById = useMemo(() => new Map((snapshot?.shipments ?? []).map(shipment => [shipment.id, shipment])), [snapshot?.shipments]);
   const deliveries = useMemo(() => (snapshot?.shipments ?? [])
-    .filter(shipment => viewer?.id && (shipment.senderId === viewer.id || shipment.travellerId === viewer.id))
+    .filter(shipment => viewer?.id && (shipment.senderId === viewer?.id || shipment.travellerId === viewer?.id))
     .sort((a, b) => b.updatedAt - a.updatedAt), [snapshot?.shipments, viewer?.id]);
-  const attention = useMemo(() => deliveries.filter(shipment => needsAction(shipment, viewer.id, pendingOffersByShipment.get(shipment.id) ?? 0)), [deliveries, pendingOffersByShipment, viewer.id]);
+  const attention = useMemo(() => deliveries.filter(shipment => needsAction(shipment, viewer?.id ?? "", pendingOffersByShipment.get(shipment.id) ?? 0)), [deliveries, pendingOffersByShipment, viewer?.id]);
 
-  const selected = selectedId ? shipmentsById.get(selectedId) : undefined;
+  const linkedDelivery = useQuery(api.notifications.delivery, viewer && selectedId && !shipmentsById.has(selectedId) ? { shipmentId: selectedId as Id<"shipments"> } : "skip");
+  const selected = selectedId ? shipmentsById.get(selectedId) ?? linkedDelivery : undefined;
   const receiverCodeShipment = receiverCodeId ? shipmentsById.get(receiverCodeId) : undefined;
   const visible = tab === "attention" ? attention : [];
   const empty = emptyState(tab);
@@ -84,14 +88,16 @@ export function NotificationsScreen({ navigation, notice: externalNotice, onNoti
 
   const renderDelivery: ListRenderItem<Shipment> = useCallback(({ item: shipment }) => {
     const trip = shipment.tripId ? tripsById.get(shipment.tripId) : undefined;
-    const sender = shipment.senderId === viewer.id;
+    const sender = shipment.senderId === viewer?.id;
     const pendingOffers = pendingOffersByShipment.get(shipment.id) ?? 0;
     const next = nextStep(shipment, sender, pendingOffers);
     const onPress = tab === "attention" && sender && shipment.status === "in_transit"
       ? () => openReceiverCodeSheet(shipment)
       : () => setSelectedId(shipment.id);
     return <DeliveryListItem shipment={shipment} tripDepartureAt={trip?.departureAt} sender={sender} next={next} onPress={onPress} />;
-  }, [openReceiverCodeSheet, pendingOffersByShipment, tab, tripsById, viewer.id]);
+  }, [openReceiverCodeSheet, pendingOffersByShipment, tab, tripsById, viewer?.id]);
+
+  if (!viewer) return null;
 
   const listHeader = <>
       {data.offline ? <View style={d.notice}><Notice tone="warning">You're offline. Showing the latest received updates; reconnect before taking action.</Notice></View> : null}
@@ -125,6 +131,9 @@ export function NotificationsScreen({ navigation, notice: externalNotice, onNoti
       onScroll={event => setHeaderCollapsed(event.nativeEvent.contentOffset.y > 28)}
     />
     {navigation}
+    {selectedId && !selected ? <Sheet title="Delivery update" onClose={() => setSelectedId(null)}>
+      {linkedDelivery === null ? <Notice>This delivery is no longer available to your account.</Notice> : data.offline ? <Notice tone="warning">Reconnect to load this delivery.</Notice> : <ContentSkeleton rows={3} />}
+    </Sheet> : null}
     {selected && tab === "attention" ? <NeedsActionSheet
       key={`${viewer.id}:${selected.id}`}
       shipment={selected}
