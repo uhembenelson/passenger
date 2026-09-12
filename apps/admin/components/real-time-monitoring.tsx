@@ -1,25 +1,8 @@
 import { useState, useEffect } from "react";
 import { CheckCheck, MoreVertical, X } from "lucide-react";
+import { DashboardSnapshot, money } from "@passenger/core";
 
-type Delivery = {
-  id: string;
-  liveLocation: string;
-  route: string;
-  fee: string;
-  sender: string;
-  traveler: string;
-  checkIns: number;
-};
-
-const mockDeliveries: Delivery[] = [
-  { id: "1", liveLocation: "Keffi, Nasarawa", route: "Jos -> Abuja", fee: "N2,000", sender: "John Doe", traveler: "John Doe", checkIns: 2 },
-  { id: "2", liveLocation: "Keffi, Nasarawa", route: "Jos -> Abuja", fee: "N2,000", sender: "John Doe", traveler: "John Doe", checkIns: 2 },
-  { id: "3", liveLocation: "Keffi, Nasarawa", route: "Jos -> Abuja", fee: "N2,000", sender: "John Doe", traveler: "John Doe", checkIns: 2 },
-  { id: "4", liveLocation: "Keffi, Nasarawa", route: "Jos -> Abuja", fee: "N2,000", sender: "John Doe", traveler: "John Doe", checkIns: 2 },
-  { id: "5", liveLocation: "Keffi, Nasarawa", route: "Jos -> Abuja", fee: "N2,000", sender: "John Doe", traveler: "John Doe", checkIns: 2 },
-];
-
-export function RealTimeMonitoring() {
+export function RealTimeMonitoring({ snapshot }: { snapshot?: DashboardSnapshot }) {
   const [openMenu, setOpenMenu] = useState<{ id: string; type: "sender" | "traveler" | "checkin" } | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -42,6 +25,10 @@ export function RealTimeMonitoring() {
     setToastMessage(`${actionLabel} for delivery #${deliveryId} initiated.`);
   };
 
+  const activeUsersCount = snapshot ? (snapshot.people?.filter(p => !p.suspended).length ?? 0) : 15;
+  const inTransitShipments = snapshot?.shipments?.filter(s => s.status === "in_transit" || s.status === "funded") ?? [];
+  const ongoingCount = snapshot ? inTransitShipments.length : 5;
+
   return (
     <div className="figma-monitoring-page">
       <div className="figma-monitoring-header">
@@ -51,11 +38,11 @@ export function RealTimeMonitoring() {
       <div className="figma-monitoring-stats">
         <div className="figma-monitoring-stat-card">
           <span className="stat-label">Active Users</span>
-          <span className="stat-value">15</span>
+          <span className="stat-value">{activeUsersCount}</span>
         </div>
         <div className="figma-monitoring-stat-card">
           <span className="stat-label">Ongoing Deliveries</span>
-          <span className="stat-value">5</span>
+          <span className="stat-value">{ongoingCount}</span>
         </div>
       </div>
 
@@ -74,73 +61,89 @@ export function RealTimeMonitoring() {
               </tr>
             </thead>
             <tbody>
-              {mockDeliveries.map((delivery) => (
-                <tr key={delivery.id}>
-                  <td>{delivery.liveLocation}</td>
-                  <td>{delivery.route}</td>
-                  <td>{delivery.fee}</td>
-                  <td>
-                    <div className="table-cell-with-action">
-                      <span>{delivery.sender}</span>
-                      <button
-                        className="action-btn"
-                        aria-label={`Options for sender of delivery ${delivery.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenMenu(openMenu?.id === delivery.id && openMenu?.type === "sender" ? null : { id: delivery.id, type: "sender" });
-                        }}
-                      >
-                        <MoreVertical size={16} />
-                      </button>
-                      {openMenu?.id === delivery.id && openMenu?.type === "sender" && (
-                        <div className="action-menu" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={() => handleAction("Contact Sender", delivery.id)}>Contact Sender</button>
+              {snapshot ? (
+                inTransitShipments.length > 0 ? (
+                  inTransitShipments.map((s) => (
+                    <tr key={s.id}>
+                      <td>{s.latestLocationLabel || `${s.origin} (In transit)`}</td>
+                      <td>{s.origin} → {s.destination}</td>
+                      <td>{money(s.feeNaira)}</td>
+                      <td>
+                        <div className="table-cell-with-action">
+                          <span>{s.senderName}</span>
+                          <button
+                            className="action-btn"
+                            aria-label={`Options for sender of delivery ${s.reference || s.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenu(openMenu?.id === s.id && openMenu?.type === "sender" ? null : { id: s.id, type: "sender" });
+                            }}
+                          >
+                            <MoreVertical size={16} />
+                          </button>
+                          {openMenu?.id === s.id && openMenu?.type === "sender" && (
+                            <div className="action-menu" onClick={(e) => e.stopPropagation()}>
+                              <button onClick={() => handleAction("Contact Sender", s.reference || s.id)}>Contact Sender</button>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <div className="table-cell-with-action">
-                      <span>{delivery.traveler}</span>
-                      <button
-                        className="action-btn"
-                        aria-label={`Options for traveler of delivery ${delivery.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenMenu(openMenu?.id === delivery.id && openMenu?.type === "traveler" ? null : { id: delivery.id, type: "traveler" });
-                        }}
-                      >
-                        <MoreVertical size={16} />
-                      </button>
-                      {openMenu?.id === delivery.id && openMenu?.type === "traveler" && (
-                        <div className="action-menu" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={() => handleAction("Contact Traveler", delivery.id)}>Contact Traveler</button>
+                      </td>
+                      <td>
+                        <div className="table-cell-with-action">
+                          <span>{s.travellerName || "Assigned traveller"}</span>
+                          <button
+                            className="action-btn"
+                            aria-label={`Options for traveler of delivery ${s.reference || s.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenu(openMenu?.id === s.id && openMenu?.type === "traveler" ? null : { id: s.id, type: "traveler" });
+                            }}
+                          >
+                            <MoreVertical size={16} />
+                          </button>
+                          {openMenu?.id === s.id && openMenu?.type === "traveler" && (
+                            <div className="action-menu" onClick={(e) => e.stopPropagation()}>
+                              <button onClick={() => handleAction("Contact Traveler", s.reference || s.id)}>Contact Traveler</button>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <div className="table-cell-with-action">
-                      <span>{delivery.checkIns}</span>
-                      <button
-                        className="action-btn"
-                        aria-label={`Options for check-ins of delivery ${delivery.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenMenu(openMenu?.id === delivery.id && openMenu?.type === "checkin" ? null : { id: delivery.id, type: "checkin" });
-                        }}
-                      >
-                        <MoreVertical size={16} />
-                      </button>
-                      {openMenu?.id === delivery.id && openMenu?.type === "checkin" && (
-                        <div className="action-menu action-menu-right" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={() => handleAction("Send Notification", delivery.id)}>Send Notification</button>
+                      </td>
+                      <td>
+                        <div className="table-cell-with-action">
+                          <span>{s.locationCheckInCount ?? 0}</span>
+                          <button
+                            className="action-btn"
+                            aria-label={`Options for check-ins of delivery ${s.reference || s.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenu(openMenu?.id === s.id && openMenu?.type === "checkin" ? null : { id: s.id, type: "checkin" });
+                            }}
+                          >
+                            <MoreVertical size={16} />
+                          </button>
+                          {openMenu?.id === s.id && openMenu?.type === "checkin" && (
+                            <div className="action-menu action-menu-right" onClick={(e) => e.stopPropagation()}>
+                              <button onClick={() => handleAction("Send Notification", s.reference || s.id)}>Send Notification</button>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: "center", padding: "2rem", color: "#666" }}>
+                      No deliveries currently in transit.
+                    </td>
+                  </tr>
+                )
+              ) : (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: "center", padding: "2rem", color: "#666" }}>
+                    Loading real-time monitoring data…
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -158,3 +161,4 @@ export function RealTimeMonitoring() {
     </div>
   );
 }
+

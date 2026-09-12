@@ -14,11 +14,12 @@
     "dev:backend": "bun run sync:public-env && bun scripts/dev.ts backend",
     "dev:check": "bun run sync:public-env && bun scripts/dev.ts --check",
     "typecheck": "bun run --filter '@passenger/*' typecheck",
+    "check:no-emoji": "bun scripts/check-no-emoji.ts",
     "test": "bun test scripts && bun run --filter @passenger/core test && bun run --filter @passenger/backend test",
     "build:admin": "bun run sync:public-env && bun run --filter @passenger/admin build",
     "build:website": "bun run sync:public-env && bun run --filter @passenger/website build",
     "export:mobile": "bun run sync:public-env && bun run --filter @passenger/mobile export:web",
-    "check": "bun run typecheck && bun run test",
+    "check": "bun run check:no-emoji && bun run typecheck && bun run test",
     "test:e2e": "playwright test"
   },
   "devDependencies": { "typescript": "~6.0.3", "@types/bun": "^1.3.0", "@playwright/test": "1.63.0" }

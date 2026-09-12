@@ -22,7 +22,7 @@ export function ReducedMotionHero() {
             asChild
             className="h-12 px-7 rounded-full bg-[#1F2937] hover:bg-[#111827] text-white font-medium text-base shadow-sm"
           >
-            <a href="#calculator">Send something</a>
+            <a href="#senders-travellers">Send something</a>
           </Button>
 
           <Button
@@ -34,7 +34,7 @@ export function ReducedMotionHero() {
           </Button>
         </div>
 
-        {/* 3-Step Static Accessible Narrative */}
+        {/* Static accessible narrative */}
         <div className="mt-16 pt-12 border-t border-[#E5E7EB] grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
           <div className="p-5 rounded-2xl bg-white border border-[#E5E7EB]/80 shadow-xs flex flex-col gap-3">
             <div className="w-10 h-10 rounded-xl bg-[#F5F4F7] text-[#1F2937] flex items-center justify-center">
@@ -42,7 +42,7 @@ export function ReducedMotionHero() {
             </div>
             <div>
               <span className="text-xs font-semibold text-[#7A7F87] uppercase tracking-wider">
-                1. Package
+                Package
               </span>
               <h3 className="text-base font-semibold text-[#1F2937] mt-0.5">
                 Something needs to go
@@ -59,7 +59,7 @@ export function ReducedMotionHero() {
             </div>
             <div>
               <span className="text-xs font-semibold text-[#27AB6B] uppercase tracking-wider">
-                2. Traveller
+                Traveller
               </span>
               <h3 className="text-base font-semibold text-[#1F2937] mt-0.5">
                 Already going your way
@@ -76,7 +76,7 @@ export function ReducedMotionHero() {
             </div>
             <div>
               <span className="text-xs font-semibold text-[#248A56] uppercase tracking-wider">
-                3. Delivered
+                Delivered
               </span>
               <h3 className="text-base font-semibold text-[#1F2937] mt-0.5">
                 Arrives safely

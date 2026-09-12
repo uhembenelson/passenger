@@ -1,0 +1,15 @@
+{
+  "provider": "Azure OpenAI / Azure AI Foundry",
+  "deployment": "gpt-image-2-1",
+  "method": "Existing azure_imagegen.py launcher and bundled imagegen CLI generate-batch",
+  "quality": "high",
+  "size": "1536x1024",
+  "prompts": "prompts.jsonl",
+  "processing": "Resized to 1152x768 WebP at quality 88. Opaque backgrounds preserved. No text baked into images.",
+  "assets": [
+    "assets/send-love-home.webp",
+    "assets/trip-could-pay.webp",
+    "assets/back-to-campus.webp"
+  ],
+  "attachments": "attachments.json"
+}

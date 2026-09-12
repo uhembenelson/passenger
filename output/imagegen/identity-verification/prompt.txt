@@ -1,0 +1,7 @@
+Use case: stylized-concept.
+Asset type: compact identity verification illustration for the Passenger mobile app.
+Subject: one thick rounded identity card standing at a slight three-quarter angle, with an abstract embossed head-and-shoulders silhouette on its left, two short recessed non-text bars on its right, and a small magnifying glass resting in front of the lower right corner. Communicates presenting an ID for review, not already approved.
+Style: refined soft 3D editorial illustration, rounded ceramic forms, lightly frosted glass details, soft bevels, calm trustworthy travel-service aesthetic. Palette: warm ivory #F8F7F2, sage #DDE8D5, forest green #263B2E, fresh green #34D186, tiny dusty blush #EADCDC accent. Use sage for card edges so it separates cleanly from white.
+Composition: one centered self-contained object group occupying the middle 72 percent of a square canvas, ample clean margin, gentle diffuse studio lighting. Clear silhouette at 80 pixels.
+Background: pure solid white #FFFFFF, no floor, no cast shadow, no background gradient.
+Avoid: real personal information, text, letters, numbers, flags, logos, watermarks, checkmarks, approval badges, sparkles, emoji, bright outlines, extra objects.

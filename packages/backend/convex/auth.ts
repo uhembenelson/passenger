@@ -2,7 +2,6 @@ import { Email } from "@convex-dev/auth/providers/Email";
 import { Password } from "@convex-dev/auth/providers/Password";
 import { convexAuth } from "@convex-dev/auth/server";
 import { ConvexError } from "convex/values";
-import { normalizePhone } from "@passenger/core";
 import type { DataModel } from "./_generated/dataModel";
 import { renderResetPasswordEmail, sendBrandedEmail } from "./emails";
 
@@ -40,12 +39,8 @@ const PassengerPassword = Password<DataModel>({
       return { email, subject: email, name: "Passenger member", phone: "+2340000000000", verification: "required" as const, joinedAt: Date.now() };
     }
 
-    const name = String(params.name ?? "").trim();
-    if (!name || name.length > 120) throw new ConvexError("Name must be 1–120 characters.");
-    let phone: string;
-    try { phone = normalizePhone(String(params.phone ?? "")); }
-    catch { throw new ConvexError("Enter a valid phone number."); }
-    return { email, subject: email, name, phone, verification: "required" as const, joinedAt: Date.now() };
+    const name = email.split("@")[0]!.replace(/[._-]+/g, " ").trim().slice(0, 120) || "Passenger member";
+    return { email, subject: email, name, phone: "+2340000000000", verification: "required" as const, joinedAt: Date.now() };
   },
   validatePasswordRequirements(password) {
     if (password.length < 10 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {

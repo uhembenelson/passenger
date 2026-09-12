@@ -1,0 +1,23 @@
+[
+  {
+    "title": "Send a little love home",
+    "promotionId": "px715q4ep2v8gn2071w0jbh8sn8e84tv",
+    "storageId": "kg2907mnwrwbgxzmjz7t99g5v58e9she",
+    "imageUrl": "https://mellow-ox-83.convex.cloud/api/storage/a1baa3c7-d386-4804-915d-4bc590f0d0b6",
+    "file": "output/imagegen/promotions/assets/send-love-home.webp"
+  },
+  {
+    "title": "Your next trip could pay",
+    "promotionId": "px76dzpaqjgv6mg8v4qnf9m7yx8e8n3x",
+    "storageId": "kg28rh88nmkd0yc9pppazf8a298e8ewc",
+    "imageUrl": "https://mellow-ox-83.convex.cloud/api/storage/89cc78a2-7785-4dd7-b265-4c46e9324bb3",
+    "file": "output/imagegen/promotions/assets/trip-could-pay.webp"
+  },
+  {
+    "title": "Back to campus, bag by bag",
+    "promotionId": "px7d5j3wk6kk12wvjb0e4gammx8e8nb0",
+    "storageId": "kg22d42b8x9yzg4e78wbdzkn0x8e8kk7",
+    "imageUrl": "https://mellow-ox-83.convex.cloud/api/storage/074f26bf-7139-4758-b06a-f5b61d12449c",
+    "file": "output/imagegen/promotions/assets/back-to-campus.webp"
+  }
+]

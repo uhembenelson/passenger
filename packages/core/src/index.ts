@@ -7,10 +7,10 @@ export type LocationCheckInState = "up_to_date" | "due_soon" | "overdue" | "comp
 export type WalletTransactionKind = "top_up" | "parcel_hold" | "parcel_refund" | "payout";
 
 export interface WalletTransaction { id: string; userId: string; kind: WalletTransactionKind; amountNaira: number; reference: string; shipmentId?: string; createdAt: number; note: string; }
-export interface Person { id: string; name: string; phone: string; email?: string; image?: string; tier?: string; phoneVerificationTime?: number; verification: VerificationStatus; role: "member" | "admin" | "compliance"; joinedAt: number; suspended?: boolean; suspensionReason?: string; mustChangePassword?: boolean; identityNote?: string; identitySubmittedAt?: number; documentType?: DocumentType; identityEvidenceIds?: string[]; rating?: number; reviewCount?: number; successfulDeliveries?: number; walletBalanceNaira?: number; bvn?: string; residenceState?: string; residenceLga?: string; residenceAddress?: string; streetPhotoUrl?: string; housePhotoUrl?: string; }
+export interface Person { id: string; name: string; phone: string; email?: string; image?: string; tier?: string; phoneVerificationTime?: number; activationDestination?: "name" | "routes"; verification: VerificationStatus; role: "member" | "admin" | "compliance"; joinedAt: number; suspended?: boolean; suspensionReason?: string; mustChangePassword?: boolean; identityNote?: string; identitySubmittedAt?: number; documentType?: DocumentType; identityEvidenceIds?: string[]; rating?: number; reviewCount?: number; successfulDeliveries?: number; walletBalanceNaira?: number; bvn?: string; residenceState?: string; residenceLga?: string; residenceAddress?: string; streetPhotoUrl?: string; housePhotoUrl?: string; }
 export interface Trip { id: string; travellerId: string; travellerName: string; origin: string; destination: string; stops?: string[]; departureAt: number; arrivalAt?: number; capacityKg: number; reservedKg?: number; legReservedKg?: number[]; acceptedCategories?: string[]; maxParcelWeightKg?: number; handlingNotes?: string; verified: boolean; status?: "active" | "cancelled" | "completed"; }
 export interface FeeQuote { grossNaira: number; grossKobo: number; platformFeeKobo: number; travellerNetKobo: number; platformFeePercent: 10; }
-export interface Shipment { id: string; reference: string; senderId: string; senderName: string; travellerId?: string; travellerName?: string; origin: string; destination: string; description: string; category: string; weightKg: number; valueNaira: number; feeNaira: number; receiverName: string; receiverPhone: string; status: ShipmentStatus; paymentStatus: PaymentStatus; createdAt: number; updatedAt: number; tripId?: string; pickupInstructions?: string; dropoffInstructions?: string; readyAt?: number; preferredPickupAt?: number; pickupFlexBeforeMinutes?: number; pickupFlexAfterMinutes?: number; deliveryDeadline?: number; evidenceIds?: string[]; safetyConsent?: boolean; reviewNote?: string; payByAt?: number; handoverAt?: number; deliveredAt?: number; latestLatitude?: number; latestLongitude?: number; latestLocationLabel?: string; latestLocationAt?: number; locationCheckInCount?: number; locationCheckInTarget?: number; locationCheckInRemaining?: number; missedLocationCheckIns?: number; nextLocationCheckInAt?: number; locationCheckInState?: LocationCheckInState; disputeUntil?: number; exception?: string; cancellationReason?: string; refundApproved?: boolean; releaseApproved?: boolean; quote?: FeeQuote; }
+export interface Shipment { id: string; reference: string; senderId: string; senderName: string; senderVerified?: boolean; travellerId?: string; travellerName?: string; origin: string; destination: string; description: string; category: string; weightKg: number; valueNaira: number; feeNaira: number; receiverName: string; receiverPhone: string; status: ShipmentStatus; paymentStatus: PaymentStatus; createdAt: number; updatedAt: number; tripId?: string; pickupInstructions?: string; dropoffInstructions?: string; readyAt?: number; preferredPickupAt?: number; pickupFlexBeforeMinutes?: number; pickupFlexAfterMinutes?: number; deliveryDeadline?: number; evidenceIds?: string[]; safetyConsent?: boolean; reviewNote?: string; payByAt?: number; handoverAt?: number; deliveredAt?: number; latestLatitude?: number; latestLongitude?: number; latestLocationLabel?: string; latestLocationAt?: number; locationCheckInCount?: number; locationCheckInTarget?: number; locationCheckInRemaining?: number; missedLocationCheckIns?: number; nextLocationCheckInAt?: number; locationCheckInState?: LocationCheckInState; disputeUntil?: number; exception?: string; cancellationReason?: string; refundApproved?: boolean; releaseApproved?: boolean; quote?: FeeQuote; }
 export interface Offer { id: string; shipmentId: string; tripId: string; travellerId: string; travellerName: string; feeNaira: number; expiresAt: number; createdAt: number; status: OfferStatus; note: string; quote: FeeQuote; }
 export interface AuditEntry { id: string; shipmentId?: string; actorName: string; action: string; detail: string; createdAt: number; }
 export interface Dispute { id: string; shipmentId: string; reason: string; status: "open" | "resolved"; createdAt: number; previousStatus?: ShipmentStatus; resolution?: "refund" | "release" | "resume" | "cancel"; note?: string; informationRequest?: string; resolvedAt?: number; }
@@ -95,7 +95,18 @@ export const STATUS_LABELS: Record<ShipmentStatus, string> = { pending_review: "
 export const money = (amount: number) => `₦${amount.toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
 export const normalizeCity = (value: string) => value.trim().toLowerCase();
 
-export function isValidPhone(value: string) { const text = value.trim(); const digits = text.replace(/\D/g, ""); return /^\+?[\d\s()-]{10,20}$/.test(text) && digits.length >= 10 && digits.length <= 15; }
+export function isPlaceholderPhone(value?: string | null): boolean {
+  if (!value) return true;
+  const digits = value.replace(/\D/g, "");
+  return /^0+$/.test(digits) || /^2340+$/.test(digits) || digits.length === 0;
+}
+
+export function isValidPhone(value: string) {
+  const text = value.trim();
+  if (isPlaceholderPhone(text)) return false;
+  const digits = text.replace(/\D/g, "");
+  return /^\+?[\d\s()-]{10,20}$/.test(text) && digits.length >= 10 && digits.length <= 15;
+}
 export function normalizePhone(value: string) { if (!isValidPhone(value)) throw new Error("Enter a valid phone number."); const digits = value.replace(/\D/g, ""); if (digits.length === 11 && digits.startsWith("0")) return `+234${digits.slice(1)}`; if (!value.trim().startsWith("+") && !digits.startsWith("234")) throw new Error("Use an international phone number starting with +."); return `+${digits}`; }
 export function tripRoute(trip: { origin: string; destination: string; stops?: string[] }) { return [trip.origin, ...(trip.stops ?? []), trip.destination]; }
 export function routeSegment(shipment: { origin: string; destination: string }, trip: { origin: string; destination: string; stops?: string[] }): { pickupIndex: number; dropoffIndex: number } | null { const cities = tripRoute(trip).map(normalizeCity); const pickupIndex = cities.indexOf(normalizeCity(shipment.origin)); const dropoffIndex = cities.indexOf(normalizeCity(shipment.destination)); return pickupIndex >= 0 && dropoffIndex > pickupIndex ? { pickupIndex, dropoffIndex } : null; }
@@ -153,7 +164,7 @@ export function tripAcceptsShipment(shipment: MatchableShipment, trip: Trip, now
     && (!windowStart || trip.departureAt >= windowStart) && (!windowEnd || trip.departureAt <= windowEnd)
     && (!shipment.deliveryDeadline || !!trip.arrivalAt && trip.arrivalAt <= shipment.deliveryDeadline)
     && (!shipment.category || categories.includes(shipment.category as typeof CATEGORIES[number]))
-    && (shipment.paymentStatus === undefined || shipment.paymentStatus === "held")
+    && (shipment.paymentStatus === undefined || ["held", "unpaid", "failed"].includes(shipment.paymentStatus))
     && shipment.weightKg <= maxParcelWeight && !!segment && segmentAvailableKg(trip, segment) >= shipment.weightKg;
 }
 
@@ -173,6 +184,22 @@ export function matchExplanation(shipment: MatchableShipment, trip: Trip) {
   return `${timing} ${direction} your preferred pickup · ${trip.stops?.length ? `${trip.stops.length} stop route` : "direct route"}`;
 }
 
+export interface TripMatch {
+  trip: Trip;
+  segment: { pickupIndex: number; dropoffIndex: number };
+  availableKgOnSegment: number;
+  score: number;
+  explanation: string;
+}
+
+export interface ParcelMatch {
+  shipment: Shipment;
+  segment: { pickupIndex: number; dropoffIndex: number };
+  availableKgOnSegment: number;
+  score: number;
+  explanation: string;
+}
+
 export function findMatchingTrips(shipment: MatchableShipment, trips: Trip[], now = Date.now()) { return trips.filter(t => tripAcceptsShipment(shipment, t, now)).sort((a, b) => matchScore(shipment, a) - matchScore(shipment, b) || a.departureAt - b.departureAt || a.id.localeCompare(b.id)); }
 export function quoteFee(feeNaira: number): FeeQuote { if (!Number.isSafeInteger(feeNaira) || feeNaira <= 0 || feeNaira > 100000) throw new Error("Delivery fee must be whole naira between 1 and 100000."); const grossKobo = feeNaira * 100; const platformFeeKobo = Math.round(grossKobo / 10); return { grossNaira: feeNaira, grossKobo, platformFeeKobo, travellerNetKobo: grossKobo - platformFeeKobo, platformFeePercent: 10 }; }
 export function validateRoute(origin: string, destination: string) { if (!origin.trim() || !destination.trim()) throw new Error("Origin and destination are required."); if (origin.length > 80 || destination.length > 80) throw new Error("City names must be under 80 characters."); if (normalizeCity(origin) === normalizeCity(destination)) throw new Error("Choose two different cities."); }
@@ -181,3 +208,62 @@ export function validateTrip(input: CreateTripInput, now = Date.now()) { validat
 export const ALLOWED_TRANSITIONS: Record<ShipmentStatus, readonly ShipmentStatus[]> = { pending_review: ["open", "rejected", "cancelled"], rejected: ["pending_review", "cancelled"], open: ["pending_review", "matched", "cancelled"], matched: ["open", "funded", "cancelled", "disputed"], funded: ["in_transit", "cancelled", "disputed"], in_transit: ["delivered", "disputed"], delivered: ["disputed"], disputed: [], cancelled: [] };
 export function assertTransition(from: ShipmentStatus, to: ShipmentStatus) { if (!ALLOWED_TRANSITIONS[from].includes(to)) throw new Error(`Cannot move a delivery from ${from} to ${to}.`); }
 export function shipmentActions(s: Shipment, viewer: Person | null, now = Date.now()) { const sender = viewer?.id === s.senderId; const traveller = viewer?.id === s.travellerId; const ready = viewer?.verification === "verified" && !viewer.suspended; const editablePayment = ["unpaid", "failed"].includes(s.paymentStatus); return { edit: !!sender && (["rejected", "pending_review"].includes(s.status) || s.status === "open" && editablePayment), cancel: !!sender && ["pending_review", "rejected", "open", "matched", "funded"].includes(s.status), pay: !!sender && !!ready && ["open", "matched"].includes(s.status) && ["unpaid", "pending", "failed"].includes(s.paymentStatus) && (!s.payByAt || s.payByAt > now), issueHandover: !!sender && s.status === "funded" && s.paymentStatus === "held", confirmHandover: !!traveller && s.status === "funded" && s.paymentStatus === "held", requestReceiverCode: !!(sender || traveller) && s.status === "in_transit" && s.paymentStatus === "held", confirmDelivery: !!traveller && s.status === "in_transit" && s.paymentStatus === "held", dispute: !!(sender || traveller) && ["matched", "funded", "in_transit", "delivered"].includes(s.status) && !["released", "refunded", "refund_pending", "payout_pending"].includes(s.paymentStatus) && (s.status !== "delivered" || !!s.disputeUntil && now < s.disputeUntil), review: !!(sender || traveller) && s.status === "delivered" && !!s.deliveredAt, message: !!(sender || traveller) } as const; }
+
+export function sanitizeErrorMessage(message: string, fallback = "We couldn't finish that. Please try again."): string {
+  if (!message || typeof message !== "string") return fallback;
+
+  const convexErrorMatch = message.match(/Uncaught ConvexError:\s*([^\n]+)/i);
+  if (convexErrorMatch?.[1]) {
+    const extracted = convexErrorMatch[1].trim();
+    if (extracted && !/^[a-z]+Error:\s*/i.test(extracted)) {
+      return extracted;
+    }
+  }
+
+  if (/network|fetch|timeout|timed out|socket|connection|offline|failed to connect/i.test(message)) {
+    return "We couldn't connect. Your information is safe. Please check your connection and try again.";
+  }
+
+  if (/missing environment variable|internal server error|\b5\d\d\b|database error/i.test(message)) {
+    return "Passenger is temporarily unavailable. Please try again shortly.";
+  }
+
+  const cleaned = message
+    .replace(/\[CONVEX[^\]]*\]\s*/g, "")
+    .replace(/\[Request ID:[^\]]*\]\s*/g, "")
+    .replace(/Server Error\s*/g, "")
+    .split(/\n\s+at |\n\s*Called by client/)[0]!
+    .replace(/^Uncaught (Convex)?Error:\s*/i, "")
+    .replace(/^Error:\s*/i, "")
+    .trim();
+
+  if (!cleaned || /^[a-z]+Error:\s*/i.test(cleaned) || cleaned.includes("convex/")) {
+    return fallback;
+  }
+
+  return cleaned;
+}
+
+export function formatErrorMessage(error: unknown, fallback = "We couldn't finish that. Please try again."): string {
+  if (!error) return fallback;
+
+  if (typeof error === "object" && error !== null && "data" in error) {
+    const data = (error as { data: unknown }).data;
+    if (typeof data === "string" && data.trim()) {
+      return sanitizeErrorMessage(data, fallback);
+    }
+  }
+
+  if (typeof error === "object" && error !== null && "errors" in error) {
+    const errors = (error as { errors?: { longMessage?: string; message?: string }[] }).errors;
+    if (errors?.[0]) {
+      const msg = errors[0].longMessage || errors[0].message;
+      if (msg) return sanitizeErrorMessage(msg, fallback);
+    }
+  }
+
+  const rawMessage = typeof error === "string" ? error : error instanceof Error ? error.message : "";
+  if (!rawMessage) return fallback;
+
+  return sanitizeErrorMessage(rawMessage, fallback);
+}

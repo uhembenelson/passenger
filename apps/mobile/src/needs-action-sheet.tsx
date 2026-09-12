@@ -6,6 +6,7 @@ import type { Id } from "@passenger/backend/convex/_generated/dataModel";
 import { money, shipmentActions } from "@passenger/core";
 import type { Offer, Shipment } from "@passenger/core";
 import { components, primitives, semantic } from "@passenger/design-tokens";
+import { HandoverFlow, type HandoverMode } from "./handover-flow";
 import { usePassenger } from "./data";
 import { Button, Card, errorMessage, Field, Notice, PresentationSheet, Txt, fontFamily, timeDate } from "./ui";
 
@@ -17,19 +18,19 @@ type Props = {
 
 export function NeedsActionSheet({ shipment, onClose, onEdit }: Props) {
   const data = usePassenger();
-  const snapshot = data.snapshot!;
-  const viewer = snapshot.viewer!;
+  const snapshot = data.snapshot;
+  const viewer = snapshot?.viewer;
+  if (!viewer) return null;
   const sender = shipment.senderId === viewer.id;
+  const [handoverMode, setHandoverMode] = useState<HandoverMode | undefined>(() => shipment.status === "funded" ? sender ? "sender" : "collect" : !sender && shipment.status === "in_transit" ? "deliver" : undefined);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [code, setCode] = useState("");
-  const [secret, setSecret] = useState("");
   const [profileOfferId, setProfileOfferId] = useState("");
   const actions = shipmentActions(shipment, viewer);
-  const offers = useMemo(() => (snapshot.offers ?? [])
+  const offers = useMemo(() => (snapshot?.offers ?? [])
     .filter((offer): offer is Offer => offer.shipmentId === shipment.id && offer.status === "pending")
-    .sort((a, b) => a.expiresAt - b.expiresAt), [snapshot.offers, shipment.id]);
+    .sort((a, b) => a.expiresAt - b.expiresAt), [snapshot?.offers, shipment.id]);
 
   const act = async (key: string, task: () => Promise<void>, success?: string, closeAfter = false) => {
     setBusy(key);
@@ -46,7 +47,13 @@ export function NeedsActionSheet({ shipment, onClose, onEdit }: Props) {
     }
   };
 
+  React.useEffect(() => {
+    if (!handoverMode && shipment.status === "funded") setHandoverMode(sender ? "sender" : "collect");
+    else if (!handoverMode && !sender && shipment.status === "in_transit") setHandoverMode("deliver");
+  }, [handoverMode, sender, shipment.status]);
   const title = actionTitle(shipment, sender, offers.length);
+
+  if (handoverMode) return <HandoverFlow shipment={shipment} mode={handoverMode} onClose={onClose} />;
 
   return <PresentationSheet title={title} onClose={() => !busy && onClose()}>
     <ActionContext shipment={shipment} />
@@ -81,41 +88,9 @@ export function NeedsActionSheet({ shipment, onClose, onEdit }: Props) {
       {!actions.pay ? <Notice tone="warning">Payment is unavailable. Check your verification status or payment deadline.</Notice> : null}
     </View> : null}
 
-    {sender && shipment.status === "funded" ? <View style={a.section}>
-      <Txt style={a.supporting}>Share this code only when the assigned traveller is physically taking the parcel from you.</Txt>
-      {secret ? <View style={a.codeBlock}>
-        <Txt style={a.codeLabel}>PRIVATE HANDOVER CODE</Txt>
-        <Txt selectable style={a.code}>{secret}</Txt>
-        <Txt style={a.codeHelp}>Expires in 10 minutes. A replacement invalidates the previous code.</Txt>
-      </View> : null}
-      <Button title={secret ? "Generate replacement code" : "Generate handover code"} variant={secret ? "secondary" : "lime"} busy={busy === "issue"} disabled={!!busy || !actions.issueHandover} onPress={() => void act("issue", async () => setSecret(await data.issueCode(shipment.id, "handover") ?? ""))} />
-    </View> : null}
-
-    {!sender && shipment.status === "funded" ? <CodeConfirmation
-      title="Enter the sender's code only after you have checked and collected the parcel."
-      label="Handover code"
-      button="Confirm handover"
-      code={code}
-      busy={busy === "confirm"}
-      disabled={!!busy || !actions.confirmHandover}
-      onCode={setCode}
-      onSubmit={() => void act("confirm", () => data.confirmHandover(shipment.id, code.trim()), undefined, true)}
-    /> : null}
-
-    {!sender && shipment.status === "in_transit" ? <CodeConfirmation
-      title="Ask the receiver for their code after they have inspected and received the parcel."
-      label="Receiver code"
-      button="Confirm delivery"
-      code={code}
-      busy={busy === "confirm"}
-      disabled={!!busy || !actions.confirmDelivery}
-      onCode={setCode}
-      onSubmit={() => void act("confirm", () => data.confirmDelivery(shipment.id, code.trim()), undefined, true)}
-    /> : null}
-
     {shipment.status === "disputed" ? <View style={a.section}>
       <Notice tone="warning">This delivery is paused while the support team reviews the issue. Payment will not move automatically.</Notice>
-      {snapshot.disputes.filter(dispute => dispute.shipmentId === shipment.id).map(dispute => <View key={dispute.id} style={a.disputeSummary}>
+      {(snapshot?.disputes ?? []).filter(dispute => dispute.shipmentId === shipment.id).map(dispute => <View key={dispute.id} style={a.disputeSummary}>
         <Txt style={a.meta}>ISSUE REPORTED</Txt>
         <Txt style={a.offerNote}>{dispute.reason}</Txt>
       </View>)}
@@ -127,15 +102,13 @@ export function NeedsActionSheet({ shipment, onClose, onEdit }: Props) {
 }
 
 function TravellerPreview({ offer }: { offer: Offer }) {
-  const { snapshot } = usePassenger();
-  const person = snapshot!.people.find(item => item.id === offer.travellerId);
-  const trip = snapshot!.trips.find(item => item.id === offer.tripId);
-  const profile = useQuery(api.marketplaceProfiles.publicProfile, { userId: offer.travellerId as Id<"users"> });
+  const profile = useQuery(api.marketplaceProfiles.publicProfile, { userId: offer.travellerId as Id<"users">, tripId: offer.tripId as Id<"trips">, limit: 3 });
+  const trip = profile?.tripSummary;
   return <View style={a.profile}>
     <View style={a.profileStats}>
-      <Txt style={a.profileValue}>{person?.rating?.toFixed(1) ?? "—"}</Txt><Txt style={a.meta}>rating</Txt>
-      <Txt style={a.profileValue}>{person?.reviewCount ?? 0}</Txt><Txt style={a.meta}>reviews</Txt>
-      <Txt style={a.profileValue}>{person?.successfulDeliveries ?? 0}</Txt><Txt style={a.meta}>deliveries</Txt>
+      <Txt style={a.profileValue}>{profile?.rating?.toFixed(1) ?? "—"}</Txt><Txt style={a.meta}>rating</Txt>
+      <Txt style={a.profileValue}>{profile?.reviewCount ?? 0}</Txt><Txt style={a.meta}>reviews</Txt>
+      <Txt style={a.profileValue}>{profile?.successfulDeliveries ?? 0}</Txt><Txt style={a.meta}>deliveries</Txt>
     </View>
     {trip ? <><Txt style={a.offerNote}>{trip.origin} → {trip.destination} · {timeDate(trip.departureAt)}</Txt><Txt style={a.meta}>{trip.acceptedCategories?.length ? trip.acceptedCategories.join(", ") : "All supported categories"}{trip.handlingNotes ? ` · ${trip.handlingNotes}` : ""}</Txt></> : null}
     {profile?.reviews.slice(0, 3).map(review => <View key={review.id} style={a.review}><Txt style={a.meta}>{review.rating} / 5</Txt><Txt style={a.offerNote}>{review.comment}</Txt></View>)}
@@ -146,23 +119,6 @@ function ActionContext({ shipment }: { shipment: Shipment }) {
   return <View style={a.context}>
     <Txt style={a.route}>{shipment.origin} → {shipment.destination}</Txt>
     <Txt style={a.meta}>{shipment.reference}</Txt>
-  </View>;
-}
-
-function CodeConfirmation({ title, label, button, code, busy, disabled, onCode, onSubmit }: {
-  title: string;
-  label: string;
-  button: string;
-  code: string;
-  busy: boolean;
-  disabled: boolean;
-  onCode: (value: string) => void;
-  onSubmit: () => void;
-}) {
-  return <View style={a.section}>
-    <Txt style={a.supporting}>{title}</Txt>
-    <Field label={label} value={code} onChangeText={onCode} placeholder="Enter 8-digit code" autoComplete="off" keyboardType="number-pad" maxLength={8} />
-    <Button title={button} variant="lime" busy={busy} disabled={disabled || code.trim().length !== 8} onPress={onSubmit} />
   </View>;
 }
 

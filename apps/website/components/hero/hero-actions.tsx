@@ -16,7 +16,7 @@ export function HeroActions({ actionsRef }: HeroActionsProps) {
         size="default"
         className="h-11 sm:h-12 px-6 sm:px-7 rounded-full bg-[#1F2937] hover:bg-[#111827] text-white font-medium text-sm sm:text-base shadow-sm hover:shadow transition-all cursor-pointer"
       >
-        <a href="#calculator">Send something</a>
+        <a href="#senders-travellers">Send something</a>
       </Button>
 
       <Button

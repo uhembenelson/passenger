@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
@@ -13,14 +14,22 @@ export const balance = query({
   args: {},
   handler: async (ctx) => {
     const user = await requireUser(ctx);
-    const transactions = await ctx.db
+    return { balanceNaira: user.walletBalanceNaira ?? 0 };
+  },
+});
+
+export const transactionsPage = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const result = await ctx.db
       .query("walletTransactions")
       .withIndex("by_user", q => q.eq("userId", user._id))
       .order("desc")
-      .take(50);
+      .paginate(args.paginationOpts);
     return {
-      balanceNaira: user.walletBalanceNaira ?? 0,
-      transactions: transactions.map(t => ({
+      ...result,
+      page: result.page.map(t => ({
         id: t._id,
         userId: t.userId,
         kind: t.kind,
@@ -167,29 +176,34 @@ export const initializeTopUp = action({
     const callback = process.env.PAYSTACK_CALLBACK_URL;
     const amountKobo = amountNaira * 100;
 
-    const response = await fetch("https://api.paystack.co/transaction/initialize", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email,
-        amount: amountKobo,
-        currency: "NGN",
-        reference,
-        ...(callback ? { callback_url: callback } : {}),
-        metadata: {
-          kind: "wallet_topup",
-          amountNaira,
-          subject: sub,
+    let response: Response;
+    try {
+      response = await fetch("https://api.paystack.co/transaction/initialize", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
         },
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
+        body: JSON.stringify({
+          email,
+          amount: amountKobo,
+          currency: "NGN",
+          reference,
+          ...(callback ? { callback_url: callback } : {}),
+          metadata: {
+            kind: "wallet_topup",
+            amountNaira,
+            subject: sub,
+          },
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch {
+      fail("We could not connect to the payment provider. Please check your connection and try again.");
+    }
 
     if (!response.ok) fail("Failed to contact payment provider.");
-    const body = await response.json();
+    const body = await response.json().catch(() => null) as { status?: boolean; data?: { authorization_url?: string } } | null;
     if (body?.status !== true || !body.data?.authorization_url) {
       fail("Could not initialize payment with provider.");
     }
@@ -230,15 +244,21 @@ export const verifyTopUp = action({
       return { success: !!topUp && topUp.userId === user?._id, balanceNaira };
     }
 
-    const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(args.reference)}`, {
-      headers: { Authorization: `Bearer ${key}` },
-      signal: AbortSignal.timeout(15000),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(args.reference)}`, {
+        headers: { Authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch {
+      fail("We could not connect to the payment provider. Please check your connection and try again.");
+    }
+
     if (!response.ok) fail("Could not verify transaction with payment provider.");
-    const body = await response.json();
+    const body = await response.json().catch(() => null) as { data?: { status?: string; currency?: string; amount?: number } } | null;
     const data = body?.data;
 
-    if (data?.status === "success" && data.currency === "NGN" && Number.isSafeInteger(data.amount) && user) {
+    if (data?.status === "success" && data.currency === "NGN" && typeof data.amount === "number" && Number.isSafeInteger(data.amount) && user) {
       const amountNaira = Math.floor(data.amount / 100);
       await ctx.runMutation(internal.wallet.recordTopUp, {
         userId: user._id,

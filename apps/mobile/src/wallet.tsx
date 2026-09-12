@@ -1,17 +1,19 @@
-import React, { useMemo, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from "react-native";
-import { Wallet, ArrowDownLeft, ArrowUpRight, CheckCircle2, ShieldCheck } from "lucide-react-native";
+import React, { memo, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, Keyboard, Linking, Platform, Pressable, StyleSheet, View } from "react-native";
+import { usePaginatedQuery, useQuery } from "convex/react";
+import { Wallet, ArrowDownLeft, ArrowUpRight, ReceiptText, ShieldCheck, ChevronDown, ChevronUp } from "lucide-react-native";
 import { primitives, semantic } from "@passenger/design-tokens";
 import { money } from "@passenger/core";
 import type { WalletTransaction } from "@passenger/core";
+import { api } from "@passenger/backend/convex/_generated/api";
 import { usePassenger } from "./data";
-import { Button, Card, colors, errorMessage, Field, fontFamily, Notice, PresentationSheet, s, SectionTitle, Sheet, shortDate, Txt } from "./ui";
-
-const PRESET_AMOUNTS = [2000, 5000, 10000, 20000, 50000];
+import * as SecureStore from "expo-secure-store";
+import { parseDepositAmount, suggestedDeposit } from "./wallet-top-up";
+import { Button, Card, colors, ContentSkeleton, errorMessage, Field, fontFamily, FullScreenState, Notice, PresentationSheet, s, SectionTitle, Sheet, shortDate, Txt } from "./ui";
 
 export function WalletBalanceCard({ onTopUp }: { onTopUp: () => void }) {
-  const { snapshot } = usePassenger();
-  const balance = snapshot?.viewer?.walletBalanceNaira ?? 0;
+  const wallet = useQuery(api.wallet.balance, {});
+  const balance = wallet?.balanceNaira ?? 0;
 
   return (
     <Card style={w.card}>
@@ -21,7 +23,7 @@ export function WalletBalanceCard({ onTopUp }: { onTopUp: () => void }) {
             <Wallet size={20} color={colors.forest} strokeWidth={2} />
           </View>
           <View>
-            <Txt style={w.balanceLabel}>PASSENGER WALLET</Txt>
+            <Txt style={w.balanceLabel}>Available balance</Txt>
             <Txt style={w.balanceAmount}>{money(balance)}</Txt>
           </View>
         </View>
@@ -30,7 +32,7 @@ export function WalletBalanceCard({ onTopUp }: { onTopUp: () => void }) {
       <View style={[s.row, { gap: 6, marginTop: 12, alignItems: "center" }]}>
         <ShieldCheck size={14} color={semantic.color.text.tertiary} />
         <Txt style={w.balanceSub}>
-          Funds are held safely in escrow during parcel delivery and refunded on cancellation.
+          Add money securely with Paystack.
         </Txt>
       </View>
     </Card>
@@ -47,190 +49,190 @@ export function TopUpSheet({
   onSuccess?: () => void;
 }) {
   const { topUpWallet, verifyWalletTopUp, offline, snapshot } = usePassenger();
-  const currentBalance = snapshot?.viewer?.walletBalanceNaira ?? 0;
-  const initialAmount = minRequiredAmount && minRequiredAmount > currentBalance
-    ? Math.ceil((minRequiredAmount - currentBalance) / 1000) * 1000
-    : 5000;
-
-  const [amount, setAmount] = useState(String(Math.max(1000, initialAmount)));
-  const [busy, setBusy] = useState(false);
+  const config = snapshot?.mobileConfig?.wallet;
+  const minimum = config?.minTopUpNaira ?? 100;
+  const maximum = config?.maxTopUpNaira ?? 500000;
+  const wallet = useQuery(api.wallet.balance, {});
+  const currentBalance = wallet?.balanceNaira;
+  const presets = (config?.topUpPresetsNaira ?? []).filter(value => value >= minimum && value <= maximum);
+  const [amount, setAmount] = useState("");
+  const edited = useRef(false);
+  const inFlight = useRef(false);
+  const [screen, setScreen] = useState<"amount" | "checkout" | "pending" | "error" | "success">("amount");
+  const [action, setAction] = useState<"starting" | "opening" | "checking" | null>(null);
+  const busy = action !== null;
   const [error, setError] = useState("");
-  const [activeReference, setActiveReference] = useState<string | null>(null);
-  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
-  const [verifying, setVerifying] = useState(false);
-  const [verified, setVerified] = useState(false);
+  const [errorTitle, setErrorTitle] = useState("We couldn't start your deposit");
+  const [startAgain, setStartAgain] = useState(false);
+  const [savedOnDevice, setSavedOnDevice] = useState(false);
+  const [payment, setPayment] = useState<{ reference: string; url: string; amount: number } | null>(null);
   const [newBalance, setNewBalance] = useState<number | null>(null);
+  const [restoring, setRestoring] = useState(true);
+  const [showReference, setShowReference] = useState(false);
+  const storageKey = `passenger.pendingDeposit.${snapshot?.viewer?.id ?? "guest"}`;
+  const parsedAmount = parseDepositAmount(amount, minimum, maximum);
+  const shortfall = minRequiredAmount !== undefined && currentBalance !== undefined ? Math.max(0, minRequiredAmount - currentBalance) : 0;
 
-  const parsedAmount = parseInt(amount, 10);
-  const isValidAmount = Number.isSafeInteger(parsedAmount) && parsedAmount >= 100 && parsedAmount <= 500000;
+  useEffect(() => {
+    if (!edited.current && currentBalance !== undefined) setAmount(String(suggestedDeposit(currentBalance, minRequiredAmount, config?.defaultTopUpNaira ?? 5000, minimum, maximum)));
+  }, [currentBalance, minRequiredAmount, config?.defaultTopUpNaira, minimum, maximum]);
 
-  const handleInitialize = async () => {
-    if (!isValidAmount || offline || busy) return;
-    setError("");
-    setBusy(true);
+  useEffect(() => {
+    let active = true;
+    setRestoring(true);
+    void (async () => {
+      try {
+        const raw = Platform.OS === "web" ? localStorage.getItem(storageKey) : await SecureStore.getItemAsync(storageKey);
+        const saved: unknown = raw ? JSON.parse(raw) : null;
+        if (active && saved && typeof saved === "object" && "reference" in saved && typeof saved.reference === "string" && "url" in saved && typeof saved.url === "string" && /^https:\/\//i.test(saved.url) && "amount" in saved && typeof saved.amount === "number" && Number.isSafeInteger(saved.amount) && saved.amount > 0) {
+          setPayment({ reference: saved.reference, url: saved.url, amount: saved.amount });
+          setScreen("checkout");
+          setSavedOnDevice(true);
+        }
+      } catch { /* Storage failure must not block access to the wallet. */ }
+      finally { if (active) setRestoring(false); }
+    })();
+    return () => { active = false; };
+  }, [storageKey]);
+
+  const persist = async (value: typeof payment) => {
+    try {
+      if (Platform.OS === "web") {
+        if (value) localStorage.setItem(storageKey, JSON.stringify(value));
+        else localStorage.removeItem(storageKey);
+      } else if (value) await SecureStore.setItemAsync(storageKey, JSON.stringify(value));
+      else await SecureStore.deleteItemAsync(storageKey);
+      setSavedOnDevice(!!value);
+    } catch { setSavedOnDevice(false); }
+  };
+  const finish = async (balance: number) => {
+    setNewBalance(balance);
+    await persist(null);
+    setScreen("success");
+  };
+  const close = () => { if (!inFlight.current) onClose(); };
+  const done = () => { onSuccess?.(); onClose(); };
+  const openCheckout = async (url: string) => {
+    if (inFlight.current || offline) return;
+    inFlight.current = true; setAction("opening"); setError("");
+    setErrorTitle("The payment page couldn't open");
+    try { await Linking.openURL(url); setScreen("checkout"); }
+    catch (cause) { setError(errorMessage(cause, "The payment page couldn't open. Try opening it again.")); setScreen("error"); }
+    finally { inFlight.current = false; setAction(null); }
+  };
+  const initialize = async () => {
+    if (parsedAmount === null || offline || inFlight.current || payment) return;
+    Keyboard.dismiss();
+    inFlight.current = true; setAction("starting"); setError("");
+    setErrorTitle("We couldn't start your deposit");
     try {
       const result = await topUpWallet(parsedAmount);
-      setActiveReference(result.reference);
-      if (result.mode === "provider") {
-        setCheckoutUrl(result.url);
-      } else {
-        setCheckoutUrl(null);
-        setVerified(true);
-        setNewBalance(result.balanceNaira);
-        if (onSuccess) onSuccess();
+      {
+        const pending = { reference: result.reference, url: result.url, amount: parsedAmount };
+        setPayment(pending);
+        await persist(pending);
+        setScreen("checkout");
+        setAction("opening");
+        // Keep the reference before handing off to another app or browser tab.
+        setErrorTitle("The payment page couldn't open");
+        await Linking.openURL(result.url);
       }
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
+    } catch (cause) { setError(errorMessage(cause)); setScreen("error"); }
+    finally { inFlight.current = false; setAction(null); }
   };
-
-  const handleVerify = async () => {
-    if (!activeReference || verifying) return;
-    setError("");
-    setVerifying(true);
+  const verify = async () => {
+    if (!payment || inFlight.current || offline) return;
+    inFlight.current = true; setAction("checking"); setError("");
+    setErrorTitle("We couldn't check your payment");
     try {
-      const result = await verifyWalletTopUp(activeReference);
-      if (result.success) {
-        setVerified(true);
-        setNewBalance(result.balanceNaira);
-        if (onSuccess) onSuccess();
-      } else {
-        setError("Payment not yet confirmed by Paystack. If you just completed it, wait a moment and try verifying again.");
-      }
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setVerifying(false);
-    }
+      const result = await verifyWalletTopUp(payment.reference);
+      if (result.success) await finish(result.balanceNaira);
+      else setScreen("pending");
+    } catch (cause) { setError(errorMessage(cause, "We couldn't check your payment. Your deposit has not been confirmed yet.")); setScreen("error"); }
+    finally { inFlight.current = false; setAction(null); }
   };
 
-  return (
-    <PresentationSheet
-      title={verified ? "Wallet funded!" : "Top up wallet"}
-      onClose={onClose}
-    >
-      {verified ? (
-        <View style={{ gap: 16, alignItems: "center", paddingVertical: 18 }}>
-          <CheckCircle2 size={48} color={colors.forest} />
-          <Txt style={s.h2}>Top-up confirmed</Txt>
-          <Txt style={[s.muted, { textAlign: "center" }]}>
-            Your wallet balance has been updated to {money(newBalance ?? (currentBalance + parsedAmount))}.
-          </Txt>
-          <Button title="Done" variant="lime" onPress={onClose} style={{ width: "100%", marginTop: 12 }} />
-        </View>
-      ) : activeReference ? (
-        <View style={{ gap: 16 }}>
-          <Notice tone="neutral">
-            Paystack checkout was opened in your browser. Complete the payment, then tap "Confirm payment" below.
-          </Notice>
-          <Card>
-            <Txt style={s.label}>Amount being added</Txt>
-            <Txt style={[s.h2, { color: colors.forest, marginVertical: 4 }]}>
-              {money(parsedAmount)}
-            </Txt>
-            <Txt style={[s.hint, { fontSize: 11 }]}>Reference: {activeReference}</Txt>
-          </Card>
-          {error !== "" && <Notice tone="error">{error}</Notice>}
-          <Button
-            title="Confirm payment"
-            variant="lime"
-            busy={verifying}
-            disabled={verifying}
-            onPress={handleVerify}
-          />
-          <Button
-            title="Re-open checkout link"
-            variant="secondary"
-            disabled={verifying || !checkoutUrl}
-            onPress={async () => {
-              if (!checkoutUrl) return;
-              setError("");
-              try {
-                await Linking.openURL(checkoutUrl);
-              } catch (e) {
-                setError(errorMessage(e));
-              }
-            }}
-          />
-        </View>
-      ) : (
-        <View style={{ gap: 18 }}>
-          <View style={[s.row, { justifyContent: "space-between", alignItems: "center" }]}>
-            <Txt style={s.label}>Current balance</Txt>
-            <Txt style={{ fontWeight: "700", color: colors.forest }}>{money(currentBalance)}</Txt>
-          </View>
+  // Returning from checkout triggers verification, never local payment success.
+  const verifyOnReturn = useRef(verify);
+  verifyOnReturn.current = verify;
+  useEffect(() => {
+    if (!payment || screen === "success") return;
+    const check = () => { void verifyOnReturn.current(); };
+    const subscription = AppState.addEventListener("change", state => { if (state === "active") check(); });
+    const visible = () => { if (document.visibilityState === "visible") check(); };
+    if (Platform.OS === "web") {
+      window.addEventListener("focus", check);
+      document.addEventListener("visibilitychange", visible);
+    }
+    return () => {
+      subscription.remove();
+      if (Platform.OS === "web") {
+        window.removeEventListener("focus", check);
+        document.removeEventListener("visibilitychange", visible);
+      }
+    };
+  }, [payment?.reference, screen === "success"]);
 
-          {minRequiredAmount && minRequiredAmount > currentBalance && (
-            <Notice tone="warning">
-              You need at least {money(minRequiredAmount)} to post this parcel. Add at least {money(minRequiredAmount - currentBalance)}.
-            </Notice>
-          )}
+  if (startAgain) return <FullScreenState title="Start a different deposit?" subtitle="If money has already left your account, keep checking the existing payment. Start again only if you haven't paid." primaryAction={{ label: "Keep this payment", onPress: () => setStartAgain(false) }} secondaryAction={{ label: "I haven't paid. Start again", onPress: () => { void persist(null); setPayment(null); setScreen("amount"); setStartAgain(false); setShowReference(false); setError(""); } }} onRequestClose={() => setStartAgain(false)} />;
 
-          <View style={{ gap: 8 }}>
-            <Txt style={s.label}>Quick select amount</Txt>
-            <View style={s.wrap}>
-              {PRESET_AMOUNTS.map((preset) => (
-                <Pressable
-                  key={preset}
-                  accessibilityRole="button"
-                  onPress={() => setAmount(String(preset))}
-                  style={[
-                    w.presetButton,
-                    parsedAmount === preset && w.presetButtonActive,
-                  ]}
-                >
-                  <Txt
-                    style={[
-                      w.presetText,
-                      parsedAmount === preset && w.presetTextActive,
-                    ]}
-                  >
-                    {money(preset)}
-                  </Txt>
-                </Pressable>
-              ))}
-            </View>
-          </View>
+  if (screen === "success") return <FullScreenState title="Money added to your wallet" subtitle={`Your balance is now ${money(newBalance ?? 0)}. You're ready to pay for deliveries.`} primaryAction={{ label: "Done", onPress: done }} onRequestClose={done} />;
 
-          <Field
-            label="Top-up amount (₦)"
-            value={amount}
-            onChangeText={setAmount}
-            keyboardType="number-pad"
-            placeholder="5000"
-            hint="Minimum ₦100 · Maximum ₦500,000"
-          />
+  const sheetStyle = { width: "100%" as const, maxWidth: 580, alignSelf: "center" as const };
 
-          {error !== "" && <Notice tone="error">{error}</Notice>}
+  if (restoring) return <PresentationSheet title="Add money" onClose={close} containerStyle={sheetStyle}><ContentSkeleton rows={1} /></PresentationSheet>;
 
-          <Button
-            title={busy ? "Funding wallet…" : `Add ${isValidAmount ? money(parsedAmount) : ""} to wallet`}
-            variant="lime"
-            busy={busy}
-            disabled={!isValidAmount || offline || busy}
-            onPress={handleInitialize}
-          />
+  if (screen === "amount") return <PresentationSheet title="Add money" onClose={close} containerStyle={sheetStyle} footer={<Button title={busy ? "Opening checkout…" : parsedAmount !== null ? `Continue with ${money(parsedAmount)}` : "Continue to payment"} variant="lime" busy={busy} disabled={parsedAmount === null || offline || restoring || currentBalance === undefined} onPress={() => void initialize()} />}>
+    <View style={{ gap: 16 }}>
+      <Txt style={s.muted}>{currentBalance === undefined ? "Loading balance…" : `Wallet balance ${money(currentBalance)}`}</Txt>
+      {shortfall > 0 && <Notice>Add at least {money(shortfall)} to cover this parcel.</Notice>}
+      <Field label="Amount (₦)" value={amount} onChangeText={value => { edited.current = true; setAmount(value); }} keyboardType="number-pad" placeholder="5000" maxLength={12} editable={!restoring && !busy} style={w.amountInput} />
+      {!!presets.length && <View style={s.wrap}>{presets.map(preset => <Pressable key={preset} accessibilityRole="radio" accessibilityLabel={money(preset)} accessibilityState={{ checked: parsedAmount === preset, disabled: restoring || busy }} disabled={restoring || busy} onPress={() => { edited.current = true; setAmount(String(preset)); }} style={({ pressed }) => [w.presetButton, parsedAmount === preset && w.presetButtonActive, (pressed || busy) && w.controlDimmed]}><Txt style={[w.presetText, parsedAmount === preset && w.presetTextActive]}>{money(preset)}</Txt></Pressable>)}</View>}
+      {amount.trim() !== "" && parsedAmount === null ? <Txt accessibilityRole="alert" style={s.hint}>Enter a whole-naira amount between {money(minimum)} and {money(maximum)}.</Txt> : <Txt style={s.hint}>Secure checkout with Paystack.</Txt>}
+      {offline && <Notice tone="warning">Reconnect to add money.</Notice>}
+    </View>
+  </PresentationSheet>;
 
-          <Txt style={[s.hint, { textAlign: "center" }]}>
-            Passenger will either open the configured payment provider or, when payments are not set up yet, apply the temporary in-app funding flow for this build.
-          </Txt>
-        </View>
-      )}
-    </PresentationSheet>
-  );
+  const title = screen === "error" ? errorTitle : screen === "pending" ? "Awaiting payment" : "Complete payment";
+  const description = screen === "error" ? error : screen === "pending" ? "Your payment isn't confirmed yet. If you've paid, wait a moment and check again." : "Complete payment with Paystack. We’ll check it when you return.";
+  return <PresentationSheet title={title} onClose={close} containerStyle={sheetStyle} footer={<View style={{ gap: 8 }}>
+    {payment ? <>
+      <Button title={action === "checking" ? "Checking payment…" : screen === "pending" ? "Check again" : "Check payment"} variant="lime" busy={action === "checking"} disabled={busy || offline} onPress={() => void verify()} />
+      <Button title={action === "opening" ? "Opening checkout…" : "Return to checkout"} variant="ghost" busy={action === "opening"} disabled={busy || offline} onPress={() => void openCheckout(payment.url)} />
+    </> : <Button title="Try again" variant="lime" onPress={() => { setError(""); setScreen("amount"); }} />}
+  </View>}>
+    <View style={{ gap: 20 }}>
+      <View style={w.depositSummary}>
+        <Txt style={s.muted}>Deposit amount</Txt>
+        <Txt style={w.depositAmount}>{money(payment?.amount ?? parsedAmount ?? 0)}</Txt>
+      </View>
+      <Txt style={w.depositBody}>{description}</Txt>
+      {payment && <>
+        <Txt style={s.hint}>{savedOnDevice ? "You can close this and check again from your wallet." : "Keep this open or save your payment reference before leaving."}</Txt>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: showReference || !savedOnDevice }} onPress={() => setShowReference(!showReference)} disabled={!savedOnDevice} style={({ pressed }) => [w.detailsToggle, pressed && w.controlDimmed]}><Txt style={w.detailsLabel}>Payment details</Txt>{savedOnDevice && (showReference ? <ChevronUp size={18} color={colors.muted} /> : <ChevronDown size={18} color={colors.muted} />)}</Pressable>
+        {(showReference || !savedOnDevice) && <View style={w.paymentDetails}>
+          <Txt style={s.hint}>Payment reference</Txt>
+          <Txt selectable style={s.hint}>{payment.reference}</Txt>
+          <Button title="Use a different amount" small variant="ghost" disabled={busy} onPress={() => setStartAgain(true)} />
+        </View>}
+      </>}
+      {offline && <Notice tone="warning">Reconnect to check your payment.</Notice>}
+    </View>
+  </PresentationSheet>;
 }
 
 export function WalletTransactionHistory() {
-  const { snapshot } = usePassenger();
-  const transactions = snapshot?.walletTransactions ?? [];
+  const { results: transactions, status, loadMore } = usePaginatedQuery(api.wallet.transactionsPage, {}, { initialNumItems: 20 });
 
+  if (status === "LoadingFirstPage") return <ContentSkeleton rows={3} />;
   if (transactions.length === 0) {
     return (
-      <View style={{ paddingVertical: 14 }}>
-        <Txt style={[s.muted, { fontSize: 12, textAlign: "center" }]}>
-          No wallet transactions yet. Funds added or held for parcels will show here.
+      <View style={w.emptyActivity}>
+        <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={w.emptyActivityIcon}>
+          <ReceiptText size={28} color={colors.forest} strokeWidth={1.6} />
+        </View>
+        <Txt style={w.emptyActivityTitle}>No activity yet</Txt>
+        <Txt style={w.emptyActivityDetail}>
+          Your deposits, parcel payments and refunds will appear here, so you can keep track of your money.
         </Txt>
       </View>
     );
@@ -241,11 +243,12 @@ export function WalletTransactionHistory() {
       {transactions.map((t) => (
         <TransactionRow key={t.id} transaction={t} />
       ))}
+      {status !== "Exhausted" ? <Button title={status === "LoadingMore" ? "Loading earlier activity" : "Load earlier activity"} variant="ghost" busy={status === "LoadingMore"} disabled={status === "LoadingMore"} onPress={() => loadMore(20)} /> : null}
     </View>
   );
 }
 
-function TransactionRow({ transaction: t }: { transaction: WalletTransaction }) {
+const TransactionRow = memo(function TransactionRow({ transaction: t }: { transaction: WalletTransaction }) {
   const isCredit = t.kind === "top_up" || t.kind === "parcel_refund" || t.kind === "payout";
 
   const kindLabel = {
@@ -290,7 +293,7 @@ function TransactionRow({ transaction: t }: { transaction: WalletTransaction }) 
       </View>
     </View>
   );
-}
+});
 
 export function WalletSection() {
   const [topUpOpen, setTopUpOpen] = useState(false);
@@ -298,12 +301,12 @@ export function WalletSection() {
   return (
     <Card>
       <SectionTitle
-        title="In-app wallet & escrow"
-        subtitle="Post parcels seamlessly. Fees are held in escrow and released only upon confirmed delivery."
+        title="Wallet"
+        subtitle="Add money and view your activity."
       />
       <WalletBalanceCard onTopUp={() => setTopUpOpen(true)} />
       <View style={{ marginTop: 18 }}>
-        <Txt style={[s.eyebrow, { marginBottom: 10 }]}>RECENT ACTIVITY</Txt>
+        <Txt style={[s.h3, { marginBottom: 10 }]}>Recent activity</Txt>
         <WalletTransactionHistory />
       </View>
       {topUpOpen && (
@@ -314,6 +317,42 @@ export function WalletSection() {
 }
 
 const w = StyleSheet.create({
+  depositBody: { fontSize: 15, lineHeight: 23, color: colors.muted },
+  amountInput: { fontFamily: fontFamily.medium, fontSize: 32, lineHeight: 40, minHeight: 76, paddingVertical: 16 },
+  detailsToggle: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 8 },
+  controlDimmed: { opacity: 0.55 },
+  detailsLabel: { fontSize: 14, fontFamily: fontFamily.medium, color: colors.forest },
+  paymentDetails: { padding: 16, borderRadius: 16, backgroundColor: colors.soft, gap: 10 },
+  depositSummary: { paddingVertical: 12, gap: 8 },
+  depositAmount: { fontFamily: fontFamily.medium, fontSize: 40, lineHeight: 48, color: colors.text },
+  emptyActivity: {
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+    gap: 10,
+  },
+  emptyActivityIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    backgroundColor: "#EAF3DD",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  emptyActivityTitle: {
+    fontFamily: fontFamily.semibold,
+    fontSize: 16,
+    color: semantic.color.text.primary,
+    textAlign: "center",
+  },
+  emptyActivityDetail: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: semantic.color.text.secondary,
+    textAlign: "center",
+    maxWidth: 280,
+  },
   card: {
     backgroundColor: "#F7FAF2",
     borderColor: "#DEE8D3",
@@ -330,9 +369,8 @@ const w = StyleSheet.create({
     alignItems: "center",
   },
   balanceLabel: {
-    fontSize: 9,
+    fontSize: 12,
     fontFamily: fontFamily.medium,
-    letterSpacing: 1.2,
     color: semantic.color.text.tertiary,
   },
   balanceAmount: {
@@ -349,14 +387,15 @@ const w = StyleSheet.create({
   },
   presetButton: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 12,
+    minHeight: 44,
     borderRadius: primitives.radius.md,
     backgroundColor: semantic.color.background.subtle,
     borderWidth: 1,
     borderColor: "transparent",
   },
   presetButtonActive: {
-    backgroundColor: colors.forest,
+    backgroundColor: colors.soft,
     borderColor: colors.forest,
   },
   presetText: {
@@ -365,13 +404,15 @@ const w = StyleSheet.create({
     color: semantic.color.text.primary,
   },
   presetTextActive: {
-    color: "white",
+    color: colors.forest,
   },
   txnRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingHorizontal: primitives.space[4],
+    paddingVertical: primitives.space[4],
+    gap: primitives.space[3],
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },

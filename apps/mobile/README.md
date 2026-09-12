@@ -48,3 +48,9 @@ bun run export:mobile
 ```
 
 The web export is written to `apps/mobile/dist`. A successful export verifies bundling; staging still needs real-device checks against the deployed Convex, Paystack, and Twilio configuration.
+
+## Parcel maps
+
+Configure `MAPBOX_ACCESS_TOKEN` in the Convex deployment environment through the dashboard or `convex env set`. No Mapbox credential belongs in the mobile environment or bundle. The authenticated `deliveries.parcelMap` action checks shipment participation, performs city lookup and routing, and returns the rendered PNG as a data URI. Mapbox URLs and tokens never reach the client. Enable Static Images, Geocoding and Directions access for the Mapbox account; requests originate from Convex, so browser-origin URL restrictions are not applicable.
+
+The tracking screen uses Mapbox Static Images on web, iOS and Android, with built-in Mapbox attribution retained. It is an overview map, without pan or zoom controls. Pickup and destination use temporary Nigeria city geocoding results; they are approximate city locations, not exact meeting points. Geocoding results are held only for the backend request. The suggested driving route is separate from the last GPS check-in marker and is not a recorded travel path. If directions fail, a labelled straight connection between the cities is shown. Maps refresh when the shipment's reported coordinates change. Without a token or when Mapbox fails, text tracking remains available.

@@ -1,10 +1,148 @@
-import {v} from "convex/values";
-import {mutation,query} from "./_generated/server";
-import type {MutationCtx,QueryCtx} from "./_generated/server";
-import type {Id} from "./_generated/dataModel";
-import {purpose} from "./schema";
-import {fail,isAdmin,participant,requireActive,requireUser} from "./lib";
-export async function validateEvidence(ctx:MutationCtx,ids:Id<"evidence">[],ownerId:Id<"users">,kind:"identity"|"parcel") { if(!ids.length||ids.length>5||new Set(ids).size!==ids.length) fail("Provide 1–5 distinct evidence files."); for(const id of ids) { const e=await ctx.db.get(id); if(!e||e.ownerId!==ownerId||e.purpose!==kind) fail("Evidence must be your own upload for this purpose."); if(e.size<=0||e.size>10*1024*1024||!e.contentType)fail("Evidence file metadata is invalid."); } }
-export const generateUploadUrl=mutation({args:{purpose},handler:async(ctx,args)=>{const u=await requireUser(ctx);requireActive(u);const recent=await ctx.db.query("uploads").withIndex("by_owner",q=>q.eq("ownerId",u._id)).collect();if(recent.filter(x=>Date.now()-x.createdAt<3600000).length>=30)fail("Upload limit reached. Try again in one hour.");await ctx.db.insert("uploads",{ownerId:u._id,purpose:args.purpose,createdAt:Date.now()});return ctx.storage.generateUploadUrl();}});
-export const register=mutation({args:{storageId:v.id("_storage"),purpose,filename:v.string()},handler:async(ctx,args)=>{const u=await requireUser(ctx);requireActive(u);const existing=await ctx.db.query("evidence").withIndex("by_storage",q=>q.eq("storageId",args.storageId)).unique();if(existing){if(existing.ownerId!==u._id||existing.purpose!==args.purpose)fail("File already registered.");return existing._id;}const meta=await ctx.storage.getMetadata(args.storageId);if(!meta)fail("Uploaded file not found.");const ticket=(await ctx.db.query("uploads").withIndex("by_owner",q=>q.eq("ownerId",u._id)).collect()).find(t=>!t.usedAt&&t.purpose===args.purpose&&Date.now()-t.createdAt<3600000);if(!ticket)fail("Request a new upload URL before registering evidence.");if(meta.size<=0||meta.size>10*1024*1024)fail("Evidence must be 1 byte–10 MB.");const contentType=meta.contentType??"";if(!(args.purpose==="identity"?["image/jpeg","image/png","image/webp","application/pdf"]:["image/jpeg","image/png","image/webp"]).includes(contentType))fail("Upload a JPEG, PNG or WebP image (identity also accepts PDF).");const filename=args.filename.trim();if(!filename||filename.length>180)fail("Enter a filename up to 180 characters.");await ctx.db.patch(ticket._id,{usedAt:Date.now()});return ctx.db.insert("evidence",{ownerId:u._id,storageId:args.storageId,purpose:args.purpose,filename,contentType,size:meta.size,createdAt:Date.now()});}});
-export const get=query({args:{evidenceId:v.id("evidence")},handler:async(ctx,args)=>{const u=await requireUser(ctx);const e=await ctx.db.get(args.evidenceId);if(!e)fail("Evidence not found.");let allowed=e.ownerId===u._id||isAdmin(u);if(!allowed&&e.purpose==="parcel"){const shipments=await ctx.db.query("shipments").withIndex("by_traveller",q=>q.eq("travellerId",u._id)).collect();allowed=shipments.some(s=>participant(s,u)&&s.evidenceIds?.includes(e._id));}if(!allowed)fail("Private evidence access denied.");return{id:e._id,filename:e.filename,contentType:e.contentType,size:e.size,url:await ctx.storage.getUrl(e.storageId)};}});
+import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import { purpose } from "./schema";
+import { fail, isAdmin, participant, requireActive, requireUser } from "./lib";
+
+export async function validateEvidence(
+  ctx: QueryCtx | MutationCtx,
+  ids: Id<"evidence">[],
+  ownerId: Id<"users">,
+  kind: "identity" | "parcel",
+) {
+  if (!ids.length || ids.length > 5 || new Set(ids).size !== ids.length) {
+    fail("Provide 1–5 distinct evidence files.");
+  }
+
+  for (const id of ids) {
+    const e = await ctx.db.get(id);
+    if (!e || e.ownerId !== ownerId || e.purpose !== kind) {
+      fail("Evidence must be your own upload for this purpose.");
+    }
+    if (e.size <= 0 || e.size > 10 * 1024 * 1024 || !e.contentType) {
+      fail("Evidence file metadata is invalid.");
+    }
+  }
+}
+
+export const generateUploadUrl = mutation({
+  args: { purpose },
+  handler: async (ctx, args) => {
+    const u = await requireUser(ctx);
+    requireActive(u);
+
+    const recent = await ctx.db
+      .query("uploads")
+      .withIndex("by_owner", q => q.eq("ownerId", u._id))
+      .collect();
+
+    if (recent.filter(x => Date.now() - x.createdAt < 3600000).length >= 30) {
+      fail("Upload limit reached. Try again in one hour.");
+    }
+
+    await ctx.db.insert("uploads", {
+      ownerId: u._id,
+      purpose: args.purpose,
+      createdAt: Date.now(),
+    });
+
+    return ctx.storage.generateUploadUrl();
+  },
+});
+
+export const register = mutation({
+  args: {
+    storageId: v.id("_storage"),
+    purpose,
+    filename: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const u = await requireUser(ctx);
+    requireActive(u);
+
+    const existing = await ctx.db
+      .query("evidence")
+      .withIndex("by_storage", q => q.eq("storageId", args.storageId))
+      .unique();
+
+    if (existing) {
+      if (existing.ownerId !== u._id || existing.purpose !== args.purpose) {
+        fail("File already registered.");
+      }
+      return existing._id;
+    }
+
+    const meta = await ctx.storage.getMetadata(args.storageId);
+    if (!meta) fail("Uploaded file not found.");
+
+    const uploads = await ctx.db
+      .query("uploads")
+      .withIndex("by_owner", q => q.eq("ownerId", u._id))
+      .collect();
+
+    const ticket = uploads.find(
+      t => !t.usedAt && t.purpose === args.purpose && Date.now() - t.createdAt < 3600000,
+    );
+    if (!ticket) fail("Request a new upload URL before registering evidence.");
+
+    if (meta.size <= 0 || meta.size > 10 * 1024 * 1024) {
+      fail("Evidence must be 1 byte–10 MB.");
+    }
+
+    const contentType = meta.contentType ?? "";
+    const allowedTypes =
+      args.purpose === "identity"
+        ? ["image/jpeg", "image/png", "image/webp", "application/pdf"]
+        : ["image/jpeg", "image/png", "image/webp"];
+
+    if (!allowedTypes.includes(contentType)) {
+      fail("Upload a JPEG, PNG or WebP image (identity also accepts PDF).");
+    }
+
+    const filename = args.filename.trim();
+    if (!filename || filename.length > 180) {
+      fail("Enter a filename up to 180 characters.");
+    }
+
+    await ctx.db.patch(ticket._id, { usedAt: Date.now() });
+
+    return ctx.db.insert("evidence", {
+      ownerId: u._id,
+      storageId: args.storageId,
+      purpose: args.purpose,
+      filename,
+      contentType,
+      size: meta.size,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const get = query({
+  args: { evidenceId: v.id("evidence") },
+  handler: async (ctx, args) => {
+    const u = await requireUser(ctx);
+    const e = await ctx.db.get(args.evidenceId);
+    if (!e) return null;
+
+    let allowed = e.ownerId === u._id || isAdmin(u);
+    if (!allowed && e.purpose === "parcel") {
+      const shipments = await ctx.db
+        .query("shipments")
+        .withIndex("by_traveller", q => q.eq("travellerId", u._id))
+        .collect();
+      allowed = shipments.some(s => participant(s, u) && s.evidenceIds?.includes(e._id));
+    }
+
+    if (!allowed) return null;
+
+    return {
+      id: e._id,
+      filename: e.filename,
+      contentType: e.contentType,
+      size: e.size,
+      url: await ctx.storage.getUrl(e.storageId),
+    };
+  },
+});

@@ -87,7 +87,7 @@ export function ClosingCta() {
           {STORES.map((s) => (
             <a
               key={s.bottom}
-              href="#"
+              href="#download"
               className="inline-flex items-center gap-3 rounded-xl border border-[#D1D5DB] bg-white px-5 py-2.5 text-left shadow-xs transition-colors hover:border-[#1F2937]"
             >
               <s.icon className="w-6 h-6 text-[#1F2937]" />

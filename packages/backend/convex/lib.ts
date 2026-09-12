@@ -94,9 +94,18 @@ export async function requireUser(ctx: QueryCtx | MutationCtx) {
   return userBySubject(ctx, await subject(ctx));
 }
 
+export async function isTeamMember(ctx: QueryCtx | MutationCtx, user: Doc<"users">): Promise<boolean> {
+  const viewerEmail = (user.email ?? "").toLowerCase();
+  if (!viewerEmail) return false;
+  const teamMembers = await ctx.db.query("teamMembers").collect();
+  return teamMembers.some(m => m.email.toLowerCase() === viewerEmail);
+}
+
 export async function requireAdmin(ctx: QueryCtx | MutationCtx) {
   const user = await requireUser(ctx);
-  if (!isStaff(user) || user.suspended) fail("Administrator access required.");
+  if (user.suspended) fail("Administrator access required.");
+  const isTeam = await isTeamMember(ctx, user);
+  if (!isStaff(user) && !isTeam) fail("Administrator access required.");
   return user;
 }
 
@@ -107,6 +116,7 @@ export async function requireCompliance(ctx: QueryCtx | MutationCtx) {
 }
 
 export async function hasPermission(ctx: QueryCtx | MutationCtx, user: Doc<"users">, permissionName: PermissionKey): Promise<boolean> {
+  if (user.suspended) return false;
   if (isAdmin(user)) return true;
   const viewerEmail = (user.email ?? "").toLowerCase();
   if (!viewerEmail) return false;
@@ -121,6 +131,9 @@ export async function hasPermission(ctx: QueryCtx | MutationCtx, user: Doc<"user
 }
 
 export async function requirePermission(ctx: QueryCtx | MutationCtx, user: Doc<"users">, permissionName: PermissionKey) {
+  if (user.suspended) fail("Administrator access required.");
+  const isTeam = await isTeamMember(ctx, user);
+  if (!isStaff(user) && !isTeam) fail("Administrator access required.");
   if (await hasPermission(ctx, user, permissionName)) return;
   fail(`You don't have permission to perform this action: ${permissionName}`);
 }
@@ -145,6 +158,7 @@ export function person(user: Doc<"users">, privateFields = false, includeComplia
     verification: user.verification,
     role: isCompliance(user) ? "compliance" : isAdmin(user) ? "admin" : "member",
     joinedAt: user.joinedAt,
+    activationDestination: privateFields ? user.activationDestination : undefined,
     suspended: user.suspended ?? false,
     ...(privateFields
       ? {
@@ -167,11 +181,17 @@ export function person(user: Doc<"users">, privateFields = false, includeComplia
 }
 
 export async function personDto(ctx: QueryCtx, user: Doc<"users">, privateFields = false, includeCompliance = privateFields): Promise<Person> {
-  const reviews = await ctx.db.query("reviews").withIndex("by_target", q => q.eq("targetId", user._id)).collect();
-  const deliveries = await ctx.db.query("shipments").withIndex("by_traveller", q => q.eq("travellerId", user._id)).collect();
+  const reviews = await ctx.db.query("reviews").withIndex("by_target", q => q.eq("targetId", user._id)).order("desc").take(500);
+  const deliveries = await ctx.db.query("shipments").withIndex("by_traveller", q => q.eq("travellerId", user._id)).order("desc").take(500);
   const storedImage = user.profileImageStorageId ? await ctx.storage.getUrl(user.profileImageStorageId) : null;
+  const base = person(user, privateFields, includeCompliance);
+  let role = base.role;
+  if (role === "member" && (await isTeamMember(ctx, user))) {
+    role = "admin";
+  }
   return {
-    ...person(user, privateFields, includeCompliance),
+    ...base,
+    role,
     image: storedImage ?? user.image,
     rating: reviews.length ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0,
     reviewCount: reviews.length,
@@ -356,6 +376,7 @@ export async function shipmentDto(ctx: QueryCtx, shipment: Doc<"shipments">, pri
     reference: shipment.reference,
     senderId: shipment.senderId,
     senderName: sender?.name ?? "Member",
+    senderVerified: sender?.verification === "verified" && !sender.suspended,
     travellerId: shipment.travellerId,
     travellerName: traveller?.name,
     origin: shipment.origin,

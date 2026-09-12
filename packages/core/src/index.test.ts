@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ALLOWED_TRANSITIONS, assertTransition, calculateDeliveryFee, findMatchingTrips, matchExplanation, money, normalizeCity, routeMatches, validateShipment, validateTrip } from "./index";
+import { ALLOWED_TRANSITIONS, assertTransition, calculateDeliveryFee, findMatchingTrips, formatErrorMessage, matchExplanation, money, normalizeCity, routeMatches, validateShipment, validateTrip } from "./index";
 import type { CreateShipmentInput, CreateTripInput } from "./index";
 
 const shipment: CreateShipmentInput = { origin: "Jos", destination: "Abuja", description: "Sealed university documents", category: "Documents", weightKg: 2, valueNaira: 20000, receiverName: "Chidi", receiverPhone: "+2348030000107", pickupInstructions: "Meet at the main gate by the security desk.", dropoffInstructions: "Call on arrival and meet at the reception.", readyAt: 1500, deliveryDeadline: 2500, evidenceIds: ["evidence-1"], safetyConsent: true };
@@ -69,4 +69,31 @@ describe("delivery lifecycle", () => {
 
 describe("presentation helpers", () => {
   test("formats naira", () => expect(money(4500)).toBe("₦4,500"));
+});
+
+describe("error message formatting", () => {
+  test("strips raw convex markers and stack traces", () => {
+    const raw = "[CONVEX M(deliveries:confirmDelivery)] [Request ID: 12345] Server Error\nUncaught ConvexError: Enter the 6-digit code.\n  at handler (packages/backend/convex/deliveries.ts:50:11)\n  Called by client";
+    expect(formatErrorMessage(raw)).toBe("Enter the 6-digit code.");
+  });
+
+  test("unwraps ConvexError data payloads", () => {
+    const errorWithData = { data: "Trip cancelled: Weather delay" };
+    expect(formatErrorMessage(errorWithData)).toBe("Trip cancelled: Weather delay");
+  });
+
+  test("masks server/database errors with friendly message", () => {
+    const serverErr = new Error("[CONVEX Q(shipments:get)] Server Error: internal server error");
+    expect(formatErrorMessage(serverErr)).toBe("Passenger is temporarily unavailable. Please try again shortly.");
+  });
+
+  test("masks network/timeout failures with connection message", () => {
+    const netErr = new Error("Failed to fetch: connection timeout");
+    expect(formatErrorMessage(netErr)).toBe("We couldn't connect. Your information is safe. Please check your connection and try again.");
+  });
+
+  test("falls back on empty or unrecognized internal error", () => {
+    expect(formatErrorMessage(null)).toBe("We couldn't finish that. Please try again.");
+    expect(formatErrorMessage("")).toBe("We couldn't finish that. Please try again.");
+  });
 });

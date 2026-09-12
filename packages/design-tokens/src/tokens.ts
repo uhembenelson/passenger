@@ -131,8 +131,13 @@ export const semantic = {
       primaryHover: primitives.color.green[600],
       primaryStrong: primitives.color.green[700]
     },
+    action: {
+      primary: primitives.color.green[800],
+      primaryHover: primitives.color.green[900],
+      onPrimary: primitives.color.white,
+    },
     background: {
-      app: "#EADCDC",
+      app: "#F5EEEE",
       surface: primitives.color.neutral[0],
       subtle: primitives.color.neutral[50],
       successSoft: primitives.color.green[50],
@@ -143,7 +148,7 @@ export const semantic = {
     text: {
       primary: primitives.color.neutral[900],
       secondary: primitives.color.neutral[700],
-      tertiary: primitives.color.neutral[500],
+      tertiary: primitives.color.neutral[700],
       onPrimary: primitives.color.white,
       success: primitives.color.green[700],
       danger: primitives.color.red[700],

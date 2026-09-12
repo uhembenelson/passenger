@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { calculateDeliveryFee, validateShipment, PERMISSIONS } from "@passenger/core";
 import type { CreateShipmentInput, DashboardSnapshot, PermissionKey } from "@passenger/core";
 import { tripArgs, createDefinition as createTripDefinition } from "./journeys";
@@ -10,9 +11,64 @@ import { assertSupportedRoute, getServiceArea } from "./serviceArea";
 import { getFeeConfig, getTierLimits } from "./lib";
 import { deductForShipment, refundForShipment } from "./wallet";
 
+const MEMBER_FEED_LIMIT = 200;
+const ADMIN_SNAPSHOT_LIMIT = 500;
+const RELATED_RECORD_LIMIT = 25;
+
+export const availableTripsPage = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx);
+    const result = await ctx.db
+      .query("trips")
+      .withIndex("by_departure", q => q.gt("departureAt", Date.now()))
+      .order("asc")
+      .paginate(args.paginationOpts);
+    return {
+      ...result,
+      page: (await Promise.all(result.page.map(trip => tripDto(ctx, trip))))
+        .filter(trip => trip.travellerId !== viewer._id && trip.verified && trip.status !== "cancelled" && trip.status !== "completed"),
+    };
+  },
+});
+
+export const myTripsPage = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx);
+    const result = await ctx.db
+      .query("trips")
+      .withIndex("by_traveller", q => q.eq("travellerId", viewer._id))
+      .order("desc")
+      .paginate(args.paginationOpts);
+    return {
+      ...result,
+      page: await Promise.all(result.page.map(trip => tripDto(ctx, trip))),
+    };
+  },
+});
+
+export const availableShipmentsPage = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx);
+    const result = await ctx.db
+      .query("shipments")
+      .withIndex("by_status", q => q.eq("status", "open"))
+      .order("desc")
+      .paginate(args.paginationOpts);
+    return {
+      ...result,
+      page: await Promise.all(result.page
+        .filter(record => record.senderId !== viewer._id && record.approved && ["held", "unpaid"].includes(record.paymentStatus))
+        .map(record => shipmentDto(ctx, record, false))),
+    };
+  },
+});
+
 export const dashboard = query({
-  args: {},
-  handler: async (ctx): Promise<DashboardSnapshot> => {
+  args: { surface: v.optional(v.union(v.literal("mobile"), v.literal("admin"))) },
+  handler: async (ctx, args): Promise<DashboardSnapshot> => {
     const identity = await ctx.auth.getUserIdentity();
     const serviceArea = await getServiceArea(ctx);
     const empty: DashboardSnapshot = { viewer: null, people: [], trips: [], shipments: [], events: [], disputes: [], offers: [], notifications: [], serviceArea, walletTransactions: [], reviews: [], supportChats: [], supportMessages: [], faqs: [], settings: [], feeConfig: undefined, escrowPolicies: [], cancellationPolicies: [], kycTiers: [], adminRoles: [], teamMembers: [], permissions: [], permissionGrants: [], suspiciousAccounts: [], adminLogins: [], adminActions: [], viewerPermissions: [] };
@@ -21,107 +77,112 @@ export const dashboard = query({
     const viewer = await findUserBySubject(ctx, identity.subject);
     if (!viewer) return empty;
 
-    const admin = isStaff(viewer);
-    const openShipments = await ctx.db.query("shipments").withIndex("by_status", q => q.eq("status", "open")).collect();
-    const rawShipments = admin
-      ? await ctx.db.query("shipments").collect()
+    const viewerEmail = (viewer.email ?? "").toLowerCase();
+    const viewerMemberRecord = viewerEmail
+      ? await ctx.db.query("teamMembers").withIndex("by_email", q => q.eq("email", viewerEmail)).first()
+      : null;
+    const admin = isStaff(viewer) || !!viewerMemberRecord;
+    const adminView = admin && args.surface !== "mobile";
+    const allTeamMembers = adminView ? await ctx.db.query("teamMembers").take(ADMIN_SNAPSHOT_LIMIT) : [];
+    const rawShipments = adminView
+      ? await ctx.db.query("shipments").order("desc").take(ADMIN_SNAPSHOT_LIMIT)
       : [
-          ...await ctx.db.query("shipments").withIndex("by_sender", q => q.eq("senderId", viewer._id)).collect(),
-          ...await ctx.db.query("shipments").withIndex("by_traveller", q => q.eq("travellerId", viewer._id)).collect(),
-          ...openShipments.filter(s => s.paymentStatus === "held"),
+          ...await ctx.db.query("shipments").withIndex("by_sender", q => q.eq("senderId", viewer._id)).order("desc").take(MEMBER_FEED_LIMIT),
+          ...await ctx.db.query("shipments").withIndex("by_traveller", q => q.eq("travellerId", viewer._id)).order("desc").take(MEMBER_FEED_LIMIT),
         ];
     const selected = [...new Map(rawShipments.map(s => [s._id, s])).values()].sort((a, b) => b.createdAt - a.createdAt);
     const own = selected.filter(s => participant(s, viewer));
+    const senderOwnedShipmentIds = new Set(selected.filter(s => s.senderId === viewer._id).map(s => s._id));
 
-    const rawTrips = admin
-      ? await ctx.db.query("trips").collect()
+    const linkedTrips = adminView
+      ? []
+      : (await Promise.all([...new Set(selected.flatMap(s => s.tripId ? [s.tripId] : []))].map(id => ctx.db.get(id))))
+          .filter(trip => trip !== null);
+    const rawTrips = adminView
+      ? await ctx.db.query("trips").order("desc").take(ADMIN_SNAPSHOT_LIMIT)
       : [
-          ...await ctx.db.query("trips").withIndex("by_departure", q => q.gt("departureAt", Date.now())).collect(),
-          ...await ctx.db.query("trips").withIndex("by_traveller", q => q.eq("travellerId", viewer._id)).collect(),
+          ...await ctx.db.query("trips").withIndex("by_traveller", q => q.eq("travellerId", viewer._id)).order("desc").take(MEMBER_FEED_LIMIT),
+          ...linkedTrips,
         ];
     const trips = (await Promise.all([...new Map(rawTrips.map(t => [t._id, t])).values()].map(t => tripDto(ctx, t)))).filter(
-      t => admin || t.travellerId === viewer._id || t.verified,
+      t => adminView || t.travellerId === viewer._id || t.verified,
     );
 
-    const userIds = new Set([
-      viewer._id,
-      ...selected.flatMap(s => (s.travellerId ? [s.senderId, s.travellerId] : [s.senderId])),
-      ...trips.map(t => t.travellerId as typeof viewer._id),
-    ]);
-    const users = admin
-      ? await ctx.db.query("users").collect()
-      : (await Promise.all([...userIds].map(id => ctx.db.get(id)))).filter(u => u !== null);
+    const users = adminView
+      ? await ctx.db.query("users").order("desc").take(ADMIN_SNAPSHOT_LIMIT)
+      : [viewer];
 
-    const events = admin
+    const events = adminView
       ? await ctx.db.query("audits").withIndex("by_created").order("desc").take(200)
-      : (await Promise.all(own.map(s => ctx.db.query("audits").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).collect())))
+      : (await Promise.all(own.map(s => ctx.db.query("audits").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).order("desc").take(RELATED_RECORD_LIMIT))))
           .flat()
           .sort((a, b) => b.createdAt - a.createdAt)
           .slice(0, 200);
-    const disputes = admin
-      ? await ctx.db.query("disputes").collect()
-      : (await Promise.all(own.map(s => ctx.db.query("disputes").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).collect()))).flat();
+    const disputes = adminView
+      ? await ctx.db.query("disputes").order("desc").take(ADMIN_SNAPSHOT_LIMIT)
+      : (await Promise.all(own.map(s => ctx.db.query("disputes").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).order("desc").take(RELATED_RECORD_LIMIT)))).flat();
 
-    const rawOffers = admin
-      ? await ctx.db.query("offers").collect()
+    const rawOffers = adminView
+      ? await ctx.db.query("offers").order("desc").take(ADMIN_SNAPSHOT_LIMIT)
       : [
-          ...await ctx.db.query("offers").withIndex("by_traveller", q => q.eq("travellerId", viewer._id)).collect(),
-          ...(await Promise.all(selected.map(s => ctx.db.query("offers").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).collect()))).flat(),
+          ...await ctx.db.query("offers").withIndex("by_traveller", q => q.eq("travellerId", viewer._id)).order("desc").take(MEMBER_FEED_LIMIT),
+          ...(await Promise.all(selected.map(s => ctx.db.query("offers").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).order("desc").take(RELATED_RECORD_LIMIT)))).flat(),
         ];
     const offers = [...new Map(rawOffers.map(o => [o._id, o])).values()].filter(
-      o => admin || o.travellerId === viewer._id || selected.some(s => s._id === o.shipmentId && s.senderId === viewer._id),
+      o => adminView || o.travellerId === viewer._id || senderOwnedShipmentIds.has(o.shipmentId),
     );
 
-    const notifications = admin ? [] : await ctx.db.query("notifications").withIndex("by_user", q => q.eq("userId", viewer._id)).collect();
-    const reviews = admin ? await ctx.db.query("reviews").collect() : [];
-    const walletTransactions = admin
-      ? (await ctx.db.query("walletTransactions").collect())
+    const reviews = adminView ? await ctx.db.query("reviews").order("desc").take(ADMIN_SNAPSHOT_LIMIT) : [];
+    const walletTransactions = adminView
+      ? (await ctx.db.query("walletTransactions").order("desc").take(ADMIN_SNAPSHOT_LIMIT))
           .sort((a, b) => b.createdAt - a.createdAt)
           .slice(0, 200)
-      : (await ctx.db.query("walletTransactions").withIndex("by_user", q => q.eq("userId", viewer._id)).collect())
-          .sort((a, b) => b.createdAt - a.createdAt)
-          .slice(0, 50);
+      : [];
 
-    const rawSupportChats = admin
-      ? await ctx.db.query("supportChats").withIndex("by_last_message").order("desc").collect()
+    const rawSupportChats = adminView
+      ? await ctx.db.query("supportChats").withIndex("by_last_message").order("desc").take(ADMIN_SNAPSHOT_LIMIT)
       : [];
     const supportChats = await Promise.all(rawSupportChats.map(async (c) => {
       const user = await ctx.db.get(c.userId);
       const msgs = await ctx.db.query("supportMessages").withIndex("by_chat", q => q.eq("chatId", c._id)).order("desc").take(1);
       return { id: c._id, userId: c.userId, userName: user?.name ?? "Unknown", userImage: user?.image, subject: c.subject, status: effectiveChatStatus(c), lastMessage: msgs[0]?.body ?? "", lastMessageAt: c.lastMessageAt, createdAt: c.createdAt, resolvedAt: c.resolvedAt, closedAt: c.closedAt, resolution: c.resolution, resolutionNote: c.resolutionNote, assignedTo: c.assignedTo, assignedByName: c.assignedByName, resolvedBy: c.resolvedBy, resolvedByName: c.resolvedByName, qaReviewedBy: c.qaReviewedBy, qaReviewedByName: c.qaReviewedByName, qaScore: c.qaScore, qaNote: c.qaNote, qaReviewedAt: c.qaReviewedAt, activeViewedBy: c.activeViewedBy, activeViewedAt: c.activeViewedAt };
     }));
-    const supportMessages = admin
-      ? (await ctx.db.query("supportMessages").collect()).map(m => ({ id: m._id, chatId: m.chatId, authorId: m.authorId, body: m.body, createdAt: m.createdAt }))
+    const supportMessages = adminView
+      ? (await ctx.db.query("supportMessages").order("desc").take(ADMIN_SNAPSHOT_LIMIT)).map(m => ({ id: m._id, chatId: m.chatId, authorId: m.authorId, body: m.body, createdAt: m.createdAt }))
       : [];
-    const faqs = admin
-      ? (await ctx.db.query("faqs").withIndex("by_created").order("desc").collect()).map(f => ({ id: f._id, question: f.question, answer: f.answer, createdAt: f.createdAt, updatedAt: f.updatedAt }))
+    const faqs = adminView
+      ? (await ctx.db.query("faqs").withIndex("by_created").order("desc").take(ADMIN_SNAPSHOT_LIMIT)).map(f => ({ id: f._id, question: f.question, answer: f.answer, createdAt: f.createdAt, updatedAt: f.updatedAt }))
       : [];
-    const settings = admin
-      ? (await ctx.db.query("settings").collect()).map(s => ({ id: s._id, key: s.key, title: s.title, body: s.body, createdAt: s.createdAt, updatedAt: s.updatedAt }))
+    const settings = adminView
+      ? (await ctx.db.query("settings").take(ADMIN_SNAPSHOT_LIMIT)).map(s => ({ id: s._id, key: s.key, title: s.title, body: s.body, createdAt: s.createdAt, updatedAt: s.updatedAt }))
       : [];
-    const escrowPolicies = admin
-      ? (await ctx.db.query("escrowPolicies").withIndex("by_created").order("desc").collect()).map(p => ({ id: p._id, policyName: p.policyName, type: p.type, releaseTime: p.releaseTime, createdAt: p.createdAt, updatedAt: p.updatedAt }))
+    const escrowPolicies = adminView
+      ? (await ctx.db.query("escrowPolicies").withIndex("by_created").order("desc").take(ADMIN_SNAPSHOT_LIMIT)).map(p => ({ id: p._id, policyName: p.policyName, type: p.type, releaseTime: p.releaseTime, createdAt: p.createdAt, updatedAt: p.updatedAt }))
       : [];
-    const cancellationPolicies = admin
-      ? (await ctx.db.query("cancellationPolicies").withIndex("by_created").order("desc").collect()).map(p => ({ id: p._id, ruleName: p.ruleName, refundType: p.refundType, refundPercent: p.refundPercent, window: p.window, createdAt: p.createdAt, updatedAt: p.updatedAt }))
+    const cancellationPolicies = adminView
+      ? (await ctx.db.query("cancellationPolicies").withIndex("by_created").order("desc").take(ADMIN_SNAPSHOT_LIMIT)).map(p => ({ id: p._id, ruleName: p.ruleName, refundType: p.refundType, refundPercent: p.refundPercent, window: p.window, createdAt: p.createdAt, updatedAt: p.updatedAt }))
       : [];
-    const kycTiers = admin
-      ? (await ctx.db.query("kycTiers").withIndex("by_created").order("desc").collect()).map(t => ({ id: t._id, tierName: t.tierName, requirements: t.requirements, maxShipmentValueNaira: t.maxShipmentValueNaira, maxCapacityKg: t.maxCapacityKg, description: t.description, createdAt: t.createdAt, updatedAt: t.updatedAt }))
+    const kycTiers = adminView
+      ? (await ctx.db.query("kycTiers").withIndex("by_created").order("desc").take(ADMIN_SNAPSHOT_LIMIT)).map(t => ({ id: t._id, tierName: t.tierName, requirements: t.requirements, maxShipmentValueNaira: t.maxShipmentValueNaira, maxCapacityKg: t.maxCapacityKg, description: t.description, createdAt: t.createdAt, updatedAt: t.updatedAt }))
       : [];
-    const adminRoles = admin
-      ? (await ctx.db.query("adminRoles").withIndex("by_created").order("desc").collect()).map(r => ({ id: r._id, name: r.name, memberCount: 0 }))
+    const adminRoles = adminView
+      ? (await ctx.db.query("adminRoles").withIndex("by_created").order("desc").take(ADMIN_SNAPSHOT_LIMIT)).map(r => ({ id: r._id, name: r.name, memberCount: 0 }))
       : [];
-    const teamMembers = admin
-      ? (await ctx.db.query("teamMembers").collect()).map(m => ({ id: m._id, adminRoleId: m.adminRoleId, name: m.name, email: m.email, roleTitle: m.roleTitle, mustChangePassword: m.mustChangePassword }))
+    const teamMembers = adminView
+      ? allTeamMembers.map(m => ({ id: m._id, adminRoleId: m.adminRoleId, name: m.name, email: m.email, roleTitle: m.roleTitle, mustChangePassword: m.mustChangePassword }))
       : [];
-    for (const role of adminRoles) role.memberCount = teamMembers.filter(m => m.adminRoleId === role.id).length;
-    const permissions = admin
-      ? (await ctx.db.query("permissions").withIndex("by_created").collect()).map(p => ({ id: p._id, name: p.name }))
+    const memberCountByRole = new Map<string, number>();
+    for (const member of teamMembers) {
+      if (member.adminRoleId) memberCountByRole.set(member.adminRoleId, (memberCountByRole.get(member.adminRoleId) ?? 0) + 1);
+    }
+    for (const role of adminRoles) role.memberCount = memberCountByRole.get(role.id) ?? 0;
+    const permissions = adminView
+      ? (await ctx.db.query("permissions").withIndex("by_created").take(ADMIN_SNAPSHOT_LIMIT)).map(p => ({ id: p._id, name: p.name }))
       : [];
-    const permissionGrants = admin
-      ? (await ctx.db.query("permissionGrants").collect()).map(g => ({ id: g._id, permissionId: g.permissionId, adminRoleId: g.adminRoleId, roleTitle: g.roleTitle, granted: g.granted }))
+    const permissionGrants = adminView
+      ? (await ctx.db.query("permissionGrants").take(ADMIN_SNAPSHOT_LIMIT)).map(g => ({ id: g._id, permissionId: g.permissionId, adminRoleId: g.adminRoleId, roleTitle: g.roleTitle, granted: g.granted }))
       : [];
-    const securityEvents = admin
+    const securityEvents = adminView
       ? await ctx.db.query("securityEvents").withIndex("by_created").order("desc").take(300)
       : [];
     const suspiciousMap = new Map<string, { name: string; email?: string; phone?: string; attempts: number }>();
@@ -156,8 +217,7 @@ export const dashboard = query({
       affectedSection: event.affectedSection,
       ipAddress: event.ipAddress,
     }));
-    const feeConfigRows = await ctx.db.query("feeConfig").collect();
-    const feeConfigDoc = feeConfigRows[0];
+    const feeConfigDoc = await ctx.db.query("feeConfig").first();
     const feeConfig = feeConfigDoc
       ? { platformFeePercent: feeConfigDoc.platformFeePercent, baseFeeNaira: feeConfigDoc.baseFeeNaira, distanceRateNairaPerKm: feeConfigDoc.distanceRateNairaPerKm, minFeeNaira: feeConfigDoc.minFeeNaira ?? 2000, categoryMultipliers: feeConfigDoc.categoryMultipliers as Record<string, number> | undefined, weightMultipliers: feeConfigDoc.weightMultipliers as { minKg: number; maxKg: number; multiplier: number }[] | undefined, updatedAt: feeConfigDoc.updatedAt }
       : { platformFeePercent: 10, baseFeeNaira: 1400, distanceRateNairaPerKm: 17, minFeeNaira: 2000, updatedAt: 0 };
@@ -179,18 +239,16 @@ export const dashboard = query({
     }
 
     const viewerPerson = await personDto(ctx, viewer, true);
-    const viewerMemberEmail = (viewer.email ?? "").toLowerCase();
-    const viewerMemberRecord = admin ? (await ctx.db.query("teamMembers").collect()).find(m => m.email.toLowerCase() === viewerMemberEmail) : undefined;
 
     return {
       viewer: viewerMemberRecord ? { ...viewerPerson, mustChangePassword: viewerMemberRecord.mustChangePassword ?? false } : viewerPerson,
-      people: await Promise.all(users.map(u => personDto(ctx, u, admin || u._id === viewer._id, isCompliance(viewer) || u._id === viewer._id))),
+      people: await Promise.all(users.map(u => personDto(ctx, u, adminView || u._id === viewer._id, isCompliance(viewer) || u._id === viewer._id))),
       trips,
-      shipments: await Promise.all(selected.map(s => shipmentDto(ctx, s, admin || participant(s, viewer)))),
+      shipments: await Promise.all(selected.map(s => shipmentDto(ctx, s, adminView || participant(s, viewer)))),
       events: events.map(e => ({ id: e._id, shipmentId: e.shipmentId, actorName: e.actorName, action: e.action, detail: e.detail, createdAt: e.createdAt })),
       disputes: disputes.map(d => ({ id: d._id, shipmentId: d.shipmentId, reason: d.reason, status: d.status, createdAt: d.createdAt, previousStatus: d.previousStatus, resolution: d.resolution, note: d.note, informationRequest: d.informationRequest, resolvedAt: d.resolvedAt })),
       offers: await Promise.all(offers.map(o => offerDto(ctx, o))),
-      notifications: notifications.map(n => ({ id: n._id, title: n.title, body: n.body, shipmentId: n.shipmentId, createdAt: n.createdAt, readAt: n.readAt })),
+      notifications: [],
       serviceArea,
       walletTransactions: walletTransactions.map(t => ({
         id: t._id,

@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { View } from "react-native";
 import { useAction, useQuery } from "convex/react";
 import { api } from "@passenger/backend/convex/_generated/api";
-import { usePassenger } from "./data";
-import { Badge, Button, Card, colors, errorMessage, Field, Notice, s, SectionTitle, Txt } from "./ui";
+import { usePassengerState } from "./data";
+import { Badge, Button, Card, errorMessage, Field, Hydrated, InlineSkeleton, Notice, s, SectionTitle, Txt } from "./ui";
 
 type Readiness = {
   smsConfigured: boolean;
@@ -17,7 +17,7 @@ type Bank = { code: string; name: string };
 type BankAccount = { accountName: string; bankCode: string; last4: string; ready: boolean; verifiedAt?: number } | null;
 
 export function BankDetails() {
-  const { snapshot, offline } = usePassenger();
+  const { snapshot, offline } = usePassengerState();
   const viewer = snapshot?.viewer;
   const readiness = useQuery(api.accounts.readiness, viewer ? {} : "skip") as Readiness | undefined;
   const bank = useQuery(api.finance.bankAccount, viewer ? {} : "skip") as BankAccount | undefined;
@@ -53,8 +53,8 @@ export function BankDetails() {
     <Card>
       <SectionTitle title="Funding and provider readiness" subtitle="Passenger shows when wallet funding is using the temporary in-app path versus the live external providers." />
       {readiness === undefined
-        ? <View style={[s.row, { gap: 10 }]}><ActivityIndicator color={colors.forest} /><Txt style={s.hint}>Checking provider readiness…</Txt></View>
-        : <View style={{ gap: 12 }}>
+        ? <InlineSkeleton label="Checking provider readiness" />
+        : <Hydrated><View style={{ gap: 12 }}>
           <View style={s.wrap}>
             <Badge label={readiness.walletFundingMode === "manual" ? "Wallet funding uses in-app mode" : "Wallet funding uses provider checkout"} tone={readiness.walletFundingMode === "manual" ? "amber" : "green"} />
             <Badge label={readiness.paymentsConfigured ? "Provider payouts configured" : "Provider payouts not configured"} tone={readiness.paymentsConfigured ? "green" : "amber"} />
@@ -65,7 +65,7 @@ export function BankDetails() {
           {readiness.walletFundingMode === "manual" && <Notice tone="warning">Paystack top-up is not configured yet, so wallet funding currently completes directly inside Passenger for this build. Parcel posting and wallet holds work; provider-backed payouts and bank verification still wait on the real integration.</Notice>}
           {!readiness.paymentsConfigured && readiness.walletFundingMode !== "manual" && <Notice tone="warning">Paystack is not configured on this deployment yet. Hosted checkout, bank recipient verification, and payout/refund operations remain blocked until the backend receives a provider key.</Notice>}
           {!readiness.smsConfigured && <Notice tone="warning">Receiver delivery-code SMS is not configured on this deployment yet. Final delivery proof fails closed until Twilio credentials are set.</Notice>}
-        </View>}
+        </View></Hydrated>}
     </Card>
 
     <Card>
@@ -73,7 +73,7 @@ export function BankDetails() {
       {!verified && <Notice tone="warning">Verify your identity before resolving bank details. Passenger only verifies payout recipients for active, verified members.</Notice>}
       {viewer.suspended && <Notice tone="error">Bank setup is unavailable while your account is suspended.</Notice>}
       {bank === undefined
-        ? <View style={[s.row, { gap: 10 }]}><ActivityIndicator color={colors.forest} /><Txt style={s.hint}>Loading saved bank details…</Txt></View>
+        ? <InlineSkeleton label="Loading saved bank details" />
         : bankReady
           ? <View style={{ gap: 12 }}>
             <Badge label={`Ready · ${bank.accountName} · •••• ${bank.last4}`} tone="green" />

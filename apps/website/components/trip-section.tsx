@@ -30,6 +30,7 @@ export function TripSection({ nextSectionRef }: TripSectionProps) {
   return (
     <section
       ref={rootRef}
+      id="about"
       className="relative bg-[#FAFAFC] pt-14 md:pt-20"
     >
       <div
@@ -81,7 +82,7 @@ export function TripSection({ nextSectionRef }: TripSectionProps) {
         <div className="mx-auto mt-20 md:mt-28 max-w-2xl pt-14 border-t border-[#E5E7EB]">
           <p className="text-[#7A7F87] text-sm">Travelling somewhere soon?</p>
           <a
-            href="#"
+            href="#download"
             className="inline-block mt-1.5 text-base font-semibold text-[#248A56] border-b border-[#248A56]/30 hover:border-[#248A56] transition-colors"
           >
             Post your trip

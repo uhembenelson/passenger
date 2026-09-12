@@ -11,33 +11,31 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import {
   ArrowUp,
+  Banknote,
   Check,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   ChevronUp,
   FileText,
   LogOut,
   Pencil,
+  Package,
   Plus,
   Trash2,
   Upload,
   UserCheck,
   Wallet,
   X,
-  Bell,
 } from "lucide-react-native";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@passenger/backend/convex/_generated/api";
-import type { Id } from "@passenger/backend/convex/_generated/dataModel";
-import type { DocumentType, Person } from "@passenger/core";
+import { isPlaceholderPhone, type Person } from "@passenger/core";
 import { primitives, semantic } from "@passenger/design-tokens";
 import { usePassenger } from "./data";
-import { EvidencePicker, getPendingEvidenceResumeKey } from "./evidence";
-import { BankDetails } from "./finance";
-import { Inbox } from "./social";
+import { getPendingEvidenceResumeKey } from "./evidence";
+import { IdentityVerification } from "./identity-verification";
 import { TopUpSheet, WalletTransactionHistory } from "./wallet";
-import {
+import { BackButton,
   Avatar,
   Badge,
   Button,
@@ -54,7 +52,10 @@ import {
   Txt,
 } from "./ui";
 
-type SubScreen = "menu" | "personal_info" | "account_tier" | "wallet" | "inbox";
+import { EarningsScreen } from "./earnings";
+import { ParcelHistory } from "./parcel-history";
+
+type SubScreen = "earnings" | "menu" | "personal_info" | "account_tier" | "wallet" | "parcel_history";
 type ChangePasswordStep = null | "phone" | "otp";
 
 export function Profile({
@@ -63,12 +64,14 @@ export function Profile({
   onToast,
   onSafety,
   onOpenDelivery,
+  onStartEarning,
 }: {
   viewer?: Person;
   navigation?: React.ReactNode;
   onToast?: (message: string) => void;
   onSafety?: () => void;
   onOpenDelivery?: (id: string) => void;
+  onStartEarning?: () => void;
 }) {
   const data = usePassenger();
   const viewer = propViewer ?? data.snapshot?.viewer;
@@ -85,8 +88,12 @@ export function Profile({
 
   useEffect(() => {
     void (async () => {
-      const pendingResume = await getPendingEvidenceResumeKey();
-      if (pendingResume === "tier2-identity") setSubScreen("account_tier");
+      try {
+        const pendingResume = await getPendingEvidenceResumeKey();
+        if (pendingResume === "tier2-identity") setSubScreen("account_tier");
+      } catch {
+        // Ignore resume key error
+      }
     })();
   }, []);
 
@@ -133,12 +140,9 @@ export function Profile({
         />
       )}
 
-      {subScreen === "inbox" && (
-        <ScrollView contentContainerStyle={p.scroll}>
-          <View style={p.headerNav}><Pressable accessibilityRole="button" accessibilityLabel="Back to profile" onPress={() => setSubScreen("menu")} style={p.backButton}><ChevronLeft size={24} color="#1F2937" /></Pressable></View>
-          <Inbox onDetail={id => onOpenDelivery?.(id)} />
-        </ScrollView>
-      )}
+      {subScreen === "earnings" && <EarningsScreen onBack={() => setSubScreen("menu")} onStartEarning={onStartEarning} />}
+
+      {subScreen === "parcel_history" && <ParcelHistory onBack={() => setSubScreen("menu")} />}
 
       {changePasswordStep !== null && (
         <ChangePasswordModal
@@ -249,10 +253,16 @@ function ProfileMenuView({
           <ChevronRight size={20} color="#9CA3AF" />
         </Pressable>
 
-        <Pressable accessibilityRole="button" onPress={() => onSelect("inbox")} style={p.menuItem}>
-          <View style={p.menuLeft}><Bell size={22} color="#1F2937" strokeWidth={1.8} /><Txt style={p.menuLabel}>Updates</Txt></View>
+        <Pressable accessibilityRole="button" onPress={() => onSelect("earnings")} style={p.menuItem}>
+          <View style={p.menuLeft}><Banknote size={22} color="#1F2937" strokeWidth={1.8} /><Txt style={p.menuLabel}>Earnings</Txt></View>
           <ChevronRight size={20} color="#9CA3AF" />
         </Pressable>
+
+        <Pressable accessibilityRole="button" onPress={() => onSelect("parcel_history")} style={p.menuItem}>
+          <View style={p.menuLeft}><Package size={22} color="#1F2937" strokeWidth={1.8} /><Txt style={p.menuLabel}>Parcel history</Txt></View>
+          <ChevronRight size={20} color="#9CA3AF" />
+        </Pressable>
+
 
         <Pressable
           accessibilityRole="button"
@@ -350,9 +360,7 @@ function PersonalInformationView({
   return (
     <ScrollView contentContainerStyle={p.scroll}>
       <View style={p.headerNav}>
-        <Pressable accessibilityRole="button" onPress={onBack} style={p.backButton}>
-          <ChevronLeft size={24} color="#1F2937" />
-        </Pressable>
+        <BackButton accessibilityLabel="Back to profile" onPress={onBack} />
         {toastMessage !== "" && (
           <View style={p.toastPill}>
             <Check size={16} color="#FFFFFF" strokeWidth={2.5} />
@@ -385,6 +393,7 @@ function PersonalInformationView({
       <View style={p.formSection}>
         <Txt style={p.sectionLabel}>Email Address</Txt>
         <TextInput
+          accessibilityLabel="Email address"
           value={email}
           onChangeText={setEmail}
           placeholder="Enter your email address"
@@ -441,7 +450,7 @@ function ChangePasswordModal({
   onSuccess: () => void;
 }) {
   const data = usePassenger();
-  const [phone, setPhone] = useState(initialPhone);
+  const [phone, setPhone] = useState(isPlaceholderPhone(initialPhone) ? "" : initialPhone);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -687,8 +696,12 @@ function AccountTierView({
   useEffect(() => {
     if (!autoOpenTier2) return;
     void (async () => {
-      const pendingResume = await getPendingEvidenceResumeKey();
-      if (pendingResume === "tier2-identity") setTier2ModalOpen(true);
+      try {
+        const pendingResume = await getPendingEvidenceResumeKey();
+        if (pendingResume === "tier2-identity") setTier2ModalOpen(true);
+      } catch {
+        // Ignore resume key error
+      }
     })();
   }, [autoOpenTier2]);
 
@@ -713,9 +726,7 @@ function AccountTierView({
       <ScrollView contentContainerStyle={tierStyles.scrollContent}>
         {/* Header */}
         <View style={tierStyles.header}>
-          <Pressable accessibilityRole="button" onPress={onBack} style={tierStyles.backButton}>
-            <ChevronLeft size={24} color="#1F2937" />
-          </Pressable>
+          <BackButton accessibilityLabel="Back to profile" onPress={onBack} />
           <Txt style={tierStyles.headerTitle}>Account Tier</Txt>
           <View style={{ width: 24 }} />
         </View>
@@ -724,7 +735,7 @@ function AccountTierView({
         {toastMessage !== "" && (
           <View style={tierStyles.toastBanner}>
             <View style={tierStyles.toastIconCircle}>
-              <Check size={14} color="#22C55E" strokeWidth={3} />
+              <Check size={14} color={semantic.color.action.primary} strokeWidth={3} />
             </View>
             <Txt style={tierStyles.toastBannerText}>{toastMessage}</Txt>
           </View>
@@ -758,7 +769,7 @@ function AccountTierView({
               <View style={tierStyles.cardBody}>
                 <View style={tierStyles.divider} />
                 <Txt style={tierStyles.tierDescription}>
-                  Find Travelers and view their trip details.
+                  Find Travellers and view their trip details.
                 </Txt>
               </View>
             )}
@@ -796,11 +807,11 @@ function AccountTierView({
                 <View style={tierStyles.bulletList}>
                   <View style={tierStyles.bulletRow}>
                     <Txt style={tierStyles.bulletDot}>•</Txt>
-                    <Txt style={tierStyles.bulletText}>Book travelers for delivery.</Txt>
+                    <Txt style={tierStyles.bulletText}>Book travellers for delivery.</Txt>
                   </View>
                   <View style={tierStyles.bulletRow}>
                     <Txt style={tierStyles.bulletDot}>•</Txt>
-                    <Txt style={tierStyles.bulletText}>Contact travelers.</Txt>
+                    <Txt style={tierStyles.bulletText}>Contact travellers.</Txt>
                   </View>
                   <View style={tierStyles.bulletRow}>
                     <Txt style={tierStyles.bulletDot}>•</Txt>
@@ -892,59 +903,7 @@ function UpgradeToTier2Modal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
-  if (!visible) return null;
-  const data = usePassenger();
-  const [documentType, setDocumentType] = useState<DocumentType>("national_id");
-  const [evidenceIds, setEvidenceIds] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleConfirm = async () => {
-    if (!evidenceIds.length) {
-      setError("Upload a clear identity document before submitting.");
-      return;
-    }
-    setError("");
-    setBusy(true);
-    try {
-      await data.submitIdentity({ name: viewer.name, phone: viewer.phone, documentType, evidenceIds });
-      setEvidenceIds([]);
-      onSuccess();
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <PresentationSheet title="Verify your identity" onClose={onClose}>
-      <View style={{ gap: 16 }}>
-        {error !== "" && <Notice tone="error">{error}</Notice>}
-        <Notice>Your document is private and is reviewed by authorized Passenger operations. Submission does not grant verification automatically.</Notice>
-        <Txt style={tierStyles.fieldLabel}>Document type</Txt>
-        <View style={s.wrap}>{([['national_id', 'National ID'], ['passport', 'Passport'], ['drivers_license', "Driver's licence"]] as const).map(([value, label]) => <Button key={value} title={label} small variant={documentType === value ? "primary" : "secondary"} disabled={busy} onPress={() => setDocumentType(value)} />)}</View>
-        <EvidencePicker purpose="identity" value={evidenceIds} onChange={setEvidenceIds} disabled={busy} resumeKey="tier2-identity" />
-
-        <Pressable
-          accessibilityRole="button"
-          onPress={handleConfirm}
-          disabled={busy || evidenceIds.length === 0}
-          style={[
-            tierStyles.greenPillButton,
-            { marginTop: 12 },
-            (busy || evidenceIds.length === 0) && { opacity: 0.6 },
-          ]}
-        >
-          {busy ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Txt style={tierStyles.greenPillButtonText}>Submit for review</Txt>
-          )}
-        </Pressable>
-      </View>
-    </PresentationSheet>
-  );
+  return visible ? <IdentityVerification viewer={viewer} onClose={onClose} onSuccess={onSuccess} /> : null;
 }
 
 // -------------------------------------------------------------
@@ -975,7 +934,7 @@ function LocationPermissionModal({
           </Pressable>
 
           <Txt style={tierStyles.permissionTitle}>
-            Allow <Txt style={{ color: "#22C55E" }}>“Passenger App”</Txt> to access your location while you use the app?
+            Allow <Txt style={{ color: semantic.color.action.primary }}>“Passenger App”</Txt> to access your location while you use the app?
           </Txt>
 
           <Txt style={tierStyles.permissionSubtitle}>
@@ -1019,42 +978,47 @@ function UpgradeToTier3Modal({
 }) {
   if (!visible) return null;
   const data = usePassenger();
+  const residenceConfig = data.snapshot?.mobileConfig?.residence;
+  const statesList = residenceConfig?.states ?? [];
+  const lgaList = residenceConfig?.localGovernmentAreas ?? [];
   const [step, setStep] = useState<1 | 2>(1);
-  const [state, setState] = useState("Jos");
-  const [lga, setLga] = useState("Jos North");
-  const [address, setAddress] = useState("No 24, Wisdom Street, Jos");
-  const [streetPhoto, setStreetPhoto] = useState("Street.JPEG");
-  const [housePhoto, setHousePhoto] = useState("House.JPEG");
+  const [state, setState] = useState(residenceConfig?.defaultState ?? "");
+  const [lga, setLga] = useState(residenceConfig?.defaultLocalGovernmentArea ?? "");
+  const [address, setAddress] = useState("");
+  const [streetPhoto, setStreetPhoto] = useState("");
+  const [housePhoto, setHousePhoto] = useState("");
   const [statePickerOpen, setStatePickerOpen] = useState(false);
   const [lgaPickerOpen, setLgaPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const handlePickStreetPhoto = async () => {
+    setError("");
     try {
       const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
         quality: 0.8,
       });
       if (!res.canceled && res.assets[0]?.uri) {
-        setStreetPhoto(res.assets[0].fileName || "Street.JPEG");
+        setStreetPhoto(res.assets[0].fileName || "street-photo.jpg");
       }
-    } catch {
-      setStreetPhoto("Street.JPEG");
+    } catch (e) {
+      setError(errorMessage(e, "Could not select street photo. Please try again."));
     }
   };
 
   const handlePickHousePhoto = async () => {
+    setError("");
     try {
       const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
         quality: 0.8,
       });
       if (!res.canceled && res.assets[0]?.uri) {
-        setHousePhoto(res.assets[0].fileName || "House.JPEG");
+        setHousePhoto(res.assets[0].fileName || "house-photo.jpg");
       }
-    } catch {
-      setHousePhoto("House.JPEG");
+    } catch (e) {
+      setError(errorMessage(e, "Could not select house photo. Please try again."));
     }
   };
 
@@ -1076,6 +1040,14 @@ function UpgradeToTier3Modal({
   };
 
   const handleFinalSubmit = async () => {
+    if (!streetPhoto) {
+      setError("Please select a picture of your street.");
+      return;
+    }
+    if (!housePhoto) {
+      setError("Please select a picture of your house.");
+      return;
+    }
     setError("");
     setBusy(true);
     try {
@@ -1095,18 +1067,14 @@ function UpgradeToTier3Modal({
     }
   };
 
-  const statesList = ["Jos", "Plateau", "Abuja", "Lagos", "Kaduna", "Kano", "Ibadan", "Enugu", "Port Harcourt"];
-  const lgaList = ["Jos North", "Jos South", "Jos East", "Bassa", "Barkin Ladi", "Riyom", "Mangu"];
-
   return (
     <PresentationSheet title="Upgrade to Tier 3" onClose={onClose}>
       <View style={{ gap: 16 }}>
         {error !== "" && <Notice tone="error">{error}</Notice>}
 
         {step === 1 ? (
-          /* Step 1: Residence Address */
           <View style={{ gap: 16 }}>
-            <Txt style={tierStyles.stepSubheading}>Step 1 of 2 - Residence Address</Txt>
+            <Txt style={tierStyles.stepSubheading}>Residence address</Txt>
 
             <View style={{ gap: 8 }}>
               <Txt style={tierStyles.fieldLabel}>State of Residence</Txt>
@@ -1129,7 +1097,7 @@ function UpgradeToTier3Modal({
                       }}
                       style={tierStyles.pickerItem}
                     >
-                      <Txt style={[tierStyles.pickerItemText, state === item && { color: "#22C55E", fontFamily: fontFamily.semibold }]}>
+                      <Txt style={[tierStyles.pickerItemText, state === item && { color: semantic.color.action.primary, fontFamily: fontFamily.semibold }]}>
                         {item}
                       </Txt>
                     </Pressable>
@@ -1159,7 +1127,7 @@ function UpgradeToTier3Modal({
                       }}
                       style={tierStyles.pickerItem}
                     >
-                      <Txt style={[tierStyles.pickerItemText, lga === item && { color: "#22C55E", fontFamily: fontFamily.semibold }]}>
+                      <Txt style={[tierStyles.pickerItemText, lga === item && { color: semantic.color.action.primary, fontFamily: fontFamily.semibold }]}>
                         {item}
                       </Txt>
                     </Pressable>
@@ -1188,9 +1156,8 @@ function UpgradeToTier3Modal({
             </Pressable>
           </View>
         ) : (
-          /* Step 2: Residence Validation */
           <View style={{ gap: 20 }}>
-            <Txt style={tierStyles.stepSubheading}>Step 2 of 2 - Residence Validation</Txt>
+            <Txt style={tierStyles.stepSubheading}>Residence evidence</Txt>
 
             <View style={{ gap: 8 }}>
               <Txt style={tierStyles.fieldLabel}>Upload a picture of your street</Txt>
@@ -1200,10 +1167,10 @@ function UpgradeToTier3Modal({
                 style={tierStyles.uploadBox}
               >
                 <View style={tierStyles.uploadInnerRow}>
-                  <Upload size={22} color="#22C55E" strokeWidth={2.2} />
-                  {streetPhoto !== "" && (
-                    <Txt style={tierStyles.uploadedFileLink}>{streetPhoto}</Txt>
-                  )}
+                  <Upload size={22} color={semantic.color.action.primary} strokeWidth={2.2} />
+                  <Txt style={tierStyles.uploadedFileLink}>
+                    {streetPhoto !== "" ? streetPhoto : "Select street photo"}
+                  </Txt>
                 </View>
               </Pressable>
             </View>
@@ -1216,10 +1183,10 @@ function UpgradeToTier3Modal({
                 style={tierStyles.uploadBox}
               >
                 <View style={tierStyles.uploadInnerRow}>
-                  <Upload size={22} color="#22C55E" strokeWidth={2.2} />
-                  {housePhoto !== "" && (
-                    <Txt style={tierStyles.uploadedFileLink}>{housePhoto}</Txt>
-                  )}
+                  <Upload size={22} color={semantic.color.action.primary} strokeWidth={2.2} />
+                  <Txt style={tierStyles.uploadedFileLink}>
+                    {housePhoto !== "" ? housePhoto : "Select house photo"}
+                  </Txt>
                 </View>
               </Pressable>
             </View>
@@ -1257,9 +1224,7 @@ function WalletScreenView({ onBack }: { onBack: () => void }) {
       <ScrollView contentContainerStyle={walletViewStyles.scrollContent}>
         {/* Header */}
         <View style={walletViewStyles.header}>
-          <Pressable accessibilityRole="button" onPress={onBack} style={walletViewStyles.backButton}>
-            <ChevronLeft size={24} color="#1F2937" />
-          </Pressable>
+          <BackButton accessibilityLabel="Back to profile" onPress={onBack} />
           <Txt style={walletViewStyles.headerTitle}>Wallet</Txt>
           <View style={{ width: 24 }} />
         </View>
@@ -1297,7 +1262,6 @@ function WalletScreenView({ onBack }: { onBack: () => void }) {
 
           <View style={walletViewStyles.activityList}><WalletTransactionHistory /></View>
         </View>
-        <View style={walletViewStyles.activitySection}><BankDetails /></View>
       </ScrollView>
 
       {/* Deposit Bottom Sheet (PresentationSheet) */}
@@ -1309,31 +1273,17 @@ function WalletScreenView({ onBack }: { onBack: () => void }) {
   );
 }
 
-const NIGERIAN_BANKS = [
-  { code: "044", name: "Access Bank" },
-  { code: "058", name: "GTBank" },
-  { code: "057", name: "Zenith Bank" },
-  { code: "011", name: "First Bank" },
-  { code: "033", name: "UBA" },
-  { code: "50211", name: "Kuda Bank" },
-  { code: "999992", name: "OPay" },
-  { code: "999991", name: "PalmPay" },
-  { code: "221", name: "Stanbic IBTC" },
-  { code: "232", name: "Sterling Bank" },
-  { code: "070", name: "Fidelity Bank" },
-  { code: "035", name: "Wema Bank" },
-  { code: "214", name: "FCMB" },
-];
-
 function WithdrawSheet({ onClose }: { onClose: () => void }) {
   const { snapshot } = usePassenger();
   const viewer = snapshot?.viewer;
+  const banks = snapshot?.mobileConfig?.banks ?? [];
+  const withdrawalPresets = snapshot?.mobileConfig?.wallet.withdrawalPresetsNaira ?? [];
   const balance = viewer?.walletBalanceNaira ?? 0;
   const bank = useQuery(api.finance.bankAccount, viewer ? {} : "skip");
   const requestWithdrawal = useMutation(api.wallet.requestWithdrawal);
 
   const [amount, setAmount] = useState("");
-  const [selectedBankCode, setSelectedBankCode] = useState(bank?.bankCode ?? "044");
+  const [selectedBankCode, setSelectedBankCode] = useState(bank?.bankCode ?? banks[0]?.code ?? "");
   const [accountNumber, setAccountNumber] = useState(bank?.last4 ? `•••• •••• ${bank.last4}` : "");
   const [accountName, setAccountName] = useState(bank?.accountName ?? "");
   const [editingBank, setEditingBank] = useState(!bank?.ready);
@@ -1343,7 +1293,7 @@ function WithdrawSheet({ onClose }: { onClose: () => void }) {
   const [success, setSuccess] = useState(false);
 
   const numericAmount = Number(amount.replace(/[^0-9]/g, ""));
-  const selectedBank = NIGERIAN_BANKS.find(b => b.code === selectedBankCode) ?? NIGERIAN_BANKS[0];
+  const selectedBank = banks.find(b => b.code === selectedBankCode) ?? banks[0];
   const canWithdraw = numericAmount >= 100 && numericAmount <= balance && (bank?.ready || (accountNumber.replace(/[^0-9]/g, "").length === 10));
 
   const handleQuickAmount = (val: number) => {
@@ -1414,7 +1364,7 @@ function WithdrawSheet({ onClose }: { onClose: () => void }) {
 
             {/* Quick amount chips */}
             <View style={withdrawStyles.chipsRow}>
-              {[2000, 5000, 10000].map(val => (
+              {withdrawalPresets.map(val => (
                 <Pressable
                   key={val}
                   accessibilityRole="button"
@@ -1425,6 +1375,7 @@ function WithdrawSheet({ onClose }: { onClose: () => void }) {
                   ]}
                 >
                   <Txt
+                    numberOfLines={1}
                     style={[
                       withdrawStyles.chipText,
                       numericAmount === val && withdrawStyles.chipTextSelected,
@@ -1443,6 +1394,7 @@ function WithdrawSheet({ onClose }: { onClose: () => void }) {
                 ]}
               >
                 <Txt
+                  numberOfLines={1}
                   style={[
                     withdrawStyles.chipText,
                     numericAmount === balance && balance > 0 && withdrawStyles.chipTextSelected,
@@ -1505,7 +1457,7 @@ function WithdrawSheet({ onClose }: { onClose: () => void }) {
                 {bankPickerOpen && (
                   <View style={withdrawStyles.dropdownMenu}>
                     <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled>
-                      {NIGERIAN_BANKS.map(b => (
+                      {banks.map(b => (
                         <Pressable
                           key={b.code}
                           onPress={() => {
@@ -1563,7 +1515,7 @@ function WithdrawSheet({ onClose }: { onClose: () => void }) {
               </View>
               <View style={withdrawStyles.summaryRow}>
                 <Txt style={withdrawStyles.summaryLabel}>Transfer fee</Txt>
-                <Txt style={[withdrawStyles.summaryValue, { color: "#22C55E" }]}>Free</Txt>
+                <Txt style={[withdrawStyles.summaryValue, { color: semantic.color.action.primary }]}>Free</Txt>
               </View>
               <View style={withdrawStyles.summaryDivider} />
               <View style={withdrawStyles.summaryRow}>
@@ -1594,14 +1546,6 @@ function WithdrawSheet({ onClose }: { onClose: () => void }) {
                   : "Enter amount to withdraw"}
               </Txt>
             )}
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={onClose}
-            style={withdrawStyles.outlinePillButton}
-          >
-            <Txt style={withdrawStyles.outlinePillButtonText}>Cancel</Txt>
           </Pressable>
         </View>
       )}
@@ -1649,7 +1593,7 @@ const withdrawStyles = StyleSheet.create({
   },
   changeLink: {
     fontSize: 13,
-    color: "#22C55E",
+    color: semantic.color.action.primary,
     fontFamily: fontFamily.medium,
   },
   amountInputShell: {
@@ -1815,7 +1759,7 @@ const withdrawStyles = StyleSheet.create({
     fontFamily: fontFamily.semibold,
   },
   greenPillButton: {
-    backgroundColor: "#22C55E",
+    backgroundColor: semantic.color.action.primary,
     borderRadius: 28,
     height: 52,
     alignItems: "center",
@@ -1824,20 +1768,6 @@ const withdrawStyles = StyleSheet.create({
   },
   greenPillButtonText: {
     color: "#FFFFFF",
-    fontSize: 16,
-    fontFamily: fontFamily.semibold,
-  },
-  outlinePillButton: {
-    borderRadius: 28,
-    height: 52,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#D1FAE5",
-    backgroundColor: "#FFFFFF",
-  },
-  outlinePillButtonText: {
-    color: "#22C55E",
     fontSize: 16,
     fontFamily: fontFamily.semibold,
   },
@@ -1853,7 +1783,7 @@ const withdrawStyles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: "#22C55E",
+    backgroundColor: semantic.color.action.primary,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 8,
@@ -1904,12 +1834,6 @@ function DeleteAccountModal({ onClose }: { onClose: () => void }) {
             disabled={busy || data.offline}
             onPress={requested ? onClose : () => void submit()}
           />
-          {!requested ? <Button
-            title="Cancel"
-            variant="ghost"
-            disabled={busy}
-            onPress={onClose}
-          /> : null}
         </View>
       </View>
     </PresentationSheet>
@@ -1937,11 +1861,6 @@ function LogoutModal({
             title="Sign out securely"
             variant="primary"
             onPress={onConfirm}
-          />
-          <Button
-            title="Cancel"
-            variant="secondary"
-            onPress={onClose}
           />
         </View>
       </View>
@@ -2040,10 +1959,6 @@ const p = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 20,
   },
-  backButton: {
-    padding: 6,
-    marginLeft: -6,
-  },
   screenHeaderTitle: {
     fontSize: 18,
     fontFamily: fontFamily.semibold,
@@ -2052,7 +1967,7 @@ const p = StyleSheet.create({
   toastPill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#22C55E",
+    backgroundColor: semantic.color.action.primary,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 24,
@@ -2078,7 +1993,7 @@ const p = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#22C55E",
+    backgroundColor: semantic.color.action.primary,
     borderWidth: 2,
     borderColor: "#FFFFFF",
     alignItems: "center",
@@ -2121,10 +2036,10 @@ const p = StyleSheet.create({
     color: "#111827",
   },
   inputBoxActive: {
-    borderColor: "#22C55E",
+    borderColor: semantic.color.action.primary,
   },
   greenButtonSmall: {
-    backgroundColor: "#22C55E",
+    backgroundColor: semantic.color.action.primary,
     borderRadius: 22,
     height: 44,
     width: 120,
@@ -2217,7 +2132,7 @@ const p = StyleSheet.create({
     justifyContent: "center",
   },
   otpBoxFocused: {
-    borderColor: "#22C55E",
+    borderColor: semantic.color.action.primary,
     borderWidth: 2,
   },
   otpBoxFilled: {
@@ -2249,7 +2164,7 @@ const p = StyleSheet.create({
     paddingBottom: 36,
   },
   greenButtonFull: {
-    backgroundColor: "#22C55E",
+    backgroundColor: semantic.color.action.primary,
     borderRadius: 25,
     height: 50,
     alignItems: "center",
@@ -2328,20 +2243,13 @@ const tierStyles = StyleSheet.create({
     marginBottom: 20,
     marginTop: 8,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   headerTitle: {
     fontSize: 18,
     fontFamily: fontFamily.semibold,
     color: "#1F2937",
   },
   toastBanner: {
-    backgroundColor: "#22C55E",
+    backgroundColor: semantic.color.action.primary,
     borderRadius: 30,
     paddingVertical: 12,
     paddingHorizontal: 16,
@@ -2461,7 +2369,7 @@ const tierStyles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   greenPillButton: {
-    backgroundColor: "#22C55E",
+    backgroundColor: semantic.color.action.primary,
     borderRadius: 28,
     height: 52,
     alignItems: "center",
@@ -2658,13 +2566,6 @@ const walletViewStyles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 28,
     marginTop: 8,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
   },
   headerTitle: {
     fontSize: 18,

@@ -356,11 +356,13 @@ export function JourneyStory({ storyRef }: JourneyStoryProps) {
     }
   };
 
-  if (storyRef) {
-    (storyRef as React.MutableRefObject<JourneyStoryRef | null>).current = {
-      updateProgress,
-    };
-  }
+  useEffect(() => {
+    if (storyRef) {
+      (storyRef as React.MutableRefObject<JourneyStoryRef | null>).current = {
+        updateProgress,
+      };
+    }
+  }, [storyRef]);
 
   return (
     <div
@@ -425,7 +427,7 @@ export function JourneyStory({ storyRef }: JourneyStoryProps) {
         {/* ─────────────────────────────────────────────────── */}
         {/* FAINT BACKGROUND GHOST ROUTES (Multi-Curved)        */}
         {/* ─────────────────────────────────────────────────── */}
-        {/* 1. Sender Approach Ghost (Jos to Rendezvous) */}
+        {/* Sender approach ghost, Jos to rendezvous */}
         <path
           d={D_SENDER}
           stroke="#D1D5DB"
@@ -433,7 +435,7 @@ export function JourneyStory({ storyRef }: JourneyStoryProps) {
           className="idle-route idle-glow"
         />
 
-        {/* 2. Traveller Approach Ghost (Kaduna to Rendezvous) */}
+        {/* Traveller approach ghost, Kaduna to rendezvous */}
         <path
           d={D_TRAVAPP}
           stroke="#D1D5DB"
@@ -442,7 +444,7 @@ export function JourneyStory({ storyRef }: JourneyStoryProps) {
           style={{ animationDelay: "0.6s" }}
         />
 
-        {/* 3. Shared Ghost Route (Multi-curved safely to 1240, 320) */}
+        {/* Shared ghost route, curved safely to 1240, 320 */}
         <path
           d={D_SHARED}
           stroke="#D1D5DB"

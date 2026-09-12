@@ -1,27 +1,25 @@
 import React, { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import * as SecureStore from "expo-secure-store";
-import { ChevronLeft, Eye, EyeOff } from "lucide-react-native";
+import { Eye, EyeOff } from "lucide-react-native";
 import { useAuthActions } from "@convex-dev/auth/react";
 import type { TokenStorage } from "@convex-dev/auth/react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { AuthCheckbox, AuthField, Button, colors, errorMessage, Txt } from "./ui";
+import { BackButton, AuthCheckbox, AuthField, Button, colors, errorMessage, Txt } from "./ui";
 
 const HORIZONTAL_PADDING = 18;
 const AUTH_MAX_WIDTH = 560;
 const AUTH_REQUEST_TIMEOUT_MS = 12000;
 const PASSWORD_REQUIREMENTS_COPY = "Use at least 10 characters with uppercase, lowercase, and a number.";
-let nextAuthScreen: "splash" | "auth" = "splash";
 let nextAuthMode: "signIn" | "signUp" = "signUp";
 
 export function openAuthSignInScreen() {
-  nextAuthScreen = "auth";
   nextAuthMode = "signIn";
 }
 const PRIVACY_POLICY_SECTIONS = [
   {
     title: "1. Account details you share",
-    body: "When you create a Passenger account, we collect the details you enter, including your full name, email address, password, and any contact information you later add to your profile.",
+    body: "When you create a Passenger account, we collect your email address, password, and any contact information you later add to your profile.",
   },
   {
     title: "2. How Passenger uses your information",
@@ -80,13 +78,9 @@ function AuthScaffold({ children, centerContent = true, contentMaxWidth = AUTH_M
   return <SafeAreaView style={a.safe}><KeyboardAvoidingView style={a.safe} behavior={Platform.OS === "ios" ? "padding" : undefined}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[a.screen, !centerContent && a.screenTopAligned]}><View style={[a.content, { maxWidth: contentMaxWidth }]}>{children}</View></ScrollView></KeyboardAvoidingView></SafeAreaView>;
 }
 
-function SplashScreen({ onContinue }: { onContinue: () => void }) {
-  return <SafeAreaView style={a.splashSafe}><View style={a.splashContent}><View style={a.splashBrandWrap}><Txt style={a.splashBrand}>PASSENGER</Txt></View><Pressable accessibilityRole="button" accessibilityLabel="Get Started" onPress={onContinue} style={({ pressed }) => [a.splashButton, pressed && a.googleButtonPressed]}><Txt style={a.splashButtonText}>Get Started</Txt></Pressable></View></SafeAreaView>;
-}
-
 function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) {
   return <AuthScaffold centerContent={false} contentMaxWidth={680}>
-    <View style={a.policyHeader}><Pressable accessibilityRole="button" accessibilityLabel="Go back" hitSlop={10} pressRetentionOffset={20} onPress={onBack} style={a.backButton}><ChevronLeft size={24} color={colors.text} strokeWidth={2.2} /></Pressable><View pointerEvents="none"><AuthHeading title="Privacy Policy" /></View></View>
+    <View style={a.policyHeader}><View style={a.backButton}><BackButton accessibilityLabel="Go back" onPress={onBack} /></View><View pointerEvents="none"><AuthHeading title="Privacy Policy" /></View></View>
     <View style={a.policyContent}><Txt style={a.policyLead}>Passenger uses your information to create your account, support deliveries, and help keep the marketplace safe. This summary explains the main ways your information is handled inside the app.</Txt>{PRIVACY_POLICY_SECTIONS.map(section => <View key={section.title} style={a.policySection}><Txt style={a.policySectionTitle}>{section.title}</Txt><Txt style={a.policySectionBody}>{section.body}</Txt></View>)}</View>
   </AuthScaffold>;
 }
@@ -96,7 +90,6 @@ export function AuthScreen() {
   const [mode, setMode] = useState<"signIn" | "signUp">(nextAuthMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
   const [resetCode, setResetCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
@@ -106,7 +99,7 @@ export function AuthScreen() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [screen, setScreen] = useState<"splash" | "auth" | "privacy" | "forgot" | "reset">(nextAuthScreen);
+  const [screen, setScreen] = useState<"auth" | "privacy" | "forgot" | "reset">("auth");
 
   const submit = async () => {
     setBusy(true);
@@ -115,12 +108,11 @@ export function AuthScreen() {
     try {
       const cleanEmail = email.trim().toLowerCase();
       if (!validEmail(cleanEmail)) throw new Error("Enter a valid email address.");
-      if (mode === "signUp" && !name.trim()) throw new Error("Enter your full name.");
       if (password.trim().length === 0) throw new Error("Enter your password.");
       if (mode === "signUp" && !passwordMeetsRequirements(password)) throw new Error(PASSWORD_REQUIREMENTS_COPY);
       if (mode === "signUp" && !acceptedPolicy) throw new Error("Please agree to the privacy policy.");
       await Promise.race([
-        signIn("password", { flow: mode, email: cleanEmail, password, ...(mode === "signUp" ? { name: name.trim(), phone: "+00000000000" } : {}) }),
+        signIn("password", { flow: mode, email: cleanEmail, password }),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Creating your account is taking too long. Please check your connection and try again.")), AUTH_REQUEST_TIMEOUT_MS)),
       ]);
     } catch (cause) {
@@ -154,7 +146,6 @@ export function AuthScreen() {
       setConfirmNewPassword("");
       setNotice("We sent a password reset code to your email.");
       setScreen("reset");
-      nextAuthScreen = "auth";
       nextAuthMode = "signIn";
     } catch (cause) {
       setError(errorMessage(cause));
@@ -185,10 +176,8 @@ export function AuthScreen() {
   };
 
   const isSignup = mode === "signUp";
-  const nameValid = name.trim().length > 0 && name.trim().length <= 120;
   const passwordValid = passwordMeetsRequirements(password);
 
-  if (screen === "splash") return <SplashScreen onContinue={() => { nextAuthScreen = "auth"; setScreen("auth"); }} />;
   if (screen === "privacy") return <PrivacyPolicyScreen onBack={() => setScreen("auth")} />;
   if (screen === "forgot") return <AuthScaffold>
     <AuthHeading title="Reset your password" />
@@ -218,14 +207,13 @@ export function AuthScreen() {
   return <AuthScaffold>
     <AuthHeading title={isSignup ? "Create an account" : "Log in"} />
     <View style={a.formStack}>
-      {isSignup && <AuthField label="Full Name" value={name} onChangeText={setName} editable={!busy} autoComplete="name" />}
-      <AuthField label="Email Address" value={email} onChangeText={setEmail} editable={!busy} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="email" />
+      <AuthField label="Email address" value={email} onChangeText={setEmail} editable={!busy} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="email" />
       <AuthField label="Password" hint={isSignup ? PASSWORD_REQUIREMENTS_COPY : undefined} value={password} onChangeText={setPassword} editable={!busy} secureTextEntry={!showPassword} autoCapitalize="none" autoComplete={isSignup ? "new-password" : "current-password"} rightAccessory={<Pressable accessibilityRole="button" accessibilityLabel={showPassword ? "Hide password" : "Show password"} onPress={() => setShowPassword(value => !value)} style={a.passwordToggle}>{showPassword ? <Eye size={20} color={colors.text} strokeWidth={2} /> : <EyeOff size={20} color={colors.text} strokeWidth={2} />}</Pressable>} />
-      {isSignup && <AuthCheckbox checked={acceptedPolicy} onChange={setAcceptedPolicy}><Txt style={a.policyCopy}>I agree to <Txt style={a.inlinePolicy} onPress={() => setScreen("privacy")}>Privacy & Policy</Txt></Txt></AuthCheckbox>}
+      {isSignup && <AuthCheckbox checked={acceptedPolicy} onChange={setAcceptedPolicy}><Txt style={a.policyCopy}>I agree to the <Txt style={a.inlinePolicy} onPress={() => setScreen("privacy")}>Privacy Policy</Txt></Txt></AuthCheckbox>}
       {!isSignup && <Pressable accessibilityRole="button" onPress={() => { setScreen("forgot"); setError(""); setNotice(""); }}><Txt style={a.forgotPassword}>Forgot password?</Txt></Pressable>}
       {!!notice && <Txt style={a.noticeText}>{notice}</Txt>}
       {!!error && <Txt accessibilityRole="alert" style={a.errorText}>{error}</Txt>}
-      <Button title={isSignup ? "Create Account" : "Log in"} onPress={() => void submit()} busy={busy} disabled={busy || (isSignup && (!nameValid || !acceptedPolicy || !passwordValid))} variant="lime" style={a.submitButton} />
+      <Button title={isSignup ? "Create account" : "Log in"} onPress={() => void submit()} busy={busy} disabled={busy || (isSignup && (!acceptedPolicy || !passwordValid))} variant="lime" style={a.submitButton} />
       <AuthLinkRow prompt={isSignup ? "Already have an account?" : "Don't have an account?"} action={isSignup ? "Log in" : "Create account"} onPress={toggleMode} />
     </View>
   </AuthScaffold>;
@@ -257,16 +245,10 @@ const a = StyleSheet.create({
   linkPrompt: { fontSize: 14, lineHeight: 20, fontFamily: "WorkSansRegular", color: colors.text },
   linkAction: { fontSize: 14, lineHeight: 20, fontFamily: "WorkSansMedium", color: colors.lime },
   policyHeader: { minHeight: 56, justifyContent: "center", marginBottom: 18 },
-  backButton: { position: "absolute", left: 0, top: 0, width: 48, height: 48, alignItems: "flex-start", justifyContent: "center", zIndex: 1 },
+  backButton: { position: "absolute", left: 0, top: 0, zIndex: 1 },
   policyContent: { gap: 22 },
   policyLead: { fontSize: 15, lineHeight: 24, color: colors.text, fontFamily: "WorkSansRegular" },
   policySection: { gap: 8 },
   policySectionTitle: { fontSize: 16, lineHeight: 22, color: colors.text, fontFamily: "WorkSansMedium" },
   policySectionBody: { fontSize: 15, lineHeight: 24, color: colors.muted, fontFamily: "WorkSansRegular" },
-  splashSafe: { flex: 1, backgroundColor: colors.lime },
-  splashContent: { flex: 1, paddingHorizontal: HORIZONTAL_PADDING, paddingTop: 48, paddingBottom: 48, justifyContent: "space-between" },
-  splashBrandWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  splashBrand: { fontSize: 50, lineHeight: 58, letterSpacing: 3.2, fontFamily: "WorkSansMedium", color: colors.paper },
-  splashButton: { minHeight: 56, borderRadius: 999, backgroundColor: colors.paper, alignItems: "center", justifyContent: "center" },
-  splashButtonText: { fontSize: 14, lineHeight: 20, fontFamily: "WorkSansMedium", color: colors.text },
 });

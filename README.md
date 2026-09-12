@@ -68,36 +68,39 @@ bunx convex dev
 
 Authenticate and create a development deployment. Convex stores its deployment configuration in `packages/backend/.env.local`. Keep `convex dev` running during live development; it deploys functions and refreshes the generated API bindings. The checked-in typed bindings let the monorepo compile before a deployment exists.
 
-### 2. Clerk authentication
+### 2. Authentication & Admin Authorization
 
-Create one Clerk application for both interfaces. Enable email/password sign-in and email verification for the mobile flow. Create a JWT template named **`convex`** from Clerk's Convex template. It must include `aud: "convex"` and an **email** claim for Paystack checkout. Use the Clerk issuer URL from that template (for example `https://your-instance.clerk.accounts.dev`).
+Passenger uses **Convex Auth** (`@convex-dev/auth`) with email/password and password reset flows directly in the Convex backend. No external third-party auth service is required.
 
 Set **server-side Convex environment variables** from `packages/backend`:
 
 ```sh
-bunx convex env set CLERK_JWT_ISSUER_DOMAIN https://your-instance.clerk.accounts.dev
-bunx convex env set ADMIN_CLERK_SUBJECTS user_your_clerk_admin_id
+bunx convex env set ADMIN_USER_EMAILS admin@passenger.ng,ops@passenger.ng
 ```
 
-For multiple administrators use comma-separated Clerk user IDs. This allowlist is the only source of administrator privilege. Signing up, selecting Travel mode, or writing a client profile does not grant admin rights or identity verification. Admins cannot approve their own identity, packages, or financial reconciliation; use an independent admin when needed.
+For multiple administrators, use a comma-separated list of email addresses. This allowlist (combined with granular team roles configured in the dashboard) provisions administrator and compliance privileges. Signing up as a regular user or selecting Travel mode does not grant admin rights or identity verification. Admins cannot approve their own identity, packages, or financial reconciliation; use an independent admin when needed.
 
 ### 3. App environments
 
-Copy `apps/admin/.env.example` to `apps/admin/.env.local` and `apps/mobile/.env.example` to `apps/mobile/.env.local`.
+Sync or create shared environment variables:
+
+```sh
+bun run sync:public-env
+```
+
+Or manually copy `apps/admin/.env.example` to `apps/admin/.env.local` and `apps/mobile/.env.example` to `apps/mobile/.env.local`.
 
 ```dotenv
 # apps/admin/.env.local
 NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 ```
 
 ```dotenv
 # apps/mobile/.env.local
 EXPO_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
-EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 ```
 
-Both Convex URLs must identify **the same deployment**. Restart the apps after changing their environments. Use only publishable Clerk keys in the apps; never expose payment secrets or Convex deployment credentials in public environment variables.
+Both Convex URLs must identify **the same deployment**. Restart the apps after changing their environments. Never expose payment secrets or Convex deployment credentials in public environment variables.
 
 Sign in and complete a Passenger profile. All new member profiles are pending manual verification. An allowlisted administrator can sign into the dashboard and review members. Identity/document evidence collection and physical contents inspection remain external operational procedures in this MVP; the dashboard records the decision and note, not an automated KYC result.
 

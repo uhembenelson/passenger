@@ -1,0 +1,28 @@
+{
+  "provider": "Azure OpenAI / Azure AI Foundry",
+  "deployment": "gpt-image-2-1",
+  "method": "Bundled imagegen CLI generate-batch",
+  "quality": "high",
+  "prompts": "prompts.jsonl",
+  "processing": "Removed edge-connected white pixels, preserved internal highlights, padded and resized to transparent 512px WebP.",
+  "assets": [
+    {
+      "file": "apps/mobile/assets/illustrations/phone-verification.webp",
+      "source": "generated/phone-verification.png",
+      "dimensions": [512, 512],
+      "bytes": 21930
+    },
+    {
+      "file": "apps/mobile/assets/illustrations/milestones-clear.webp",
+      "source": "generated/milestones-clear.png",
+      "dimensions": [512, 512],
+      "bytes": 30714
+    },
+    {
+      "file": "apps/mobile/assets/illustrations/routes-empty.webp",
+      "source": "generated/routes-empty.png",
+      "dimensions": [512, 512],
+      "bytes": 32106
+    }
+  ]
+}

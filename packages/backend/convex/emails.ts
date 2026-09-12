@@ -178,15 +178,20 @@ export async function sendBrandedEmail(args: { to: string; subject: string; html
     html: args.html,
     ...(args.text ? { text: args.text } : {}),
   };
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(15_000),
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new ConvexError("We could not connect to the email provider. Please check your connection and try again.");
+  }
   const result = await response.json().catch(() => null) as { id?: string; message?: string } | null;
   if (!response.ok || !result?.id) {
     throw new ConvexError(result?.message ?? "Passenger could not send the email. Check the email provider configuration and try again.");

@@ -2,44 +2,432 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { authTables } from "@convex-dev/auth/server";
 import { financeTables } from "./financeSchema";
-export const verification = v.union(v.literal("required"), v.literal("pending"), v.literal("verified"), v.literal("rejected"));
-export const shipmentStatus = v.union(v.literal("pending_review"),v.literal("rejected"),v.literal("open"),v.literal("matched"),v.literal("funded"),v.literal("in_transit"),v.literal("delivered"),v.literal("disputed"),v.literal("cancelled"));
-export const paymentStatus = v.union(v.literal("unpaid"),v.literal("pending"),v.literal("failed"),v.literal("held"),v.literal("refund_pending"),v.literal("refunded"),v.literal("payout_pending"),v.literal("payout_failed"),v.literal("released"),v.literal("reconciliation_required"));
+
+export const verification = v.union(
+  v.literal("required"),
+  v.literal("pending"),
+  v.literal("verified"),
+  v.literal("rejected"),
+);
+
+export const shipmentStatus = v.union(
+  v.literal("pending_review"),
+  v.literal("rejected"),
+  v.literal("open"),
+  v.literal("matched"),
+  v.literal("funded"),
+  v.literal("in_transit"),
+  v.literal("delivered"),
+  v.literal("disputed"),
+  v.literal("cancelled"),
+);
+
+export const paymentStatus = v.union(
+  v.literal("unpaid"),
+  v.literal("pending"),
+  v.literal("failed"),
+  v.literal("held"),
+  v.literal("refund_pending"),
+  v.literal("refunded"),
+  v.literal("payout_pending"),
+  v.literal("payout_failed"),
+  v.literal("released"),
+  v.literal("reconciliation_required"),
+);
+
 export const codeKind = v.union(v.literal("handover"), v.literal("delivery"));
-export const documentType = v.union(v.literal("national_id"),v.literal("passport"),v.literal("drivers_license"));
-export const purpose = v.union(v.literal("identity"),v.literal("parcel"));
-export const offerStatus = v.union(v.literal("pending"),v.literal("accepted"),v.literal("declined"),v.literal("withdrawn"),v.literal("expired"));
-export const resolution = v.union(v.literal("refund"),v.literal("release"),v.literal("resume"),v.literal("cancel"));
-export const walletTransactionKind = v.union(v.literal("top_up"),v.literal("parcel_hold"),v.literal("parcel_refund"),v.literal("payout"));
+export const documentType = v.union(v.literal("national_id"), v.literal("passport"), v.literal("drivers_license"));
+export const purpose = v.union(v.literal("identity"), v.literal("parcel"));
+export const offerStatus = v.union(v.literal("pending"), v.literal("accepted"), v.literal("declined"), v.literal("withdrawn"), v.literal("expired"));
+export const resolution = v.union(v.literal("refund"), v.literal("release"), v.literal("resume"), v.literal("cancel"));
+export const walletTransactionKind = v.union(v.literal("top_up"), v.literal("parcel_hold"), v.literal("parcel_refund"), v.literal("payout"));
+
 export default defineSchema({
- ...authTables,
- users: defineTable({ subject:v.string(),name:v.string(),image:v.optional(v.string()),profileImageStorageId:v.optional(v.id("_storage")),profileImageUploadRequestedAt:v.optional(v.number()),email:v.optional(v.string()),emailVerificationTime:v.optional(v.number()),phone:v.string(),phoneVerificationTime:v.optional(v.number()),phoneVerificationCode:v.optional(v.string()),phoneVerificationPendingPhone:v.optional(v.string()),phoneVerificationExpiresAt:v.optional(v.number()),phoneVerificationRequestedAt:v.optional(v.number()),deletionRequestedAt:v.optional(v.number()),isAnonymous:v.optional(v.boolean()),verification,joinedAt:v.number(),suspended:v.optional(v.boolean()),suspensionReason:v.optional(v.string()),documentType:v.optional(documentType),identityEvidenceIds:v.optional(v.array(v.id("evidence"))),identitySubmittedAt:v.optional(v.number()),identityReviewedAt:v.optional(v.number()),identityNote:v.optional(v.string()),walletBalanceNaira:v.optional(v.number()),tier:v.optional(v.union(v.literal("Tier 1"),v.literal("Tier 2"),v.literal("Tier 3"))),bvn:v.optional(v.string()),residenceState:v.optional(v.string()),residenceLga:v.optional(v.string()),residenceAddress:v.optional(v.string()),streetPhotoUrl:v.optional(v.string()),housePhotoUrl:v.optional(v.string()) }).index("email",["email"]).index("phone",["phone"]).index("by_subject",["subject"]),
- evidence: defineTable({ownerId:v.id("users"),storageId:v.id("_storage"),purpose,filename:v.string(),contentType:v.string(),size:v.number(),createdAt:v.number()}).index("by_owner",["ownerId"]).index("by_storage",["storageId"]),
- uploads: defineTable({ownerId:v.id("users"),purpose,createdAt:v.number(),usedAt:v.optional(v.number())}).index("by_owner",["ownerId"]),
- serviceAreaSettings: defineTable({key:v.string(),baseLocation:v.string(),destinations:v.array(v.string()),updatedAt:v.number(),updatedBy:v.optional(v.id("users"))}).index("by_key",["key"]),
-  trips: defineTable({travellerId:v.id("users"),origin:v.string(),destination:v.string(),stops:v.optional(v.array(v.string())),departureAt:v.number(),arrivalAt:v.optional(v.number()),capacityKg:v.number(),reservedKg:v.number(),acceptedCategories:v.optional(v.array(v.string())),maxParcelWeightKg:v.optional(v.number()),handlingNotes:v.optional(v.string()),status:v.optional(v.union(v.literal("active"),v.literal("cancelled"),v.literal("completed"))),cancellationReason:v.optional(v.string())}).index("by_traveller",["travellerId"]).index("by_departure",["departureAt"]),
- shipments: defineTable({reference:v.string(),senderId:v.id("users"),travellerId:v.optional(v.id("users")),tripId:v.optional(v.id("trips")),origin:v.string(),destination:v.string(),description:v.string(),category:v.string(),weightKg:v.number(),valueNaira:v.number(),feeNaira:v.number(),receiverName:v.string(),receiverPhone:v.string(),status:shipmentStatus,paymentStatus,createdAt:v.number(),updatedAt:v.number(),approved:v.boolean(),reservationActive:v.boolean(),pickupInstructions:v.optional(v.string()),dropoffInstructions:v.optional(v.string()),readyAt:v.optional(v.number()),preferredPickupAt:v.optional(v.number()),pickupFlexBeforeMinutes:v.optional(v.number()),pickupFlexAfterMinutes:v.optional(v.number()),deliveryDeadline:v.optional(v.number()),evidenceIds:v.optional(v.array(v.id("evidence"))),safetyConsent:v.optional(v.boolean()),reviewNote:v.optional(v.string()),payByAt:v.optional(v.number()),handoverAt:v.optional(v.number()),deliveredAt:v.optional(v.number()),latestLatitude:v.optional(v.number()),latestLongitude:v.optional(v.number()),latestLocationLabel:v.optional(v.string()),latestLocationAt:v.optional(v.number()),locationCheckInCount:v.optional(v.number()),disputeUntil:v.optional(v.number()),exception:v.optional(v.string()),cancellationReason:v.optional(v.string()),refundApproved:v.optional(v.boolean()),releaseApproved:v.optional(v.boolean()),pickupIndex:v.optional(v.number()),dropoffIndex:v.optional(v.number()),acceptedOfferId:v.optional(v.id("offers"))}).index("by_sender",["senderId"]).index("by_traveller",["travellerId"]).index("by_status",["status"]).index("by_trip",["tripId"]),
- offers: defineTable({shipmentId:v.id("shipments"),tripId:v.id("trips"),travellerId:v.id("users"),feeNaira:v.number(),expiresAt:v.number(),createdAt:v.number(),status:offerStatus,note:v.string()}).index("by_shipment",["shipmentId"]).index("by_traveller",["travellerId"]).index("by_trip",["tripId"]).index("by_status",["status"]),
- audits: defineTable({actorId:v.optional(v.id("users")),actorName:v.string(),shipmentId:v.optional(v.id("shipments")),action:v.string(),detail:v.string(),createdAt:v.number()}).index("by_shipment",["shipmentId"]).index("by_created",["createdAt"]),
- codes: defineTable({shipmentId:v.id("shipments"),kind:codeKind,hash:v.string(),expiresAt:v.number(),issuedAt:v.number(),consumedAt:v.optional(v.number()),attempts:v.number(),issueCount:v.number(),windowStart:v.number(),smsStatus:v.optional(v.union(v.literal("pending"),v.literal("sent"),v.literal("failed"))),smsId:v.optional(v.string())}).index("by_shipment_kind",["shipmentId","kind"]),
- disputes: defineTable({shipmentId:v.id("shipments"),openedBy:v.id("users"),reason:v.string(),status:v.union(v.literal("open"),v.literal("resolved")),previousStatus:shipmentStatus,createdAt:v.number(),resolution:v.optional(resolution),resolvedAt:v.optional(v.number()),externalReference:v.optional(v.string()),note:v.optional(v.string()),informationRequest:v.optional(v.string())}).index("by_shipment",["shipmentId"]).index("by_status",["status"]),
- messages: defineTable({shipmentId:v.id("shipments"),authorId:v.id("users"),body:v.string(),createdAt:v.number()}).index("by_shipment",["shipmentId"]),
- notifications: defineTable({userId:v.id("users"),shipmentId:v.optional(v.id("shipments")),title:v.string(),body:v.string(),createdAt:v.number(),readAt:v.optional(v.number())}).index("by_user",["userId"]),
- reviews: defineTable({shipmentId:v.id("shipments"),authorId:v.id("users"),targetId:v.id("users"),rating:v.number(),comment:v.string(),createdAt:v.number()}).index("by_shipment",["shipmentId"]).index("by_target",["targetId"]).index("by_author",["authorId"]),
-  walletTransactions: defineTable({userId:v.id("users"),kind:walletTransactionKind,amountNaira:v.number(),reference:v.string(),shipmentId:v.optional(v.id("shipments")),createdAt:v.number(),note:v.string()}).index("by_user",["userId"]).index("by_reference",["reference"]),
-  supportChats: defineTable({userId:v.id("users"),subject:v.optional(v.string()),status:v.union(v.literal("unresolved"),v.literal("resolved"),v.literal("closed")),resolvedAt:v.optional(v.number()),closedAt:v.optional(v.number()),resolution:v.optional(v.string()),resolutionNote:v.optional(v.string()),assignedTo:v.optional(v.id("users")),assignedByName:v.optional(v.string()),resolvedBy:v.optional(v.id("users")),resolvedByName:v.optional(v.string()),qaReviewedBy:v.optional(v.id("users")),qaReviewedByName:v.optional(v.string()),qaScore:v.optional(v.union(v.literal("approved"),v.literal("needs_work"))),qaNote:v.optional(v.string()),qaReviewedAt:v.optional(v.number()),activeViewedBy:v.optional(v.id("users")),activeViewedAt:v.optional(v.number()),lastMessageAt:v.number(),createdAt:v.number()}).index("by_user",["userId"]).index("by_status",["status"]).index("by_last_message",["lastMessageAt"]),
-  supportMessages: defineTable({chatId:v.id("supportChats"),authorId:v.id("users"),body:v.string(),createdAt:v.number()}).index("by_chat",["chatId"]),
- supportEvents: defineTable({chatId:v.id("supportChats"),actorId:v.optional(v.id("users")),actorName:v.string(),action:v.string(),detail:v.string(),createdAt:v.number()}).index("by_chat",["chatId"]).index("by_created",["createdAt"]),
-  faqs: defineTable({question:v.string(),answer:v.string(),createdAt:v.number(),updatedAt:v.number()}).index("by_created",["createdAt"]),
-  settings: defineTable({key:v.string(),title:v.string(),body:v.string(),createdAt:v.number(),updatedAt:v.number()}).index("by_key",["key"]),
-  escrowPolicies: defineTable({policyName:v.string(),type:v.string(),releaseTime:v.string(),createdAt:v.number(),updatedAt:v.number()}).index("by_created",["createdAt"]),
-  cancellationPolicies: defineTable({ruleName:v.string(),refundType:v.string(),refundPercent:v.number(),window:v.string(),createdAt:v.number(),updatedAt:v.number()}).index("by_created",["createdAt"]),
-  kycTiers: defineTable({tierName:v.string(),requirements:v.array(v.string()),maxShipmentValueNaira:v.number(),maxCapacityKg:v.optional(v.number()),description:v.optional(v.string()),createdAt:v.number(),updatedAt:v.number()}).index("by_created",["createdAt"]),
-  adminRoles: defineTable({name:v.string(),createdAt:v.number(),updatedAt:v.number()}).index("by_created",["createdAt"]),
-  teamMembers: defineTable({adminRoleId:v.id("adminRoles"),name:v.string(),email:v.string(),roleTitle:v.string(),mustChangePassword:v.optional(v.boolean()),createdAt:v.number(),updatedAt:v.number()}).index("by_adminRole",["adminRoleId"]),
-  permissions: defineTable({name:v.string(),createdAt:v.number(),updatedAt:v.number()}).index("by_created",["createdAt"]),
-  permissionGrants: defineTable({permissionId:v.id("permissions"),adminRoleId:v.id("adminRoles"),roleTitle:v.string(),granted:v.boolean(),createdAt:v.number(),updatedAt:v.number()}).index("by_adminRole",["adminRoleId"]).index("by_permission",["permissionId"]).index("by_roleTitle",["roleTitle"]),
-  securityEvents: defineTable({kind:v.union(v.literal("login"),v.literal("failed_login"),v.literal("admin_action")),actorId:v.optional(v.id("users")),actorName:v.string(),actorEmail:v.optional(v.string()),actorPhone:v.optional(v.string()),detail:v.string(),affectedSection:v.optional(v.string()),attempts:v.optional(v.number()),ipAddress:v.optional(v.string()),deviceInfo:v.optional(v.string()),location:v.optional(v.string()),createdAt:v.number()}).index("by_created",["createdAt"]).index("by_kind",["kind"]),
-  feeConfig: defineTable({platformFeePercent:v.number(),baseFeeNaira:v.number(),distanceRateNairaPerKm:v.number(),minFeeNaira:v.optional(v.number()),categoryMultipliers:v.optional(v.any()),weightMultipliers:v.optional(v.any()),updatedAt:v.number(),updatedBy:v.optional(v.id("users"))}),
+  ...authTables,
+
+  users: defineTable({
+    subject: v.string(),
+    name: v.string(),
+    image: v.optional(v.string()),
+    profileImageStorageId: v.optional(v.id("_storage")),
+    profileImageUploadRequestedAt: v.optional(v.number()),
+    email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.string(),
+    phoneVerificationTime: v.optional(v.number()),
+    phoneVerificationCode: v.optional(v.string()),
+    phoneVerificationPendingPhone: v.optional(v.string()),
+    phoneVerificationExpiresAt: v.optional(v.number()),
+    phoneVerificationRequestedAt: v.optional(v.number()),
+    activationDestination: v.optional(v.union(v.literal("name"), v.literal("routes"))),
+    deletionRequestedAt: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+    verification,
+    joinedAt: v.number(),
+    suspended: v.optional(v.boolean()),
+    suspensionReason: v.optional(v.string()),
+    documentType: v.optional(documentType),
+    identityEvidenceIds: v.optional(v.array(v.id("evidence"))),
+    identitySubmittedAt: v.optional(v.number()),
+    identityReviewedAt: v.optional(v.number()),
+    identityNote: v.optional(v.string()),
+    walletBalanceNaira: v.optional(v.number()),
+    tier: v.optional(v.union(v.literal("Tier 1"), v.literal("Tier 2"), v.literal("Tier 3"))),
+    bvn: v.optional(v.string()),
+    residenceState: v.optional(v.string()),
+    residenceLga: v.optional(v.string()),
+    residenceAddress: v.optional(v.string()),
+    streetPhotoUrl: v.optional(v.string()),
+    housePhotoUrl: v.optional(v.string()),
+  })
+    .index("email", ["email"])
+    .index("phone", ["phone"])
+    .index("by_subject", ["subject"]),
+
+  evidence: defineTable({
+    ownerId: v.id("users"),
+    storageId: v.id("_storage"),
+    purpose,
+    filename: v.string(),
+    contentType: v.string(),
+    size: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_storage", ["storageId"]),
+
+  uploads: defineTable({
+    ownerId: v.id("users"),
+    purpose,
+    createdAt: v.number(),
+    usedAt: v.optional(v.number()),
+  }).index("by_owner", ["ownerId"]),
+
+  serviceAreaSettings: defineTable({
+    key: v.string(),
+    baseLocation: v.string(),
+    destinations: v.array(v.string()),
+    updatedAt: v.number(),
+    updatedBy: v.optional(v.id("users")),
+  }).index("by_key", ["key"]),
+
+  trips: defineTable({
+    travellerId: v.id("users"),
+    origin: v.string(),
+    destination: v.string(),
+    stops: v.optional(v.array(v.string())),
+    departureAt: v.number(),
+    arrivalAt: v.optional(v.number()),
+    capacityKg: v.number(),
+    reservedKg: v.number(),
+    acceptedCategories: v.optional(v.array(v.string())),
+    maxParcelWeightKg: v.optional(v.number()),
+    handlingNotes: v.optional(v.string()),
+    status: v.optional(v.union(v.literal("active"), v.literal("cancelled"), v.literal("completed"))),
+    cancellationReason: v.optional(v.string()),
+  })
+    .index("by_traveller", ["travellerId"])
+    .index("by_departure", ["departureAt"]),
+
+  shipments: defineTable({
+    reference: v.string(),
+    senderId: v.id("users"),
+    travellerId: v.optional(v.id("users")),
+    tripId: v.optional(v.id("trips")),
+    origin: v.string(),
+    destination: v.string(),
+    description: v.string(),
+    category: v.string(),
+    weightKg: v.number(),
+    valueNaira: v.number(),
+    feeNaira: v.number(),
+    receiverName: v.string(),
+    receiverPhone: v.string(),
+    status: shipmentStatus,
+    paymentStatus,
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    approved: v.boolean(),
+    reservationActive: v.boolean(),
+    pickupInstructions: v.optional(v.string()),
+    dropoffInstructions: v.optional(v.string()),
+    readyAt: v.optional(v.number()),
+    preferredPickupAt: v.optional(v.number()),
+    pickupFlexBeforeMinutes: v.optional(v.number()),
+    pickupFlexAfterMinutes: v.optional(v.number()),
+    deliveryDeadline: v.optional(v.number()),
+    evidenceIds: v.optional(v.array(v.id("evidence"))),
+    safetyConsent: v.optional(v.boolean()),
+    reviewNote: v.optional(v.string()),
+    payByAt: v.optional(v.number()),
+    handoverAt: v.optional(v.number()),
+    deliveredAt: v.optional(v.number()),
+    latestLatitude: v.optional(v.number()),
+    latestLongitude: v.optional(v.number()),
+    latestLocationLabel: v.optional(v.string()),
+    latestLocationAt: v.optional(v.number()),
+    locationCheckInCount: v.optional(v.number()),
+    disputeUntil: v.optional(v.number()),
+    exception: v.optional(v.string()),
+    cancellationReason: v.optional(v.string()),
+    refundApproved: v.optional(v.boolean()),
+    releaseApproved: v.optional(v.boolean()),
+    pickupIndex: v.optional(v.number()),
+    dropoffIndex: v.optional(v.number()),
+    acceptedOfferId: v.optional(v.id("offers")),
+  })
+    .index("by_sender", ["senderId"])
+    .index("by_traveller", ["travellerId"])
+    .index("by_status", ["status"])
+    .index("by_trip", ["tripId"]),
+
+  offers: defineTable({
+    shipmentId: v.id("shipments"),
+    tripId: v.id("trips"),
+    travellerId: v.id("users"),
+    feeNaira: v.number(),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    status: offerStatus,
+    note: v.string(),
+  })
+    .index("by_shipment", ["shipmentId"])
+    .index("by_traveller", ["travellerId"])
+    .index("by_trip", ["tripId"])
+    .index("by_status", ["status"]),
+
+  audits: defineTable({
+    actorId: v.optional(v.id("users")),
+    actorName: v.string(),
+    shipmentId: v.optional(v.id("shipments")),
+    action: v.string(),
+    detail: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_shipment", ["shipmentId"])
+    .index("by_created", ["createdAt"]),
+
+  codes: defineTable({
+    shipmentId: v.id("shipments"),
+    kind: codeKind,
+    hash: v.string(),
+    expiresAt: v.number(),
+    issuedAt: v.number(),
+    consumedAt: v.optional(v.number()),
+    attempts: v.number(),
+    issueCount: v.number(),
+    windowStart: v.number(),
+    smsStatus: v.optional(v.union(v.literal("pending"), v.literal("sent"), v.literal("failed"))),
+    smsId: v.optional(v.string()),
+  }).index("by_shipment_kind", ["shipmentId", "kind"]),
+
+  disputes: defineTable({
+    shipmentId: v.id("shipments"),
+    openedBy: v.id("users"),
+    reason: v.string(),
+    status: v.union(v.literal("open"), v.literal("resolved")),
+    previousStatus: shipmentStatus,
+    createdAt: v.number(),
+    resolution: v.optional(resolution),
+    resolvedAt: v.optional(v.number()),
+    externalReference: v.optional(v.string()),
+    note: v.optional(v.string()),
+    informationRequest: v.optional(v.string()),
+  })
+    .index("by_shipment", ["shipmentId"])
+    .index("by_status", ["status"]),
+
+  messages: defineTable({
+    shipmentId: v.id("shipments"),
+    authorId: v.id("users"),
+    body: v.string(),
+    createdAt: v.number(),
+  }).index("by_shipment", ["shipmentId"]),
+
+  notifications: defineTable({
+    userId: v.id("users"),
+    shipmentId: v.optional(v.id("shipments")),
+    title: v.string(),
+    body: v.string(),
+    createdAt: v.number(),
+    readAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_read", ["userId", "readAt"]),
+
+  reviews: defineTable({
+    shipmentId: v.id("shipments"),
+    authorId: v.id("users"),
+    targetId: v.id("users"),
+    rating: v.number(),
+    comment: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_shipment", ["shipmentId"])
+    .index("by_target", ["targetId"])
+    .index("by_author", ["authorId"]),
+
+  walletTransactions: defineTable({
+    userId: v.id("users"),
+    kind: walletTransactionKind,
+    amountNaira: v.number(),
+    reference: v.string(),
+    shipmentId: v.optional(v.id("shipments")),
+    createdAt: v.number(),
+    note: v.string(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_reference", ["reference"]),
+
+  supportChats: defineTable({
+    userId: v.id("users"),
+    subject: v.optional(v.string()),
+    status: v.union(v.literal("unresolved"), v.literal("resolved"), v.literal("closed")),
+    resolvedAt: v.optional(v.number()),
+    closedAt: v.optional(v.number()),
+    resolution: v.optional(v.string()),
+    resolutionNote: v.optional(v.string()),
+    assignedTo: v.optional(v.id("users")),
+    assignedByName: v.optional(v.string()),
+    resolvedBy: v.optional(v.id("users")),
+    resolvedByName: v.optional(v.string()),
+    qaReviewedBy: v.optional(v.id("users")),
+    qaReviewedByName: v.optional(v.string()),
+    qaScore: v.optional(v.union(v.literal("approved"), v.literal("needs_work"))),
+    qaNote: v.optional(v.string()),
+    qaReviewedAt: v.optional(v.number()),
+    activeViewedBy: v.optional(v.id("users")),
+    activeViewedAt: v.optional(v.number()),
+    lastMessageAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_status", ["status"])
+    .index("by_last_message", ["lastMessageAt"]),
+
+  supportMessages: defineTable({
+    chatId: v.id("supportChats"),
+    authorId: v.id("users"),
+    body: v.string(),
+    createdAt: v.number(),
+  }).index("by_chat", ["chatId"]),
+
+  supportEvents: defineTable({
+    chatId: v.id("supportChats"),
+    actorId: v.optional(v.id("users")),
+    actorName: v.string(),
+    action: v.string(),
+    detail: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_chat", ["chatId"])
+    .index("by_created", ["createdAt"]),
+
+  faqs: defineTable({
+    question: v.string(),
+    answer: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_created", ["createdAt"]),
+
+  settings: defineTable({
+    key: v.string(),
+    title: v.string(),
+    body: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+
+  escrowPolicies: defineTable({
+    policyName: v.string(),
+    type: v.string(),
+    releaseTime: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_created", ["createdAt"]),
+
+  cancellationPolicies: defineTable({
+    ruleName: v.string(),
+    refundType: v.string(),
+    refundPercent: v.number(),
+    window: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_created", ["createdAt"]),
+
+  kycTiers: defineTable({
+    tierName: v.string(),
+    requirements: v.array(v.string()),
+    maxShipmentValueNaira: v.number(),
+    maxCapacityKg: v.optional(v.number()),
+    description: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_created", ["createdAt"]),
+
+  adminRoles: defineTable({
+    name: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_created", ["createdAt"]),
+
+  teamMembers: defineTable({
+    adminRoleId: v.id("adminRoles"),
+    name: v.string(),
+    email: v.string(),
+    roleTitle: v.string(),
+    mustChangePassword: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_adminRole", ["adminRoleId"])
+    .index("by_email", ["email"]),
+
+  permissions: defineTable({
+    name: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_created", ["createdAt"]),
+
+  permissionGrants: defineTable({
+    permissionId: v.id("permissions"),
+    adminRoleId: v.id("adminRoles"),
+    roleTitle: v.string(),
+    granted: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_adminRole", ["adminRoleId"])
+    .index("by_permission", ["permissionId"])
+    .index("by_roleTitle", ["roleTitle"]),
+
+  securityEvents: defineTable({
+    kind: v.union(v.literal("login"), v.literal("failed_login"), v.literal("admin_action")),
+    actorId: v.optional(v.id("users")),
+    actorName: v.string(),
+    actorEmail: v.optional(v.string()),
+    actorPhone: v.optional(v.string()),
+    detail: v.string(),
+    affectedSection: v.optional(v.string()),
+    attempts: v.optional(v.number()),
+    ipAddress: v.optional(v.string()),
+    deviceInfo: v.optional(v.string()),
+    location: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_created", ["createdAt"])
+    .index("by_kind", ["kind"]),
+
+  feeConfig: defineTable({
+    platformFeePercent: v.number(),
+    baseFeeNaira: v.number(),
+    distanceRateNairaPerKm: v.number(),
+    minFeeNaira: v.optional(v.number()),
+    categoryMultipliers: v.optional(v.any()),
+    weightMultipliers: v.optional(v.any()),
+    updatedAt: v.number(),
+    updatedBy: v.optional(v.id("users")),
+  }),
+
   ...financeTables,
 });

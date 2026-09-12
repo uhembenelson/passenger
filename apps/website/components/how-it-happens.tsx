@@ -222,7 +222,7 @@ export function HowItHappens({ sectionRef: externalRef }: HowItHappensProps) {
                 You&apos;re sending
               </p>
               <a
-                href="#"
+                href="#download"
                 className="inline-flex items-center gap-1.5 mt-2 text-base font-semibold text-[#248A56] border-b border-[#248A56]/40 hover:border-[#248A56]"
               >
                 Send something
@@ -234,7 +234,7 @@ export function HowItHappens({ sectionRef: externalRef }: HowItHappensProps) {
                 You&apos;re travelling
               </p>
               <a
-                href="#"
+                href="#download"
                 className="inline-flex items-center gap-1.5 mt-2 text-base font-semibold text-[#248A56] border-b border-[#248A56]/40 hover:border-[#248A56]"
               >
                 I&apos;m travelling

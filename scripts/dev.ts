@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { childPath, portInUse, resolveNode, selectedWorkspaces, WORKSPACES } from "./dev-runtime";
+import { childPath, findAvailablePort, portInUse, resolveNode, selectedWorkspaces, WORKSPACES, type WorkspaceName } from "./dev-runtime";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const children: ChildProcess[] = [];
@@ -33,15 +33,40 @@ try {
   if (args.includes("--check")) {
     console.log("[passenger] Runtime preflight passed. No services were started.");
   } else {
-    const occupied: string[] = [];
-    for (const name of selected) if (await portInUse(WORKSPACES[name].port)) occupied.push(`${WORKSPACES[name].label} port ${WORKSPACES[name].port}`);
-    if (selected.includes("backend") && await portInUse(3211)) occupied.push("Convex HTTP actions port 3211");
-    if (occupied.length) throw new Error(`Already running: ${occupied.join(", ")}. Stop the existing workspace command first (Ctrl+C). Passenger will not kill unrelated processes or launch duplicate backends.`);
+    const allocatedPorts: Partial<Record<WorkspaceName, number>> = {};
+    const reservedPorts = new Set<number>();
+    for (const name of selected) reservedPorts.add(WORKSPACES[name].port);
+
+    for (const name of selected) {
+      reservedPorts.delete(WORKSPACES[name].port);
+      const port = await findAvailablePort(WORKSPACES[name].port, reservedPorts);
+      reservedPorts.add(port);
+      allocatedPorts[name] = port;
+      if (port !== WORKSPACES[name].port) {
+        console.log(`[passenger] ${WORKSPACES[name].label} default port ${WORKSPACES[name].port} is in use; using port ${port}.`);
+      }
+    }
+
     process.on("SIGINT", () => stop(0));
     process.on("SIGTERM", () => stop(0));
-    const env = { ...process.env, PATH: childPath(node.binary, process.execPath), PASSENGER_NODE_BINARY: node.binary };
+    const baseEnv = { ...process.env, PATH: childPath(node.binary, process.execPath), PASSENGER_NODE_BINARY: node.binary };
     for (const name of selected) {
-      const child = spawn(process.execPath, ["run", "dev"], { cwd: resolve(root, WORKSPACES[name].directory), env, stdio: ["ignore", "inherit", "inherit"], detached: process.platform !== "win32" });
+      const port = allocatedPorts[name];
+      const childEnv: Record<string, string | undefined> = {
+        ...baseEnv,
+        PORT: port ? String(port) : undefined,
+      };
+      const devArgs = ["run", "dev"];
+      if (port) {
+        if (name === "admin" || name === "website") {
+          devArgs.push("--", "-p", String(port));
+        } else if (name === "mobile") {
+          childEnv.RCT_METRO_PORT = String(port);
+          devArgs.push("--", "--port", String(port));
+        }
+      }
+
+      const child = spawn(process.execPath, devArgs, { cwd: resolve(root, WORKSPACES[name].directory), env: childEnv, stdio: ["ignore", "inherit", "inherit"], detached: process.platform !== "win32" });
       children.push(child);
       child.on("error", error => { console.error(`[passenger] ${name}: ${error.message}`); stop(1); });
       child.on("exit", (code, signal) => {

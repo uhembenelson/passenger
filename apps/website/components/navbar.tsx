@@ -28,9 +28,9 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Company",
     items: [
       { label: "About", href: "#about" },
-      { label: "Contact", href: "#contact" },
-      { label: "Terms", href: "#terms" },
-      { label: "Privacy", href: "#privacy" },
+      { label: "Contact", href: "mailto:support@passenger.ng" },
+      { label: "Terms", href: "#faq" },
+      { label: "Privacy", href: "#safety" },
     ],
   },
 ];

@@ -1,12 +1,37 @@
-import React, { useMemo, useRef, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Clock, MapPin, Package, Phone, User } from "lucide-react-native";
-import { CATEGORIES, CITIES, money, validateShipment, validateTrip } from "@passenger/core";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ArrowDown, ArrowRight, ArrowUp, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, MapPin, Minus, Package, Phone, Plus, User } from "lucide-react-native";
+import { CATEGORIES, CITIES, calculateDeliveryFee, money, validateShipment, validateTrip } from "@passenger/core";
 import type { CreateShipmentInput, CreateTripInput, Shipment, Trip } from "@passenger/core";
 import { components, primitives, semantic } from "@passenger/design-tokens";
 import { usePassenger } from "./data";
-import { EvidencePicker } from "./evidence";
-import { Button, colors, errorMessage, Field, fontFamily, FullScreenSheet, Notice, PresentationSheet, s, Sheet, Txt } from "./ui";
+import { IdentityVerificationCard } from "./identity-verification-card";
+import { EvidenceGallery, EvidencePicker, getPendingEvidenceResumeKey } from "./evidence";
+import { CityIllustration } from "./illustrations";
+import { Button, colors, errorMessage, Field, fontFamily, FullScreenState, Notice, PresentationSheet, s, Txt } from "./ui";
+
+import { CreateFlowFrame, CreateFlowLoading, CreateIntro, ReviewSection, useCreateIntro } from "./create-flow";
+import { validateMeetingPoints, validateParcelContents, validatePickupWindow, validateReceiver, validateTripRoute, validateTravelWindow, validateCarryingCapacity, adjustWeightLimit } from "./create-flow-validation";
+
+const parcelScreens = ["route", "schedule", "contents", "photos", "receiver", "review"] as const;
+type ParcelScreen = typeof parcelScreens[number];
+const parcelCopy: Record<ParcelScreen, [string, string]> = {
+  route: ["Where is it going?", ""],
+  schedule: ["When should it travel?", "Choose your preferred pickup time and when the parcel needs to arrive."],
+  contents: ["What's inside?", "Describe everything you're sending so travellers know what to expect."],
+  photos: ["Show your parcel", "Add clear photos of the contents and packaging. Travellers will check these at handover."],
+  receiver: ["Who's receiving it?", "We'll use these details to help confirm delivery."],
+  review: ["Check your parcel details", ""],
+};
+const tripScreens = ["route", "schedule", "categories", "capacity", "review"] as const;
+type TripScreen = typeof tripScreens[number];
+const tripCopy: Record<TripScreen, [string, string]> = {
+  route: ["Where are you travelling?", ""],
+  schedule: ["When are you travelling?", "Add your departure and expected arrival in your local time."],
+  categories: ["What parcels will you carry?", "Choose all the types you’re comfortable carrying."],
+  capacity: ["How much can you carry?", "Set your total space and the most each parcel can weigh."],
+  review: ["Ready to share your trip?", ""],
+};
 
 const fallbackServiceArea = { baseLocation: "Jos", destinations: ["Abuja", "Kaduna", "Lagos"] };
 
@@ -62,7 +87,7 @@ const form = StyleSheet.create({
   calDayToday: { color: semantic.color.brand.primary, fontFamily: fontFamily.semibold },
   // Time picker
   timeCard: { borderRadius: primitives.radius.xl, backgroundColor: semantic.color.background.surface, borderWidth: primitives.borderWidth.sm, borderColor: semantic.color.border.subtle, padding: primitives.space[4], gap: primitives.space[2] },
-  timeSectionTitle: { color: semantic.color.text.secondary, fontSize: primitives.typography.size.bodyXs, fontFamily: fontFamily.semibold, textTransform: "uppercase", letterSpacing: 0.8 },
+  timeSectionTitle: { color: semantic.color.text.secondary, fontSize: primitives.typography.size.bodyXs, fontFamily: fontFamily.semibold },
   timePresetsRow: { gap: primitives.space[2], paddingVertical: primitives.space[1] },
   timePreset: { paddingHorizontal: primitives.space[3], paddingVertical: primitives.space[2], borderRadius: primitives.radius.md, backgroundColor: semantic.color.background.subtle, borderWidth: primitives.borderWidth.sm, borderColor: semantic.color.border.subtle, alignItems: "center", gap: 2 },
   timePresetSelected: { backgroundColor: semantic.color.background.successSoft, borderColor: semantic.color.brand.primary },
@@ -87,35 +112,26 @@ const form = StyleSheet.create({
   stops: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 14, marginBottom: 18, backgroundColor: "#FCFCF8" },
   stop: { borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 14, paddingBottom: 14 },
   stopTools: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  categoryLabel: { marginBottom: primitives.space[3] },
-  categoryGroup: { marginBottom: primitives.space[5] },
-  categorySelected: { backgroundColor: semantic.color.brand.primary },
-  categoryUnselected: { backgroundColor: semantic.color.background.subtle },
-  categoryDisabled: { opacity: primitives.opacity.disabled },
-  categoryText: { fontSize: primitives.typography.size.bodyXs, lineHeight: primitives.typography.lineHeight.bodyXs, color: semantic.color.text.primary },
-  category: { paddingHorizontal: 12, paddingVertical: 10, minHeight: 44, justifyContent: "center", borderRadius: 8 },
+  footerStack: { gap: primitives.space[2] },
 });
 
-function FormRow({ children }: React.PropsWithChildren) {
-  return <View style={form.row}>{React.Children.map(children, child => child && <View style={form.column}>{child}</View>)}</View>;
-}
-
 // ─── Mobile Route Dropdown ──────────────────────────────────────────────────
-function ShipmentLocationDropdown({ label, value, placeholder, isOpen, onToggle, disabled }: {
+function LocationDropdown({ label, value, placeholder, isOpen, onToggle, disabled }: {
   label: string; value: string; placeholder: string; isOpen: boolean; onToggle: () => void; disabled: boolean;
 }) {
   return (
-    <View style={form.sectionCard}>
+    <View style={{ gap: primitives.space[3] }}>
       <Txt style={form.sectionLabel}>{label}</Txt>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${label}: ${value || placeholder}`}
+        accessibilityState={{ expanded: isOpen, disabled }}
         disabled={disabled}
         onPress={onToggle}
         style={[form.select, isOpen && form.selectActive, disabled && { opacity: primitives.opacity.disabled }]}
       >
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-          <MapPin size={20} color={value ? semantic.color.brand.primary : colors.muted} strokeWidth={2} />
+          {value ? <CityIllustration city={value} size={32} /> : <MapPin size={20} color={colors.muted} strokeWidth={2} />}
           <Txt style={[form.selectText, !value && form.selectPlaceholder]}>{value || placeholder}</Txt>
         </View>
         <ChevronDown size={20} color={colors.text} strokeWidth={2} />
@@ -124,8 +140,37 @@ function ShipmentLocationDropdown({ label, value, placeholder, isOpen, onToggle,
   );
 }
 
+function RouteCityField({ label, value, onChange, options = CITIES, allowCustom = false, disabled }: {
+  label: string; value: string; onChange: (value: string) => void; options?: readonly string[]; allowCustom?: boolean; disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  return <View style={form.sectionCard}>
+    <LocationDropdown label={label} value={value} placeholder="Select a city" isOpen={open} onToggle={() => setOpen(!open)} disabled={disabled} />
+    {open && !disabled && <View style={form.selectOptions}>
+      {options.map(city => <Pressable key={city} accessibilityRole="radio" accessibilityLabel={`${label}: ${city}`} accessibilityState={{ checked: city === value }} onPress={() => { onChange(city); setOpen(false); }} style={[form.selectOption, city === value && form.selectOptionActive]}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}><CityIllustration city={city} size={34} /><Txt style={form.selectOptionText}>{city}</Txt></View>
+        {city === value && <Txt style={form.selectOptionSelected}>Selected</Txt>}
+      </Pressable>)}
+      {allowCustom && <>
+        <Field label="Another city" value={value} onChangeText={onChange} placeholder="Enter a city" maxLength={80} autoCapitalize="words" />
+        <Button title="Use this city" variant="secondary" disabled={!value.trim()} onPress={() => setOpen(false)} />
+      </>}
+    </View>}
+  </View>;
+}
+
+function CategoryChoices({ selected, onSelect, multiple = false, disabled }: {
+  selected: readonly string[]; onSelect: (category: string) => void; multiple?: boolean; disabled: boolean;
+}) {
+  return <View style={[form.chipRow, { marginBottom: primitives.space[4] }]}>
+    {CATEGORIES.map(category => <Pressable key={category} accessibilityRole={multiple ? "checkbox" : "radio"} accessibilityState={{ checked: selected.includes(category), disabled }} disabled={disabled} onPress={() => onSelect(category)} style={[form.chip, selected.includes(category) && form.chipSelected, disabled && form.chipDisabled]}>
+      <Txt style={[form.chipText, selected.includes(category) && form.chipTextSelected]}>{category}</Txt>
+    </Pressable>)}
+  </View>;
+}
+
 // ─── Calendar Picker ────────────────────────────────────────────────────────
-function ShipmentCalendarPicker({ selectedValue, onSelect }: { selectedValue: string; onSelect: (date: string) => void }) {
+function CalendarPicker({ selectedValue, onSelect }: { selectedValue: string; onSelect: (date: string) => void }) {
   const initialDate = useMemo(() => {
     if (selectedValue && /^\d{4}-\d{2}-\d{2}$/.test(selectedValue)) {
       const [y, m] = selectedValue.split("-").map(Number);
@@ -192,7 +237,7 @@ const TIME_PRESETS = [
   { label: "Night", time: "20:00", display: "08:00 PM" },
 ];
 
-function ShipmentTimePicker({ selectedValue, onSelect }: { selectedValue: string; onSelect: (time: string) => void }) {
+function TimePicker({ selectedValue, onSelect }: { selectedValue: string; onSelect: (time: string) => void }) {
   const initialTime = useMemo(() => {
     if (selectedValue && /^([01]\d|2[0-3]):[0-5]\d$/.test(selectedValue)) {
       const [h, m] = selectedValue.split(":").map(Number);
@@ -219,7 +264,7 @@ function ShipmentTimePicker({ selectedValue, onSelect }: { selectedValue: string
 
   return (
     <View style={form.timeCard}>
-      <Txt style={form.timeSectionTitle}>Quick Select</Txt>
+      <Txt style={form.timeSectionTitle}>Quick select</Txt>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={form.timePresetsRow}>
         {TIME_PRESETS.map(preset => {
           const isSelected = selectedValue === preset.time;
@@ -231,7 +276,7 @@ function ShipmentTimePicker({ selectedValue, onSelect }: { selectedValue: string
           );
         })}
       </ScrollView>
-      <Txt style={[form.timeSectionTitle, { marginTop: 10 }]}>Custom Time</Txt>
+      <Txt style={[form.timeSectionTitle, { marginTop: 10 }]}>Custom time</Txt>
       <View style={form.timePeriodRow}>
         <Pressable accessibilityRole="button" accessibilityLabel="AM" onPress={() => setPeriod("AM")} style={[form.timePeriodBtn, period === "AM" && form.timePeriodActive]}><Txt style={[form.timePeriodText, period === "AM" && form.timePeriodTextActive]}>AM</Txt></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="PM" onPress={() => setPeriod("PM")} style={[form.timePeriodBtn, period === "PM" && form.timePeriodActive]}><Txt style={[form.timePeriodText, period === "PM" && form.timePeriodTextActive]}>PM</Txt></Pressable>
@@ -314,18 +359,44 @@ function parseLocalDateTime(value: LocalDateTime, label: string) {
   return date.getTime();
 }
 
+function WeightLimit({ label, value, maximum, disabled, onChange }: { label: string; value: number; maximum: number; disabled: boolean; onChange: (value: number) => void }) {
+  return <View style={[form.sectionCard, { paddingVertical: 20 }]}>
+    <Txt style={form.sectionLabel}>{label}</Txt>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 20 }}>
+      <Button title="" accessibilityLabel={`Decrease ${label.toLowerCase()}`} icon={<Minus size={22} color={colors.text} />} variant="secondary" disabled={disabled || value <= Math.min(0.5, maximum)} onPress={() => onChange(adjustWeightLimit(value, -1, maximum))} style={{ width: 52, minHeight: 52 }} />
+      <Txt accessibilityLiveRegion="polite" style={{ flex: 1, textAlign: "center", fontSize: 30, fontFamily: fontFamily.semibold }}>{value} kg</Txt>
+      <Button title="" accessibilityLabel={`Increase ${label.toLowerCase()}`} icon={<Plus size={22} color={colors.text} />} variant="secondary" disabled={disabled || value >= maximum} onPress={() => onChange(adjustWeightLimit(value, 1, maximum))} style={{ width: 52, minHeight: 52 }} />
+    </View>
+  </View>;
+}
+
 function DateTimeFields({ label, value, onChange, hint, disabled }: { label: string; value: LocalDateTime; onChange: (value: LocalDateTime) => void; hint: string; disabled: boolean }) {
-  return <View>
-    <FormRow>
-      <Field label={`${label} date`} value={value.date} onChangeText={date => onChange({ ...value, date })} placeholder="YYYY-MM-DD" maxLength={10} autoCapitalize="none" autoCorrect={false} editable={!disabled} hint={hint} />
-      <Field label={`${label} time`} value={value.time} onChangeText={time => onChange({ ...value, time })} placeholder="HH:MM" maxLength={5} autoCapitalize="none" autoCorrect={false} editable={!disabled} hint="24-hour · your device's local time" />
-    </FormRow>
+  const [picker, setPicker] = useState<"date" | "time" | null>(null);
+  return <View style={form.sectionCard}>
+    <Txt style={form.sectionLabel}>{label}</Txt>
+    <View style={form.pickerRow}>
+      {(["date", "time"] as const).map(kind => {
+        const Icon = kind === "date" ? Calendar : Clock;
+        const display = value[kind] ? (kind === "date" ? formatDisplayDate(value.date) : formatDisplayTime(value.time)) : `Select ${kind}`;
+        return <View key={kind} style={form.pickerCol}>
+          <Txt style={s.label}>{kind === "date" ? "Date" : "Time"}</Txt>
+          <Pressable accessibilityRole="button" accessibilityLabel={`${label} ${kind}: ${display}`} accessibilityState={{ expanded: picker === kind, disabled }} disabled={disabled} onPress={() => setPicker(picker === kind ? null : kind)} style={[form.pickerBtn, picker === kind && form.pickerBtnActive, disabled && form.chipDisabled]}>
+            <Icon size={18} color={value[kind] ? semantic.color.brand.primary : colors.muted} />
+            <Txt numberOfLines={1} ellipsizeMode="tail" style={[form.pickerBtnText, { minWidth: 0 }, !value[kind] && form.pickerBtnPlaceholder]}>{display}</Txt>
+            <ChevronDown size={18} color={colors.text} />
+          </Pressable>
+        </View>;
+      })}
+    </View>
+    <Txt style={s.hint}>{hint}</Txt>
+    {!disabled && picker === "date" && <CalendarPicker selectedValue={value.date} onSelect={date => { onChange({ ...value, date }); setPicker(null); }} />}
+    {!disabled && picker === "time" && <TimePicker selectedValue={value.time} onSelect={time => { onChange({ ...value, time }); setPicker(null); }} />}
   </View>;
 }
 
 function Consent({ checked, onChange, disabled, children }: React.PropsWithChildren<{ checked: boolean; onChange: (checked: boolean) => void; disabled: boolean }>) {
   return <Pressable accessibilityRole="checkbox" accessibilityState={{ checked, disabled }} disabled={disabled} onPress={() => onChange(!checked)} style={[s.checkRow, disabled && { opacity: 0.6 }]}>
-    <View style={[s.checkbox, checked && { backgroundColor: colors.forest, borderColor: colors.forest }]}>{checked && <Txt style={{ color: "white", fontSize: 13 }}>✓</Txt>}</View>
+    <View style={[s.checkbox, checked && { backgroundColor: colors.forest, borderColor: colors.forest }]}>{checked && <Check size={13} color="white" strokeWidth={3} />}</View>
     <Txt style={{ flex: 1, fontSize: 12, lineHeight: 20 }}>{children}</Txt>
   </Pressable>;
 }
@@ -347,12 +418,21 @@ function accessMessage(data: ReturnType<typeof usePassenger>) {
 
 export function ShipmentForm({ onClose, onSuccess, trip, shipment, draft }: { onClose: () => void; onSuccess: () => void; trip?: Trip; shipment?: Shipment; draft?: Partial<CreateShipmentInput> }) {
   const data = usePassenger();
+  const intro = useCreateIntro("sender", data.snapshot?.viewer?.id, !!shipment);
+  const [screen, setScreen] = useState<ParcelScreen>("route");
+  const [uploading, setUploading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [flexOpen, setFlexOpen] = useState(false);
+  const [returnToReview, setReturnToReview] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void getPendingEvidenceResumeKey().then(key => { if (active && key === "shipment-form") setScreen("photos"); });
+    return () => { active = false; };
+  }, []);
   const serviceArea = data.snapshot?.serviceArea ?? fallbackServiceArea;
   const allLocations = useMemo(() => [serviceArea.baseLocation, ...serviceArea.destinations], [serviceArea]);
   const [origin, setOrigin] = useState(shipment?.origin ?? draft?.origin ?? trip?.origin ?? "");
   const [destination, setDestination] = useState(shipment?.destination ?? draft?.destination ?? trip?.destination ?? "");
-  const [originOpen, setOriginOpen] = useState(false);
-  const [destinationOpen, setDestinationOpen] = useState(false);
   const [category, setCategory] = useState<string>(shipment?.category ?? draft?.category ?? "");
   const [description, setDescription] = useState(shipment?.description ?? draft?.description ?? "");
   const [weight, setWeight] = useState(shipment ? String(shipment.weightKg) : draft?.weightKg ? String(draft.weightKg) : "");
@@ -371,18 +451,17 @@ export function ShipmentForm({ onClose, onSuccess, trip, shipment, draft }: { on
   const submitting = useRef(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
-  // Picker state for interactive date/time selection
-  const [readyPicker, setReadyPicker] = useState<"date" | "time" | null>(null);
-  const [deadlinePicker, setDeadlinePicker] = useState<"date" | "time" | null>(null);
   const current = shipment ? data.snapshot?.shipments.find(item => item.id === shipment.id) ?? shipment : undefined;
   const permission = accessMessage(data);
   const editLock = current && current.senderId !== data.snapshot?.viewer?.id ? "Only the sender can edit this parcel." : current && !["pending_review", "rejected", "open"].includes(current.status) ? "This parcel can no longer be edited here because its delivery state has changed. Open its delivery record for available actions." : "";
   const blocked = permission || editLock;
   const disabled = busy || saved || !!blocked;
   const rejected = current?.status === "rejected";
-  const closeAllPickers = () => { setOriginOpen(false); setDestinationOpen(false); setReadyPicker(null); setDeadlinePicker(null); };
-  const handleSelectOrigin = (city: string) => { setOrigin(city); setOriginOpen(false); };
-  const handleSelectDestination = (city: string) => { setDestination(city); setDestinationOpen(false); };
+  const estimatedFee = useMemo(() => {
+    try { return calculateDeliveryFee({ origin, destination, category, weightKg: Number(weight) }, data.snapshot?.feeConfig); }
+    catch { return null; }
+  }, [origin, destination, category, weight, data.snapshot?.feeConfig]);
+  const submissionBlocker = evidenceIds.length === 0 ? "Add at least one parcel photo to submit." : !declared ? "Confirm the safety declaration to submit." : "";
 
   const submit = async () => {
     if (submitting.current || saved) return;
@@ -407,205 +486,116 @@ export function ShipmentForm({ onClose, onSuccess, trip, shipment, draft }: { on
       setSaved(true);
     } catch (e) {
       setError(errorMessage(e));
+      setFailed(true);
       return;
     } finally {
       submitting.current = false;
       setBusy(false);
     }
-    onSuccess();
   };
 
-  return <FullScreenSheet title={rejected ? "Resubmit Parcel" : shipment ? "Edit Parcel" : "Send a Parcel"} onClose={() => !submitting.current && onClose()}>
-    <Txt style={[s.muted, form.intro]}>{shipment ? "Update the details below. Saving resubmits for review." : "Tell us what you're sending and where. Passenger will calculate the delivery fee from the route and parcel type."}</Txt>
-    {!!blocked && <View style={form.notice}><Notice tone="warning">{blocked}</Notice></View>}
-    {rejected && <View style={form.notice}><Notice tone="warning">{current?.reviewNote ? `Feedback: ${current.reviewNote}` : "Operations requested changes. Correct the details, then resubmit."}</Notice></View>}
-    {trip && !shipment && <View style={form.notice}><Notice>Route pre-filled from a trip. Adjust as needed.</Notice></View>}
-
-    {/* ── Route ─────────────────────────────────────────────── */}
-    <Txt style={form.sectionLabel}>Route</Txt>
-    <ShipmentLocationDropdown
-      label="From"
-      value={origin}
-      placeholder="Select pickup city"
-      isOpen={originOpen}
-      onToggle={() => { setDestinationOpen(false); setReadyPicker(null); setDeadlinePicker(null); if (originOpen) { setOriginOpen(false); } else { setOriginOpen(true); } }}
-      disabled={disabled}
-    />
-    {originOpen && !disabled ? (
-      <View style={[form.selectOptions, { marginTop: -primitives.space[3] }]}>
-        {allLocations.map(city => (
-          <Pressable key={city} accessibilityRole="radio" accessibilityState={{ checked: city === origin }} onPress={() => handleSelectOrigin(city)} style={[form.selectOption, city === origin && form.selectOptionActive]}>
-            <Txt style={form.selectOptionText}>{city}</Txt>
-            {city === origin ? <Txt style={form.selectOptionSelected}>Selected</Txt> : null}
-          </Pressable>
-        ))}
-      </View>
-    ) : null}
-    <ShipmentLocationDropdown
-      label="To"
-      value={destination}
-      placeholder="Select drop-off city"
-      isOpen={destinationOpen}
-      onToggle={() => { setOriginOpen(false); setReadyPicker(null); setDeadlinePicker(null); if (destinationOpen) { setDestinationOpen(false); } else { setDestinationOpen(true); } }}
-      disabled={disabled}
-    />
-    {destinationOpen && !disabled ? (
-      <View style={[form.selectOptions, { marginTop: -primitives.space[3] }]}>
-        {allLocations.map(city => (
-          <Pressable key={city} accessibilityRole="radio" accessibilityState={{ checked: city === destination }} onPress={() => handleSelectDestination(city)} style={[form.selectOption, city === destination && form.selectOptionActive]}>
-            <Txt style={form.selectOptionText}>{city}</Txt>
-            {city === destination ? <Txt style={form.selectOptionSelected}>Selected</Txt> : null}
-          </Pressable>
-        ))}
-      </View>
-    ) : null}
+  const go = (next: ParcelScreen) => { setError(""); setScreen(next); };
+  const edit = (next: ParcelScreen) => { setReturnToReview(true); go(next); };
+  const advance = () => {
+    try {
+      if (screen === "route") validateMeetingPoints(origin, destination, pickupInstructions, dropoffInstructions);
+      if (screen === "schedule") validatePickupWindow(parseLocalDateTime(ready, "Pickup"), parseLocalDateTime(deadline, "Delivery deadline"), Number(flexBefore), Number(flexAfter));
+      if (screen === "contents") validateParcelContents(category, description, Number(weight), Number(value));
+      if (screen === "photos" && !evidenceIds.length) throw new Error("Add at least one photo of your parcel.");
+      if (screen === "receiver") validateReceiver(receiverName, receiverPhone);
+      go(returnToReview ? "review" : parcelScreens[parcelScreens.indexOf(screen) + 1]);
+      setReturnToReview(false);
+    } catch (cause) { setError(errorMessage(cause)); }
+  };
+  if (saved) return <FullScreenState title="Parcel submitted for review" subtitle="We'll review your parcel before travellers can make offers. You can follow its status in your deliveries." primaryAction={{ label: "View my deliveries", onPress: onSuccess }} />;
+  if (failed) return <FullScreenState title="Your parcel wasn't submitted" subtitle={error} primaryAction={{ label: "Review parcel", onPress: () => { setFailed(false); go("review"); } }} secondaryAction={{ label: "Close", onPress: onClose }} />;
+  if (intro.show === null) return <CreateFlowLoading onClose={onClose} />;
+  if (intro.show) return <CreateIntro mode="sender" onContinue={intro.dismiss} replaying={intro.replaying} onClose={intro.replaying ? intro.dismiss : onClose} />;
+  return <CreateFlowFrame title={parcelCopy[screen][0]} description={parcelCopy[screen][1]} screenKey={screen}
+    onClose={() => !submitting.current && !uploading && onClose()} onBack={screen !== "route" ? () => { setReturnToReview(false); go(parcelScreens[parcelScreens.indexOf(screen) - 1]); } : undefined}
+    locked={busy || uploading} footer={<View style={form.footerStack}>
+      {!!error && <Notice tone="error">{error}</Notice>}
+      <Button title={screen === "review" ? rejected ? "Resubmit parcel" : shipment ? "Save and resubmit" : "Submit for review" : uploading ? "Uploading photos" : returnToReview ? "Save changes" : "Continue"} variant="lime" onPress={screen === "review" ? submit : advance} busy={busy} disabled={disabled || uploading || (screen === "review" && !!submissionBlocker)} />
+      {screen === "review" && !declared && <Txt style={[s.hint, { textAlign: "center" }]}>Confirm the declaration below your parcel details to submit.</Txt>}
+    </View>}>
+    {!!blocked && (data.snapshot?.viewer && !data.offline && !data.authError && !data.authLoading && !data.snapshot.viewer.suspended && data.snapshot.viewer.verification !== "verified"
+      ? <IdentityVerificationCard viewer={data.snapshot.viewer} />
+      : <View style={form.notice}><Notice tone="warning">{blocked}</Notice></View>)}
+    {rejected && <View style={form.notice}><Notice tone="warning">{current?.reviewNote ? `Review note: ${current.reviewNote}` : "Update your parcel details, then send them for another review."}</Notice></View>}
+    {screen === "route" && <>
+    {trip && !shipment && <View style={form.notice}><Notice>We've filled in the route from the trip you chose.</Notice></View>}
+    <RouteCityField label="From" value={origin} onChange={setOrigin} options={allLocations} disabled={disabled} />
+    <RouteCityField label="To" value={destination} onChange={setDestination} options={allLocations} disabled={disabled} />
     <Field label="Pickup instructions" value={pickupInstructions} onChangeText={setPickupInstructions} editable={!disabled} placeholder="Meeting point and how to find you" multiline maxLength={1000} />
     <Field label="Drop-off instructions" value={dropoffInstructions} onChangeText={setDropoffInstructions} editable={!disabled} placeholder="Receiving point and access details" multiline maxLength={1000} />
 
-    {/* ── Schedule ──────────────────────────────────────────── */}
-    <View style={form.divider} />
-    <Txt style={form.sectionLabel}>Schedule</Txt>
-    <Txt style={[s.hint, form.sectionHint]}>When should the parcel be picked up?</Txt>
-    <View style={form.pickerRow}>
-      <View style={form.pickerCol}>
-        <Txt style={s.label}>Pickup date</Txt>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Pickup date: ${ready.date ? formatDisplayDate(ready.date) : "Select date"}`}
-          disabled={disabled}
-          onPress={() => { closeAllPickers(); setReadyPicker(readyPicker === "date" ? null : "date"); }}
-          style={[form.pickerBtn, readyPicker === "date" && form.pickerBtnActive]}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0, overflow: "hidden" }}>
-            <Calendar size={18} color={ready.date ? semantic.color.brand.primary : colors.muted} strokeWidth={2} />
-            <Txt numberOfLines={1} ellipsizeMode="tail" style={[form.pickerBtnText, !ready.date && form.pickerBtnPlaceholder, Platform.OS === "web" && ({ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } as any)]}>
-              {ready.date ? formatDisplayDate(ready.date) : "Select date"}
-            </Txt>
-          </View>
-          <ChevronDown size={18} color={colors.text} strokeWidth={2} />
-        </Pressable>
-      </View>
-      <View style={form.pickerCol}>
-        <Txt style={s.label}>Pickup time</Txt>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Pickup time: ${ready.time ? formatDisplayTime(ready.time) : "Select time"}`}
-          disabled={disabled}
-          onPress={() => { closeAllPickers(); setReadyPicker(readyPicker === "time" ? null : "time"); }}
-          style={[form.pickerBtn, readyPicker === "time" && form.pickerBtnActive]}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0, overflow: "hidden" }}>
-            <Clock size={18} color={ready.time ? semantic.color.brand.primary : colors.muted} strokeWidth={2} />
-            <Txt numberOfLines={1} ellipsizeMode="tail" style={[form.pickerBtnText, !ready.time && form.pickerBtnPlaceholder, Platform.OS === "web" && ({ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } as any)]}>
-              {ready.time ? formatDisplayTime(ready.time) : "Select time"}
-            </Txt>
-          </View>
-          <ChevronDown size={18} color={colors.text} strokeWidth={2} />
-        </Pressable>
-      </View>
-    </View>
-    {readyPicker === "date" ? <ShipmentCalendarPicker selectedValue={ready.date} onSelect={date => { setReady(prev => ({ ...prev, date })); setReadyPicker(null); }} /> : null}
-    {readyPicker === "time" ? <ShipmentTimePicker selectedValue={ready.time} onSelect={time => { setReady(prev => ({ ...prev, time })); setReadyPicker(null); }} /> : null}
+    </>}
+    {screen === "schedule" && <>
+    <DateTimeFields label="Pickup" value={ready} onChange={setReady} disabled={disabled} hint="When should the parcel be picked up?" />
 
-    <View style={form.row}>
-      <View style={form.column}><Field label="Flex before (hrs)" value={flexBefore} onChangeText={setFlexBefore} editable={!disabled} keyboardType="number-pad" placeholder="12" hint="0–72 hours" /></View>
-      <View style={form.column}><Field label="Flex after (hrs)" value={flexAfter} onChangeText={setFlexAfter} editable={!disabled} keyboardType="number-pad" placeholder="12" hint="0–72 hours" /></View>
-    </View>
+    <Button title={flexOpen ? "Hide pickup flexibility" : `Pickup flexibility: ${flexBefore} hours earlier, ${flexAfter} hours later`} variant="ghost" disabled={disabled} onPress={() => setFlexOpen(!flexOpen)} />
+    {flexOpen && <View style={form.row}>
+      <View style={form.column}><Field label="Hours earlier" value={flexBefore} onChangeText={setFlexBefore} editable={!disabled} keyboardType="number-pad" placeholder="12" hint="0–72 hours" /></View>
+      <View style={form.column}><Field label="Hours later" value={flexAfter} onChangeText={setFlexAfter} editable={!disabled} keyboardType="number-pad" placeholder="12" hint="0–72 hours" /></View>
+    </View>}
 
-    <Txt style={[s.hint, form.sectionHint]}>When must it arrive by?</Txt>
-    <View style={form.pickerRow}>
-      <View style={form.pickerCol}>
-        <Txt style={s.label}>Deadline date</Txt>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Deadline date: ${deadline.date ? formatDisplayDate(deadline.date) : "Select date"}`}
-          disabled={disabled}
-          onPress={() => { closeAllPickers(); setDeadlinePicker(deadlinePicker === "date" ? null : "date"); }}
-          style={[form.pickerBtn, deadlinePicker === "date" && form.pickerBtnActive]}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0, overflow: "hidden" }}>
-            <Calendar size={18} color={deadline.date ? semantic.color.brand.primary : colors.muted} strokeWidth={2} />
-            <Txt numberOfLines={1} ellipsizeMode="tail" style={[form.pickerBtnText, !deadline.date && form.pickerBtnPlaceholder, Platform.OS === "web" && ({ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } as any)]}>
-              {deadline.date ? formatDisplayDate(deadline.date) : "Select date"}
-            </Txt>
-          </View>
-          <ChevronDown size={18} color={colors.text} strokeWidth={2} />
-        </Pressable>
-      </View>
-      <View style={form.pickerCol}>
-        <Txt style={s.label}>Deadline time</Txt>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Deadline time: ${deadline.time ? formatDisplayTime(deadline.time) : "Select time"}`}
-          disabled={disabled}
-          onPress={() => { closeAllPickers(); setDeadlinePicker(deadlinePicker === "time" ? null : "time"); }}
-          style={[form.pickerBtn, deadlinePicker === "time" && form.pickerBtnActive]}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1, minWidth: 0, overflow: "hidden" }}>
-            <Clock size={18} color={deadline.time ? semantic.color.brand.primary : colors.muted} strokeWidth={2} />
-            <Txt numberOfLines={1} ellipsizeMode="tail" style={[form.pickerBtnText, !deadline.time && form.pickerBtnPlaceholder, Platform.OS === "web" && ({ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } as any)]}>
-              {deadline.time ? formatDisplayTime(deadline.time) : "Select time"}
-            </Txt>
-          </View>
-          <ChevronDown size={18} color={colors.text} strokeWidth={2} />
-        </Pressable>
-      </View>
-    </View>
-    {deadlinePicker === "date" ? <ShipmentCalendarPicker selectedValue={deadline.date} onSelect={date => { setDeadline(prev => ({ ...prev, date })); setDeadlinePicker(null); }} /> : null}
-    {deadlinePicker === "time" ? <ShipmentTimePicker selectedValue={deadline.time} onSelect={time => { setDeadline(prev => ({ ...prev, time })); setDeadlinePicker(null); }} /> : null}
+    <DateTimeFields label="Deadline" value={deadline} onChange={setDeadline} disabled={disabled} hint="When must it arrive by?" />
 
+    </>}
+    {screen === "contents" && <>
     {/* ── Package Details ───────────────────────────────────── */}
-    <View style={form.divider} />
-    <Txt style={form.sectionLabel}>Package Details</Txt>
     <Txt style={[s.label, { marginBottom: primitives.space[2] }]}>Category</Txt>
-    <View style={[form.chipRow, { marginBottom: primitives.space[4] }]}>
-      {CATEGORIES.map(item => (
-        <Pressable
-          key={item}
-          accessibilityRole="radio"
-          accessibilityState={{ checked: item === category, disabled }}
-          disabled={disabled}
-          onPress={() => setCategory(item)}
-          style={[form.chip, item === category && form.chipSelected, disabled && form.chipDisabled]}
-        >
-          <Txt style={[form.chipText, item === category && form.chipTextSelected]}>{item}</Txt>
-        </Pressable>
-      ))}
-    </View>
+    <CategoryChoices selected={[category]} onSelect={setCategory} disabled={disabled} />
     <Field label="Declared contents" value={description} onChangeText={setDescription} editable={!disabled} placeholder="List every item, quantity and condition" multiline maxLength={1000} hint="Be specific so the traveller can inspect each item." />
     <View style={form.row}>
       <View style={form.column}><Field label="Weight (kg)" value={weight} onChangeText={setWeight} editable={!disabled} keyboardType="decimal-pad" placeholder="0" hint="Up to 25 kg" /></View>
       <View style={form.column}><Field label="Value (₦)" value={value} onChangeText={setValue} editable={!disabled} keyboardType="number-pad" placeholder="0" hint="Up to ₦500,000" /></View>
     </View>
-    <Notice>The backend calculates the delivery fee from the route and parcel type when you submit. That amount is then held from your wallet for the trip.</Notice>
-    <Txt style={[s.label, { marginBottom: primitives.space[2] }]}>Photos</Txt>
-    <Txt style={[s.hint, form.sectionHint]}>Upload 1–5 clear photos of the contents and packaging.</Txt>
-    <EvidencePicker purpose="parcel" value={evidenceIds} onChange={setEvidenceIds} disabled={disabled} resumeKey="shipment-form" />
+    </>}
+    {screen === "photos" && <>
+    <EvidencePicker purpose="parcel" value={evidenceIds} onChange={setEvidenceIds} disabled={disabled} onBusyChange={setUploading} compact resumeKey="shipment-form" />
 
+    </>}
+    {screen === "receiver" && <>
     {/* ── Receiver ──────────────────────────────────────────── */}
-    <View style={form.divider} />
-    <Txt style={form.sectionLabel}>Receiver</Txt>
     <Field label="Full name" value={receiverName} onChangeText={setReceiverName} editable={!disabled} placeholder="Receiver's full name" maxLength={120} autoCapitalize="words" />
     <Field label="Phone number" value={receiverPhone} onChangeText={setReceiverPhone} editable={!disabled} keyboardType="phone-pad" placeholder="+234..." maxLength={20} hint="Delivery confirmation is sent by SMS." />
-    <Notice>No weapons, drugs, cash, hazardous materials, stolen goods, or live animals. Declared value is not insurance.</Notice>
-    <Consent checked={declared} onChange={setDeclared} disabled={disabled}>I have accurately declared every item and confirm this parcel contains no prohibited goods. I agree to a physical inspection at handover.</Consent>
-    {!!error && <View style={form.notice}><Notice tone="error">{error}</Notice></View>}
-    {saved && <View style={form.notice}><Notice tone="success">Your parcel was {shipment ? "updated and resubmitted" : "submitted"} for review.</Notice></View>}
-    <Button title={saved ? "Submitted for review" : rejected ? "Resubmit parcel  →" : shipment ? "Save and resubmit  →" : "Submit for review  →"} variant="lime" onPress={submit} busy={busy} disabled={disabled || !declared || evidenceIds.length === 0} />
-    <Txt style={[s.hint, form.footer]}>The calculated delivery fee stays held until delivery is confirmed or the booking is safely cancelled.</Txt>
-  </FullScreenSheet>;
+    </>}
+    {screen === "review" && <>
+      <ReviewSection title="Route" onEdit={() => edit("route")} disabled={disabled}>
+        <Txt>{origin} → {destination}</Txt><Txt style={s.hint}>Pickup: {pickupInstructions}</Txt><Txt style={s.hint}>Drop-off: {dropoffInstructions}</Txt>
+      </ReviewSection>
+      <ReviewSection title="Timing" onEdit={() => edit("schedule")} disabled={disabled}>
+        <Txt>Pickup: {formatDisplayDate(ready.date)} at {formatDisplayTime(ready.time)}</Txt>
+        <Txt style={s.hint}>Up to {flexBefore} hours earlier or {flexAfter} hours later</Txt>
+        <Txt>Arrive by: {formatDisplayDate(deadline.date)} at {formatDisplayTime(deadline.time)}</Txt>
+      </ReviewSection>
+      <ReviewSection title="Contents" onEdit={() => edit("contents")} disabled={disabled}>
+        <Txt>{category} · {weight} kg · {money(Number(value))}</Txt><Txt>{description}</Txt>
+      </ReviewSection>
+      <ReviewSection title="Photos" onEdit={() => edit("photos")} disabled={disabled}><EvidenceGallery ids={evidenceIds} /></ReviewSection>
+      <ReviewSection title="Receiver" onEdit={() => edit("receiver")} disabled={disabled}><Txt>{receiverName}</Txt><Txt>{receiverPhone}</Txt></ReviewSection>
+      <View style={form.notice}><Notice>{estimatedFee !== null ? `Estimated delivery fee: ${money(estimatedFee)}. ` : ""}{shipment ? "Saving recalculates the fee and adjusts the amount held in your wallet." : "Submitting holds the delivery fee from your wallet."} The final fee is confirmed when you submit. Payment stays held until delivery is confirmed or the parcel is cancelled under the cancellation policy.</Notice></View>
+      <View style={form.notice}><Notice>No weapons, drugs, cash, hazardous materials, stolen goods or live animals. Declared value is not insurance.</Notice></View>
+      <Consent checked={declared} onChange={setDeclared} disabled={disabled}>I have listed every item, confirm there are no prohibited goods, and agree to a physical inspection at handover.</Consent>
+    </>}
+  </CreateFlowFrame>;
 }
 
 export function TripForm({ onClose, onSuccess, trip }: { onClose: () => void; onSuccess: () => void; trip?: Trip }) {
   const data = usePassenger();
+  const intro = useCreateIntro("traveller", data.snapshot?.viewer?.id, !!trip);
+  const [screen, setScreen] = useState<TripScreen>("route");
+  const [failed, setFailed] = useState(false);
+  const [returnToReview, setReturnToReview] = useState(false);
   const [origin, setOrigin] = useState(trip?.origin ?? "");
   const [destination, setDestination] = useState(trip?.destination ?? "");
   const [stops, setStops] = useState<string[]>(() => [...(trip?.stops ?? [])]);
   const [departure, setDeparture] = useState(() => localDateTime(trip?.departureAt));
   const [arrival, setArrival] = useState(() => localDateTime(trip?.arrivalAt));
-  const [capacity, setCapacity] = useState(trip ? String(trip.capacityKg) : "");
-  const [maxParcelWeight, setMaxParcelWeight] = useState(trip ? String(trip.maxParcelWeightKg ?? trip.capacityKg) : "");
-  const [acceptedCategories, setAcceptedCategories] = useState<string[]>(() => [...(trip?.acceptedCategories?.length ? trip.acceptedCategories : CATEGORIES)]);
+  const [capacity, setCapacity] = useState(trip ? String(trip.capacityKg) : "5");
+  const [maxParcelWeight, setMaxParcelWeight] = useState(trip ? String(trip.maxParcelWeightKg ?? trip.capacityKg) : "5");
+  const [acceptedCategories, setAcceptedCategories] = useState<string[]>(() => [...(trip ? trip.acceptedCategories?.length ? trip.acceptedCategories : CATEGORIES : [])]);
   const [handlingNotes, setHandlingNotes] = useState(trip?.handlingNotes ?? "");
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState("");
@@ -655,55 +645,90 @@ export function TripForm({ onClose, onSuccess, trip }: { onClose: () => void; on
       setSaved(true);
     } catch (e) {
       setError(errorMessage(e));
+      setFailed(true);
       return;
     } finally {
       submitting.current = false;
       setBusy(false);
     }
-    onSuccess();
   };
 
-  return <Sheet title={trip ? "Keep your journey in order." : "Make room for good things."} eyebrow={trip ? "EDIT A TRIP" : "PUBLISH A TRIP"} onClose={() => !submitting.current && onClose()}>
-    <Txt style={[s.muted, form.intro]}>Already heading somewhere? Share your route and spare capacity. Passenger calculates parcel fees in the backend; travellers only decide whether to carry a compatible parcel.</Txt>
-    {!!blocked && <View style={form.notice}><Notice tone="warning">{blocked}</Notice></View>}
-    {trip && !observedCommitment && <View style={form.notice}><Notice>The server checks existing commitments again when you save. If a booking has been accepted, these edits may be refused. Editing never changes a booking or frees reserved space locally.</Notice></View>}
-
-    <Txt style={s.eyebrow}>01  /  YOUR ROUTE, IN ORDER</Txt>
-    <FormRow><CityField label="Origin" value={origin} onChange={setOrigin} disabled={disabled} /><CityField label="Final destination" value={destination} onChange={setDestination} disabled={disabled} /></FormRow>
+  const go = (next: TripScreen) => { setError(""); setScreen(next); };
+  const edit = (next: TripScreen) => { setReturnToReview(true); go(next); };
+  const advance = () => {
+    try {
+      if (screen === "route") validateTripRoute(origin, destination, stops);
+      if (screen === "schedule") validateTravelWindow(parseLocalDateTime(departure, "Departure"), parseLocalDateTime(arrival, "Arrival"));
+      if (screen === "categories" && !acceptedCategories.length) throw new Error("Choose at least one parcel type.");
+      if (screen === "capacity") validateCarryingCapacity(Number(capacity), Number(maxParcelWeight), acceptedCategories);
+      go(returnToReview ? "review" : tripScreens[tripScreens.indexOf(screen) + 1]);
+      setReturnToReview(false);
+    } catch (cause) { setError(errorMessage(cause)); }
+  };
+  if (saved) return <FullScreenState title={trip ? "Trip updated" : "Your trip is live"} subtitle="Senders can now find your route." primaryAction={{ label: "Done", onPress: onSuccess }} />;
+  if (failed) return <FullScreenState title="We couldn't save your trip" subtitle={error} primaryAction={{ label: "Review trip", onPress: () => { setFailed(false); go("review"); } }} secondaryAction={{ label: "Close", onPress: onClose }} />;
+  if (intro.show === null) return <CreateFlowLoading onClose={onClose} />;
+  if (intro.show) return <CreateIntro mode="traveller" onContinue={intro.dismiss} replaying={intro.replaying} onClose={intro.replaying ? intro.dismiss : onClose} />;
+  return <CreateFlowFrame title={tripCopy[screen][0]} description={tripCopy[screen][1]} screenKey={screen}
+    onClose={() => !submitting.current && onClose()} onBack={screen !== "route" ? () => { setReturnToReview(false); go(tripScreens[tripScreens.indexOf(screen) - 1]); } : undefined}
+    locked={busy} footer={<View style={form.footerStack}>
+      {!!error && <Notice tone="error">{error}</Notice>}
+      <Button title={screen === "review" ? trip ? "Save trip changes" : "Publish my trip" : returnToReview ? "Save changes" : "Continue"} variant="lime" onPress={screen === "review" ? submit : advance} busy={busy} disabled={disabled || (screen === "review" && (!agree || !acceptedCategories.length))} />
+    </View>}>
+    {!!blocked && (data.snapshot?.viewer && !data.offline && !data.authError && !data.authLoading && !data.snapshot.viewer.suspended && data.snapshot.viewer.verification !== "verified"
+      ? <IdentityVerificationCard viewer={data.snapshot.viewer} />
+      : <View style={form.notice}><Notice tone="warning">{blocked}</Notice></View>)}
+    {trip && !observedCommitment && <View style={form.notice}><Notice>You can change your plans until a delivery is accepted. Existing bookings may prevent these changes.</Notice></View>}
+    {screen === "route" && <>
+    <RouteCityField label="From" value={origin} onChange={setOrigin} allowCustom disabled={disabled} />
+    <RouteCityField label="To" value={destination} onChange={setDestination} allowCustom disabled={disabled} />
     <View style={form.stops}>
-      <Txt style={[s.label, { marginBottom: 7 }]}>Intermediate stops · optional</Txt>
-      <Txt style={[s.hint, form.sectionHint]}>List only the cities between your origin and final destination, in travel order. Use up to eight distinct stops; do not repeat either endpoint.</Txt>
-      {stops.length === 0 && <Txt style={[s.muted, form.sectionHint]}>Direct journey. Add a stop if you can meet senders or receivers along the way.</Txt>}
+      <Txt style={[s.label, { marginBottom: 7 }]}>Stops along the way · optional</Txt>
+      <Txt style={[s.hint, form.sectionHint]}>Add cities where you can collect or drop off parcels, in travel order. Up to eight stops.</Txt>
       {stops.map((stop, index) => <View key={index} style={form.stop}>
-        <CityField label={`Stop ${index + 1}`} value={stop} onChange={city => setStops(previous => previous.map((value, position) => position === index ? city : value))} disabled={disabled} />
+        <RouteCityField allowCustom label={`Stop ${index + 1}`} value={stop} onChange={city => setStops(previous => previous.map((value, position) => position === index ? city : value))} disabled={disabled} />
         <View style={form.stopTools}>
-          <Button title="↑ Up" accessibilityLabel={`Move stop ${index + 1} up`} variant="secondary" small style={{ minHeight: 44 }} disabled={disabled || index === 0} onPress={() => moveStop(index, -1)} />
-          <Button title="↓ Down" accessibilityLabel={`Move stop ${index + 1} down`} variant="secondary" small style={{ minHeight: 44 }} disabled={disabled || index === stops.length - 1} onPress={() => moveStop(index, 1)} />
+          <Button title="Up" icon={<ArrowUp size={15} color={colors.text} />} accessibilityLabel={`Move stop ${index + 1} up`} variant="secondary" small style={{ minHeight: 44 }} disabled={disabled || index === 0} onPress={() => moveStop(index, -1)} />
+          <Button title="Down" icon={<ArrowDown size={15} color={colors.text} />} accessibilityLabel={`Move stop ${index + 1} down`} variant="secondary" small style={{ minHeight: 44 }} disabled={disabled || index === stops.length - 1} onPress={() => moveStop(index, 1)} />
           <Button title="Remove" accessibilityLabel={`Remove stop ${index + 1}`} variant="ghost" small style={{ minHeight: 44 }} disabled={disabled} onPress={() => setStops(previous => previous.filter((_, position) => position !== index))} />
         </View>
       </View>)}
-      <Button title={stops.length >= 8 ? "Eight-stop limit reached" : "+ Add intermediate stop"} variant="secondary" small disabled={disabled || stops.length >= 8} onPress={() => setStops(previous => [...previous, ""])} />
+      <Button title={stops.length >= 8 ? "Eight-stop limit reached" : "Add a stop"} variant="secondary" small disabled={disabled || stops.length >= 8} onPress={() => setStops(previous => [...previous, ""])} />
     </View>
     {!!origin.trim() && !!destination.trim() && <View style={form.notice}><Notice>{[origin.trim(), ...stops.map((stop, index) => stop.trim() || `Stop ${index + 1}`), destination.trim()].join(" → ")}</Notice></View>}
 
-    <View style={s.divider} /><Txt style={s.eyebrow}>02  /  YOUR TRAVEL WINDOW</Txt>
+    </>}
+    {screen === "schedule" && <>
     <DateTimeFields label="Departure" value={departure} onChange={setDeparture} disabled={disabled} hint="Within the next 90 days" />
     <DateTimeFields label="Estimated arrival" value={arrival} onChange={setArrival} disabled={disabled} hint="After departure; within seven days" />
-    <Txt style={[s.hint, form.sectionHint]}>Use your device's local timezone for both entries. These are travel estimates, not live tracking or guaranteed arrival times.</Txt>
 
-    <View style={s.divider} /><Txt style={s.eyebrow}>03  /  WHAT YOU CAN CARRY</Txt>
-    <FormRow><Field label="Total parcel capacity (kg)" value={capacity} onChangeText={setCapacity} editable={!disabled} keyboardType="decimal-pad" placeholder="Spare carrying capacity" hint="More than 0; up to 100 kg" /><Field label="Maximum weight per parcel (kg)" value={maxParcelWeight} onChangeText={setMaxParcelWeight} editable={!disabled} keyboardType="decimal-pad" placeholder="Largest parcel you will accept" hint="Cannot exceed total capacity" /></FormRow>
-    <Txt style={[s.label, form.categoryLabel]}>Parcel categories you will carry</Txt>
-    <View style={[s.wrap, form.categoryGroup]}>{CATEGORIES.map(item => {
-      const selected = acceptedCategories.includes(item);
-      return <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: selected, disabled }} key={item} disabled={disabled} onPress={() => setAcceptedCategories(current => selected ? current.filter(category => category !== item) : [...current, item])} style={[form.category, selected ? form.categorySelected : form.categoryUnselected, disabled && form.categoryDisabled]}><Txt style={form.categoryText}>{item}</Txt></Pressable>;
-    })}</View>
-    <Field label="Handling preferences (optional)" value={handlingNotes} onChangeText={setHandlingNotes} editable={!disabled} multiline maxLength={500} placeholder="For example: documents and soft bags only" hint="Up to 500 characters" />
-    <Notice>Capacity is reserved only when a sender accepts an offer. Overlapping route legs share your total capacity; space can be reused on separate legs. The server calculates availability and the parcel fee.</Notice>
-    <Consent checked={agree} onChange={setAgree} disabled={disabled}>I will inspect all declared contents with the sender, refuse prohibited goods, only collect payment-confirmed parcels, and use the required one-time codes at handover and delivery.</Consent>
-    {!!error && <View style={form.notice}><Notice tone="error">{error}</Notice></View>}
-    {saved && <View style={form.notice}><Notice tone="success">Your trip was {trip ? "updated" : "published"} successfully.</Notice></View>}
-    <Button title={saved ? "Trip saved" : trip ? "Save trip changes  →" : "Publish my trip  →"} variant="lime" onPress={submit} busy={busy} disabled={disabled || !agree || acceptedCategories.length === 0} />
-    <Txt style={[s.hint, form.footer]}>This is a delivery marketplace, not a passenger booking service.</Txt>
-  </Sheet>;
+
+    </>}
+    {screen === "categories" && <>
+    <CategoryChoices selected={acceptedCategories} multiple disabled={disabled} onSelect={item => setAcceptedCategories(current => current.includes(item) ? current.filter(category => category !== item) : [...current, item])} />
+    <Field label="Handling preferences (optional)" value={handlingNotes} onChangeText={setHandlingNotes} editable={!disabled} multiline maxLength={500} placeholder="For example: soft bags only" />
+    </>}
+    {screen === "capacity" && <>
+      <WeightLimit label="Total parcel space" value={Number(capacity)} maximum={100} disabled={disabled} onChange={next => {
+        setCapacity(String(next));
+        setMaxParcelWeight(current => String(Math.min(Number(current), next)));
+      }} />
+      <WeightLimit label="Maximum per parcel" value={Number(maxParcelWeight)} maximum={Number(capacity)} disabled={disabled} onChange={next => setMaxParcelWeight(String(next))} />
+    </>}
+    {screen === "review" && <>
+      <ReviewSection title="Route" onEdit={() => edit("route")} disabled={disabled}><Txt>{[origin, ...stops, destination].join(" → ")}</Txt></ReviewSection>
+      <ReviewSection title="Travel times" onEdit={() => edit("schedule")} disabled={disabled}>
+        <Txt>Leave: {formatDisplayDate(departure.date)} at {formatDisplayTime(departure.time)}</Txt>
+        <Txt>Arrive: {formatDisplayDate(arrival.date)} at {formatDisplayTime(arrival.time)}</Txt>
+      </ReviewSection>
+      <ReviewSection title="Parcel types" onEdit={() => edit("categories")} disabled={disabled}>
+        <Txt>{acceptedCategories.join(", ")}</Txt>{!!handlingNotes && <Txt style={s.hint}>{handlingNotes}</Txt>}
+      </ReviewSection>
+      <ReviewSection title="Weight limits" onEdit={() => edit("capacity")} disabled={disabled}>
+        <Txt>{capacity} kg in total · up to {maxParcelWeight} kg per parcel</Txt>
+      </ReviewSection>
+      <View style={form.notice}><Notice>You'll see your earnings before making an offer. Space is reserved when a sender accepts. Payment is released after delivery is confirmed.</Notice></View>
+      <Consent checked={agree} onChange={setAgree} disabled={disabled}>I will inspect the contents with the sender, refuse prohibited goods, collect only parcels with confirmed payment, and use the handover and delivery codes.</Consent>
+    </>}
+  </CreateFlowFrame>;
 }

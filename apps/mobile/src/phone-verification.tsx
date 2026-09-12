@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
-import { Bell, Check, Headset, Lock, Search, X } from "lucide-react-native";
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Bell, Headset, ShieldCheck } from "lucide-react-native";
 import type { Person } from "@passenger/core";
-import { isValidPhone } from "@passenger/core";
+import { isPlaceholderPhone, isValidPhone } from "@passenger/core";
 import { components, primitives, semantic } from "@passenger/design-tokens";
 import { usePassenger } from "./data";
-import { AuthField, Button, Card, Notice, Txt, colors, s } from "./ui";
+import { AuthField, BackButton, Button, Card, FullScreenState, Notice, Txt, colors, errorMessage } from "./ui";
+import { BrandIllustration } from "./illustrations";
 
 type Props = {
   viewer: Person;
@@ -14,14 +15,14 @@ type Props = {
   onCelebrationChange: (open: boolean) => void;
   onFindTravellers: () => void;
   onScheduleTrip: () => void;
-  onOpenMilestones: () => void;
+  onOpenNotifications: () => void;
   onSafety: () => void;
 };
 
 type Flow = "home" | "phone" | "code" | "success";
 
 export function PhoneVerificationHome(props: Props) {
-  const { viewer, celebrating, navigation, onCelebrationChange, onFindTravellers, onScheduleTrip, onOpenMilestones, onSafety } = props;
+  const { viewer, celebrating, navigation, onCelebrationChange, onFindTravellers, onScheduleTrip, onOpenNotifications, onSafety } = props;
   const data = usePassenger();
   const otpInputRef = useRef<TextInput>(null);
   const [flow, setFlow] = useState<Flow>(celebrating ? "success" : "home");
@@ -54,13 +55,13 @@ export function PhoneVerificationHome(props: Props) {
     try {
       const trimmedPhone = phone.trim();
       const result = await data.requestPhoneVerification(trimmedPhone);
-      setSubmittedPhone(trimmedPhone);
+      setSubmittedPhone(result.phone || trimmedPhone);
       setCode(result.previewCode ?? "");
       setResendAt(result.resendAt);
       setFlow("code");
       requestAnimationFrame(() => otpInputRef.current?.focus());
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "We could not send a verification code.");
+      setError(errorMessage(cause, "We could not send a verification code."));
     } finally {
       setBusy(null);
     }
@@ -75,7 +76,7 @@ export function PhoneVerificationHome(props: Props) {
       onCelebrationChange(true);
       setFlow("success");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "We could not verify that code.");
+      setError(errorMessage(cause, "We could not verify that code."));
     } finally {
       setBusy(null);
     }
@@ -91,24 +92,17 @@ export function PhoneVerificationHome(props: Props) {
       <ScrollView contentContainerStyle={v.scroll}>
         {data.offline ? <Notice tone="warning">You're offline. Reconnect before requesting or confirming a verification code.</Notice> : null}
         <View style={v.headerRow}>
-          <Txt style={v.greeting}>Hi, {firstName(viewer.name)}</Txt>
+          <View style={{ flexShrink: 1 }}><Txt style={v.greeting}>Hi, {firstName(viewer.name)}</Txt><Txt style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 3 }}>{viewer.phoneVerificationTime && !viewer.activationDestination ? "Welcome back" : "Welcome to Passenger"}</Txt></View>
           <View style={v.headerIcons}>
             <Pressable accessibilityRole="button" accessibilityLabel="Trust, safety and help" onPress={onSafety}><Headset size={22} color={colors.text} strokeWidth={2.1} /></Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel="Open milestones" onPress={onOpenMilestones}><Bell size={22} color={colors.text} strokeWidth={2.1} /></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Open notifications" onPress={onOpenNotifications}><Bell size={22} color={colors.text} strokeWidth={2.1} /></Pressable>
           </View>
         </View>
 
-        <Pressable accessibilityRole="button" accessibilityLabel="Find a traveller" onPress={onFindTravellers} style={v.searchShell}>
-          <Search size={20} color={colors.muted} strokeWidth={2.1} />
-          <Txt style={v.searchCopy}>Find Traveler</Txt>
-        </Pressable>
-
         <Card style={v.lockCard}>
+          <BrandIllustration name="phoneVerification" size={148} style={v.cardIllustration} />
           <View style={v.cardHeader}>
-            <View style={v.lockIcon}>
-              <Lock size={18} color="#AEB7B9" strokeWidth={2} />
-              <View style={v.lockBody} />
-            </View>
+            <ShieldCheck size={21} color={colors.forest} strokeWidth={2} />
             <Txt style={v.cardTitle}>Unlock Full Access</Txt>
           </View>
           <Txt style={v.cardBody}>Verify your phone number to request deliveries and schedule trips. It only takes a few seconds!</Txt>
@@ -119,7 +113,7 @@ export function PhoneVerificationHome(props: Props) {
       {navigation}
     </> : null}
 
-    {flow === "phone" ? <VerificationScaffold title="Add Phone Number" onCancel={() => { setError(""); setFlow("home"); }}>
+    {flow === "phone" ? <VerificationScaffold disabled={!!busy} title="Add Phone Number" onBack={() => { setError(""); setFlow("home"); }}>
       <Txt style={v.prompt}>Enter your phone number</Txt>
       <AuthField label={undefined} accessibilityLabel="Phone number" value={phone} onChangeText={setPhone} keyboardType="phone-pad" autoComplete="tel" placeholder="08132417465" style={v.singleInputText} />
       {error !== "" ? <Notice tone="error">{error}</Notice> : null}
@@ -127,7 +121,7 @@ export function PhoneVerificationHome(props: Props) {
       <Button title="Send OTP" variant="lime" busy={busy === "send" || busy === "resend"} disabled={!phoneValid || !!busy} onPress={() => void requestCode("send")} style={v.bottomButton} />
     </VerificationScaffold> : null}
 
-    {flow === "code" ? <VerificationScaffold title="Verify Phone Number" onCancel={() => { setError(""); setFlow("home"); }}>
+    {flow === "code" ? <VerificationScaffold disabled={!!busy} title="Verify Phone Number" onBack={() => { setError(""); setFlow("phone"); }}>
       <Txt style={v.prompt}>A 6-digit code was sent to {submittedPhone} via SMS. Enter code</Txt>
       <Pressable accessibilityRole="button" onPress={() => otpInputRef.current?.focus()} style={v.codeRow}>
         {Array.from({ length: 6 }, (_, index) => <View key={index} style={v.codeBox}><Txt style={v.codeDigit}>{code[index] ?? ""}</Txt></View>)}
@@ -144,25 +138,20 @@ export function PhoneVerificationHome(props: Props) {
       <Button title="Verify" variant="lime" busy={busy === "verify"} disabled={code.length !== 6 || !!busy} onPress={() => void verifyCode()} style={v.bottomButton} />
     </VerificationScaffold> : null}
 
-    <Modal transparent visible={flow === "success"} animationType="fade" onRequestClose={closeSuccess}>
-      <View style={v.sheetOverlay}>
-        <Pressable style={v.sheetBackdrop} onPress={closeSuccess} />
-        <Card style={v.sheetCard}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Close verification success" onPress={closeSuccess} style={v.sheetClose}><X size={26} color={colors.text} strokeWidth={2.1} /></Pressable>
-          <View style={v.sheetSuccessIcon}><Check size={28} color={semantic.color.text.onPrimary} strokeWidth={3.2} /></View>
-          <Txt style={v.sheetTitle}>Your phone{"\n"}number is verified!</Txt>
-          <Button title="Find Travelers" variant="lime" onPress={() => { closeSuccess(); onFindTravellers(); }} style={v.sheetPrimary} />
-          <Button title="Schedule a Trip" variant="secondary" onPress={() => { closeSuccess(); onScheduleTrip(); }} style={v.sheetSecondary} />
-        </Card>
-      </View>
-    </Modal>
+    {flow === "success" ? <FullScreenState
+      title="Phone verified"
+      subtitle="You can now request deliveries and publish trips."
+      primaryAction={{ label: "Find a traveller", onPress: () => { closeSuccess(); onFindTravellers(); } }}
+      secondaryAction={{ label: "Schedule a trip", onPress: () => { closeSuccess(); onScheduleTrip(); } }}
+      onRequestClose={closeSuccess}
+    /> : null}
   </View>;
 }
 
-function VerificationScaffold({ title, onCancel, children }: React.PropsWithChildren<{ title: string; onCancel: () => void }>) {
+function VerificationScaffold({ title, onBack, disabled, children }: React.PropsWithChildren<{ title: string; onBack: () => void; disabled: boolean }>) {
   return <View style={v.flowScreen}>
     <View style={v.flowHeader}>
-      <Pressable accessibilityRole="button" onPress={onCancel}><Txt style={v.cancelText}>Cancel</Txt></Pressable>
+      <BackButton disabled={disabled} onPress={onBack} />
       <Txt style={v.flowTitle}>{title}</Txt>
       <View style={v.flowSpacer} />
     </View>
@@ -175,7 +164,7 @@ function firstName(name: string) {
 }
 
 function defaultPhone(phone: string) {
-  return phone === "+00000000000" ? "" : phone;
+  return isPlaceholderPhone(phone) ? "" : phone;
 }
 
 function formatTimer(ms: number) {
@@ -191,18 +180,14 @@ const v = StyleSheet.create({
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
   greeting: { fontSize: 16, lineHeight: 22, fontFamily: "WorkSansRegular", color: colors.text },
   headerIcons: { flexDirection: "row", alignItems: "center", gap: 20 },
-  searchShell: { minHeight: 55, borderRadius: 12, backgroundColor: colors.paper, borderWidth: 0, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12 },
-  searchCopy: { fontSize: 16, lineHeight: 22, color: semantic.color.text.tertiary, fontFamily: "WorkSansRegular" },
-  lockCard: { marginTop: 26, borderRadius: 14, borderWidth: 0, borderColor: "transparent", paddingHorizontal: 15, paddingTop: 20, paddingBottom: 20, shadowOpacity: 0.04, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
+  lockCard: { marginTop: 18, borderRadius: 22, borderWidth: 0, borderColor: "transparent", paddingHorizontal: 20, paddingTop: 18, paddingBottom: 20, shadowOpacity: 0.04, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
+  cardIllustration: { alignSelf: "center", marginBottom: 4 },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
-  lockIcon: { width: 18, height: 20, justifyContent: "flex-start", alignItems: "center" },
-  lockBody: { position: "absolute", left: 1, right: 1, bottom: 0, height: 11, borderRadius: 3, backgroundColor: "#F3A62F" },
   cardTitle: { fontSize: 16, lineHeight: 22, color: colors.text, fontFamily: "WorkSansSemiBold" },
   cardBody: { marginTop: 16, fontSize: 15, lineHeight: 22, color: colors.text, fontFamily: "WorkSansRegular" },
   cardButton: { marginTop: 26, minHeight: 44 },
   flowScreen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 17, paddingTop: 20, paddingBottom: 28 },
   flowHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  cancelText: { fontSize: 14, lineHeight: 20, color: colors.text, fontFamily: "WorkSansSemiBold" },
   flowTitle: { fontSize: 17, lineHeight: 23, color: colors.text, fontFamily: "WorkSansSemiBold", textAlign: "center" },
   flowSpacer: { width: 50 },
   flowBody: { flex: 1, marginTop: 38 },
@@ -218,12 +203,4 @@ const v = StyleSheet.create({
   timer: { fontSize: 15, lineHeight: 21, color: colors.text, fontFamily: "WorkSansRegular" },
   resend: { fontSize: 15, lineHeight: 21, color: colors.text, fontFamily: "WorkSansSemiBold" },
   resendDisabled: { opacity: primitives.opacity.disabled },
-  sheetOverlay: { flex: 1, justifyContent: "flex-end" },
-  sheetBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(17,24,39,0.56)" },
-  sheetCard: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0, borderTopLeftRadius: 14, borderTopRightRadius: 14, borderWidth: 0, backgroundColor: colors.bg, paddingTop: 46, paddingBottom: 18, paddingHorizontal: 30 },
-  sheetClose: { position: "absolute", right: 14, top: 14, zIndex: 1, width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  sheetSuccessIcon: { alignSelf: "center", width: 51, height: 51, borderRadius: 26, backgroundColor: colors.lime, alignItems: "center", justifyContent: "center" },
-  sheetTitle: { textAlign: "center", marginTop: 22, fontSize: 20, lineHeight: 24, color: colors.text, fontFamily: "WorkSansSemiBold" },
-  sheetPrimary: { marginTop: 58, minHeight: 44 },
-  sheetSecondary: { marginTop: 16, minHeight: 44 },
 });

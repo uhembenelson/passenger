@@ -105,6 +105,22 @@ describe("identity and least privilege", () => {
     const f = await fixture(); const result = await f.sender.mutation(api.accounts.ensureProfile, { name: "Imposter", phone: "+2348999999999" });
     expect(result.name).toBe("Sender"); expect(result.verification).toBe("verified");
   });
+  it("resumes new users at their saved activation step", async () => {
+    const t = convexTest(schema, modules);
+    const member = t.withIdentity(identity("new-route-user"));
+    const first = await member.mutation(api.accounts.bootstrapProfile, {});
+    const resumed = await member.mutation(api.accounts.bootstrapProfile, {});
+
+    expect(resumed.id).toBe(first.id);
+    expect((await member.query(api.marketplace.dashboard, {})).viewer?.activationDestination).toBe("name");
+
+    await expect(member.mutation(api.accounts.saveActivationName, { name: "New Route User" })).resolves.toEqual({ completed: true });
+    expect((await member.query(api.marketplace.dashboard, {})).viewer).toMatchObject({ name: "New Route User", activationDestination: "routes" });
+
+    await expect(member.mutation(api.accounts.completeActivation, {})).resolves.toEqual({ completed: true });
+    await expect(member.mutation(api.accounts.completeActivation, {})).resolves.toEqual({ completed: true });
+    expect((await member.query(api.marketplace.dashboard, {})).viewer?.activationDestination).toBeUndefined();
+  });
   it("changes a phone only after the one-time code is confirmed", async () => {
     const t = convexTest(schema, modules);
     const member = t.withIdentity(identity("phone-change"));
@@ -118,6 +134,39 @@ describe("identity and least privilege", () => {
     expect(updated?.phone).toBe("+2348000000041");
     expect(updated?.phoneVerificationTime).toBeTypeOf("number");
     expect(updated?.phoneVerificationPendingPhone).toBeUndefined();
+  });
+  it("rejects placeholder phones and handles multiple accounts with duplicate unverified phones", async () => {
+    const t = convexTest(schema, modules);
+    const member1 = t.withIdentity(identity("user-1"));
+    const member2 = t.withIdentity(identity("user-2"));
+    const member3 = t.withIdentity(identity("user-3"));
+
+    // Multiple users seeded or signed up with the default placeholder phone
+    await member1.mutation(api.accounts.ensureProfile, { name: "User 1", phone: "+2348000000001" });
+    await member2.mutation(api.accounts.ensureProfile, { name: "User 2", phone: "+2348000000002" });
+    await member3.mutation(api.accounts.ensureProfile, { name: "User 3", phone: "+2348000000003" });
+
+    // Directly set two unverified users to the same phone to simulate duplicate signups/placeholders
+    await t.run(async ctx => {
+      const users = await ctx.db.query("users").collect();
+      for (const u of users) {
+        await ctx.db.patch(u._id, { phone: "+2340000000000", phoneVerificationTime: undefined });
+      }
+    });
+
+    // Attempting to verify placeholder numbers must be rejected
+    await expect(member1.action(api.accounts.requestPhoneVerification, { phone: "+2340000000000" }))
+      .rejects.toThrow("valid");
+
+    // Attempting to verify a real phone number when multiple users share a phone must NOT throw unique() error
+    vi.stubEnv("TWILIO_ACCOUNT_SID", "");
+    const req = await member1.action(api.accounts.requestPhoneVerification, { phone: "+2348011223344" });
+    expect(req.previewCode).toMatch(/^\d{6}$/);
+    await member1.mutation(api.accounts.confirmPhoneVerification, { code: req.previewCode! });
+
+    // Now user 1 has verified +2348011223344. Another user trying to verify that same number must be blocked.
+    await expect(member2.action(api.accounts.requestPhoneVerification, { phone: "+2348011223344" }))
+      .rejects.toThrow("already connected");
   });
   it("fails closed for prototype tier and withdrawal endpoints", async () => {
     const f = await fixture();
@@ -135,13 +184,15 @@ describe("identity and least privilege", () => {
   });
   it("redacts open market recipient and member contact information", async () => {
     const f = await fixture(); const outsider = await f.outsider.query(api.marketplace.dashboard, {});
-    expect(outsider.shipments[0].receiverPhone).toBe(""); expect(outsider.shipments[0].receiverName).toBe("");
-    expect(outsider.people.find(p => p.id === f.senderId)?.phone).toBe("");
+    const market = await f.outsider.query(api.marketplace.availableShipmentsPage, { paginationOpts: { numItems: 20, cursor: null } });
+    expect(market.page[0].receiverPhone).toBe(""); expect(market.page[0].receiverName).toBe("");
+    expect(outsider.shipments).toEqual([]);
+    expect(outsider.people.find(p => p.id === f.senderId)).toBeUndefined();
     expect(outsider.events).toEqual([]); expect(outsider.disputes).toEqual([]);
     expect((await f.sender.query(api.marketplace.dashboard, {})).shipments[0].receiverPhone).toBe(baseShipmentInput.receiverPhone);
     expect((await f.admin.query(api.marketplace.dashboard, {})).shipments[0].receiverPhone).toBe(baseShipmentInput.receiverPhone);
     await acceptOffer(f);
-    expect((await f.outsider.query(api.marketplace.dashboard, {})).shipments).toEqual([]);
+    expect((await f.outsider.query(api.marketplace.availableShipmentsPage, { paginationOpts: { numItems: 20, cursor: null } })).page).toEqual([]);
     expect((await f.traveller.query(api.marketplace.dashboard, {})).shipments[0].receiverPhone).toBe(baseShipmentInput.receiverPhone);
   });
 });

@@ -60,3 +60,18 @@ export function portInUse(port: number): Promise<boolean> {
     socket.once("timeout", () => settle(false));
   });
 }
+
+export async function findAvailablePort(
+  startPort: number,
+  reservedPorts: Set<number> = new Set(),
+  maxAttempts = 100
+): Promise<number> {
+  let port = startPort;
+  for (let i = 0; i < maxAttempts; i++) {
+    if (!reservedPorts.has(port) && !(await portInUse(port))) {
+      return port;
+    }
+    port++;
+  }
+  throw new Error(`Could not find an available port starting from ${startPort} within ${maxAttempts} attempts.`);
+}

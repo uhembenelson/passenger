@@ -1,11 +1,13 @@
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { ArrowLeft, Check, Clock3, MapPin } from "lucide-react-native";
+import { Check, Clock3 } from "lucide-react-native";
 import type { Shipment } from "@passenger/core";
 import { components, primitives, semantic } from "@passenger/design-tokens";
-import { Badge, Txt, fontFamily } from "./ui";
+import { BackButton, Badge, Button, Txt, fontFamily, timeDate } from "./ui";
+import { CityIllustration } from "./illustrations";
+import { ParcelMap } from "./parcel-map";
 
-export function ParcelTracking({ shipment, onBack }: { shipment: Shipment; onBack: () => void }) {
+export function ParcelTracking({ shipment, onBack, onProblem }: { shipment: Shipment; onBack: () => void; onProblem: () => void }) {
   const pickedUp = !!shipment.handoverAt || ["in_transit", "delivered"].includes(shipment.status);
   const inTransit = !!shipment.latestLocationAt || shipment.status === "delivered";
   const nearDestination = shipment.status === "delivered" || !!shipment.latestLocationLabel?.toLocaleLowerCase().includes(shipment.destination.toLocaleLowerCase());
@@ -19,17 +21,21 @@ export function ParcelTracking({ shipment, onBack }: { shipment: Shipment; onBac
 
   return <View style={p.screen}>
     <View style={p.header}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Back" hitSlop={components.iconButton.hitSlop} pressRetentionOffset={components.iconButton.pressRetentionOffset} onPress={onBack} style={p.back}>
-        <ArrowLeft size={components.icon.size.lg} color={semantic.color.text.primary} strokeWidth={components.icon.strokeWidth.regular} />
-      </Pressable>
+      <BackButton accessibilityLabel="Back" onPress={onBack} />
       <Txt pointerEvents="none" style={p.title}>Track your Parcel</Txt><View pointerEvents="none" style={p.headerBalance} />
     </View>
+    <ScrollView contentContainerStyle={{ paddingBottom: primitives.space[10] }}>
+    <ParcelMap shipment={shipment} />
     {shipment.latestLocationLabel && shipment.latestLocationAt ? <View style={p.latestLocation}>
-      <View style={p.locationIcon}><MapPin size={components.icon.size.md} color={semantic.color.text.success} strokeWidth={components.icon.strokeWidth.regular} /></View>
-      <View style={p.flex}><Txt style={p.locationEyebrow}>LATEST PARCEL LOCATION</Txt><Txt style={p.locationPlace}>{shipment.latestLocationLabel}</Txt><Txt style={p.locationTime}>Updated {clockTime(shipment.latestLocationAt).toLowerCase()}</Txt></View>
+      <View style={p.locationIcon}><CityIllustration city={shipment.latestLocationLabel} size={40} /></View>
+      <View style={p.flex}><Txt style={p.locationLabel}>Latest parcel location</Txt><Txt style={p.locationPlace}>{shipment.latestLocationLabel}</Txt><Txt style={p.locationTime}>Updated {clockTime(shipment.latestLocationAt).toLowerCase()}</Txt></View>
     </View> : null}
-    <View style={p.trackingSummary}><LocationReportingStatus shipment={shipment} viewerRole="sender" /></View>
-    <ScrollView contentContainerStyle={p.timeline}>
+    <View style={p.trackingSummary}>
+      {shipment.latestSafetyCheckInAt ? <Txt style={p.reportingCopy}>The traveller confirmed they and your parcel are safe · {timeDate(shipment.latestSafetyCheckInAt)}</Txt> : null}
+      <LocationReportingStatus shipment={shipment} viewerRole="sender" />
+      <Button title="Something went wrong" small variant="ghost" onPress={onProblem} />
+    </View>
+    <View style={p.timeline}>
       {steps.map((step, index) => <View key={step.title} style={p.timelineStep}>
         <View style={p.timelineRail}>
           <View style={[p.statusDot, !step.done && p.statusDotPending]}><Check size={components.icon.size.sm} color={semantic.color.text.onPrimary} strokeWidth={components.icon.strokeWidth.strong} /></View>
@@ -37,9 +43,10 @@ export function ParcelTracking({ shipment, onBack }: { shipment: Shipment; onBac
         </View>
         <View style={p.stepContent}>
           <View style={p.stepTitleRow}><Txt style={[p.stepTitle, !step.done && p.pendingTitle]}>{step.title}</Txt>{step.done && step.time ? <Txt style={p.stepTime}>{clockTime(step.time).toLowerCase()}</Txt> : null}</View>
-          {step.checkIn ? <View style={p.checkInRow}><Txt style={[p.checkInText, !step.done && p.pendingCheckIn]}>{step.checkIn}</Txt><View style={[p.statusPill, !step.done && p.pendingPill]}>{step.done ? <Check size={components.icon.size.sm} color={semantic.color.text.success} strokeWidth={components.icon.strokeWidth.regular} /> : <Clock3 size={components.icon.size.sm} color={semantic.color.text.warning} strokeWidth={components.icon.strokeWidth.regular} />}<Txt style={[p.pillText, !step.done && p.pendingPillText]}>{step.done ? "Done" : "Pending"}</Txt></View></View> : null}
+          {step.checkIn ? <View style={p.checkInRow}><Txt style={[p.checkInText, !step.done && p.pendingCheckIn]}>{step.checkIn}</Txt><View style={[p.statusPill, !step.done && p.pendingPill]}>{step.done ? <Check size={components.icon.size.sm} color={semantic.color.text.success} strokeWidth={components.icon.strokeWidth.regular} /> : <Clock3 size={components.icon.size.sm} color={semantic.color.text.warning} strokeWidth={components.icon.strokeWidth.regular} />}<Txt numberOfLines={1} style={[p.pillText, !step.done && p.pendingPillText]}>{step.done ? "Done" : "Pending"}</Txt></View></View> : null}
         </View>
       </View>)}
+    </View>
     </ScrollView>
   </View>;
 }
@@ -75,13 +82,12 @@ function clockTime(timestamp: number) {
 const p = StyleSheet.create({
   screen: { flex: 1, backgroundColor: semantic.color.background.app },
   header: { height: primitives.space[16] + primitives.space[3], paddingHorizontal: primitives.space[4], flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  back: { width: components.iconButton.size, height: components.iconButton.size, justifyContent: "center", zIndex: 1 },
   title: { fontSize: primitives.typography.size.bodyMd, lineHeight: primitives.typography.lineHeight.bodyMd, fontFamily: fontFamily.semibold },
   headerBalance: { width: components.iconButton.size },
   latestLocation: { marginHorizontal: primitives.space[4], marginBottom: primitives.space[2], padding: primitives.space[4], borderRadius: primitives.radius.lg, backgroundColor: semantic.color.background.surface, flexDirection: "row", alignItems: "center", gap: primitives.space[3] },
   locationIcon: { width: primitives.space[10], height: primitives.space[10], borderRadius: primitives.radius.pill, backgroundColor: semantic.color.background.successSoft, alignItems: "center", justifyContent: "center" },
   flex: { flex: 1 },
-  locationEyebrow: { fontSize: primitives.typography.size.bodyXs, lineHeight: primitives.typography.lineHeight.bodyXs, color: semantic.color.text.tertiary, fontFamily: fontFamily.semibold },
+  locationLabel: { fontSize: primitives.typography.size.bodyXs, lineHeight: primitives.typography.lineHeight.bodyXs, color: semantic.color.text.tertiary, fontFamily: fontFamily.semibold },
   locationPlace: { marginTop: primitives.space[1], fontSize: primitives.typography.size.bodySm, lineHeight: primitives.typography.lineHeight.bodySm, color: semantic.color.text.primary, fontFamily: fontFamily.semibold },
   locationTime: { marginTop: primitives.space[1], fontSize: primitives.typography.size.bodyXs, lineHeight: primitives.typography.lineHeight.bodyXs, color: semantic.color.text.tertiary },
   trackingSummary: { marginHorizontal: primitives.space[4], marginBottom: primitives.space[2] },

@@ -1,14 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, Linking, Platform, View } from "react-native";
+import { Linking, Platform, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import * as SecureStore from "expo-secure-store";
+import { ExternalLink } from "lucide-react-native";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@passenger/backend/convex/_generated/api";
 import type { Id } from "@passenger/backend/convex/_generated/dataModel";
-import { usePassenger } from "./data";
-import { Button, colors, errorMessage, Notice, s, Txt } from "./ui";
+import { usePassengerState } from "./data";
+import { Button, colors, errorMessage, ExpandableText, InlineSkeleton, Notice, ProgressiveImage, s, Txt } from "./ui";
 
 const ALLOWED_MIME_TYPES = {
   identity: ["image/jpeg", "image/png", "image/webp", "application/pdf"],
@@ -19,19 +20,27 @@ type UploadAsset = { uri?: string; file?: Blob; filename: string; mime?: string 
 const PENDING_EVIDENCE_RESUME_KEY = "passenger.pendingEvidenceResume";
 
 async function setPendingEvidenceResumeKey(value: string | null) {
-  if (Platform.OS === "web") {
-    if (typeof localStorage === "undefined") return;
-    if (value === null) localStorage.removeItem(PENDING_EVIDENCE_RESUME_KEY);
-    else localStorage.setItem(PENDING_EVIDENCE_RESUME_KEY, value);
-    return;
+  try {
+    if (Platform.OS === "web") {
+      if (typeof localStorage === "undefined") return;
+      if (value === null) localStorage.removeItem(PENDING_EVIDENCE_RESUME_KEY);
+      else localStorage.setItem(PENDING_EVIDENCE_RESUME_KEY, value);
+      return;
+    }
+    if (value === null) await SecureStore.deleteItemAsync(PENDING_EVIDENCE_RESUME_KEY);
+    else await SecureStore.setItemAsync(PENDING_EVIDENCE_RESUME_KEY, value);
+  } catch {
+    // Ignore storage failures
   }
-  if (value === null) await SecureStore.deleteItemAsync(PENDING_EVIDENCE_RESUME_KEY);
-  else await SecureStore.setItemAsync(PENDING_EVIDENCE_RESUME_KEY, value);
 }
 
 export async function getPendingEvidenceResumeKey() {
-  if (Platform.OS === "web") return typeof localStorage === "undefined" ? null : localStorage.getItem(PENDING_EVIDENCE_RESUME_KEY);
-  return await SecureStore.getItemAsync(PENDING_EVIDENCE_RESUME_KEY);
+  try {
+    if (Platform.OS === "web") return typeof localStorage === "undefined" ? null : localStorage.getItem(PENDING_EVIDENCE_RESUME_KEY);
+    return await SecureStore.getItemAsync(PENDING_EVIDENCE_RESUME_KEY);
+  } catch {
+    return null;
+  }
 }
 
 function uploadAssetFromPickerAsset(asset: {
@@ -86,12 +95,13 @@ async function getAssetSize(asset: UploadAsset) {
   return info.size;
 }
 
-export function EvidencePicker({ purpose, value, onChange, disabled, resumeKey }: { purpose: "identity" | "parcel"; value: string[]; onChange: (ids: string[]) => void; disabled?: boolean; resumeKey?: string }) {
+export function EvidencePicker({ purpose, value, onChange, disabled, resumeKey, compact = false, minimal = false, onBusyChange }: { purpose: "identity" | "parcel"; value: string[]; onChange: (ids: string[]) => void; disabled?: boolean; resumeKey?: string; compact?: boolean; minimal?: boolean; onBusyChange?: (busy: boolean) => void }) {
   const uploadUrl = useMutation(api.evidence.generateUploadUrl);
   const register = useMutation(api.evidence.register);
-  const { offline } = usePassenger();
+  const { offline } = usePassengerState();
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const checkedPending = useRef(false);
+  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
   const upload = async (asset: UploadAsset) => {
     const mime = resolveMimeType(purpose, asset.filename, asset.mime);
     const size = await getAssetSize(asset);
@@ -111,7 +121,11 @@ export function EvidencePicker({ purpose, value, onChange, disabled, resumeKey }
         headers: { "Content-Type": mime },
       });
       if (response.status < 200 || response.status >= 300) throw new Error("The upload did not complete. Check your connection and choose the file again.");
-      body = JSON.parse(response.body);
+      try {
+        body = JSON.parse(response.body);
+      } catch {
+        throw new Error("Unable to read upload response. Check your connection and try again.");
+      }
     }
     if (!body || typeof body !== "object" || !("storageId" in body) || typeof body.storageId !== "string") throw new Error("The storage service did not confirm this upload.");
     return await register({ storageId: body.storageId as Id<"_storage">, purpose, filename: asset.filename });
@@ -171,15 +185,16 @@ export function EvidencePicker({ purpose, value, onChange, disabled, resumeKey }
       }
     })();
   }, [offline, onChange, purpose, register, resumeKey, uploadUrl, value]);
-  return <View style={{ gap: 12, marginBottom: 18 }}><Txt style={s.label}>{purpose === "identity" ? "Private identity evidence" : "Package photos"}</Txt><Txt style={s.hint}>{purpose === "identity" ? "Upload a clear, legible identity document. Only you and authorized reviewers can access it. JPEG, PNG, WebP or PDF." : "Show the contents and packaging clearly. Photos are available only to authorized delivery participants and reviewers."} Up to 5 files, 10 MB each.</Txt>
-    {value.map(id => <View key={id} style={{ gap: 5 }}><EvidenceItem id={id} />{!disabled && <Button title="Remove attachment" small variant="ghost" disabled={busy || offline} onPress={() => onChange(value.filter(item => item !== id))} />}</View>)}
-    <View style={[s.row, { flexWrap: "wrap" }]}><Button title={busy ? "Uploading securely…" : purpose === "parcel" ? "Choose from gallery" : "Choose a file"} small variant="secondary" busy={busy} disabled={disabled || offline || value.length >= 5} onPress={() => void pick(false)} /><Button title="Take a photo" small variant="secondary" disabled={disabled || busy || offline || value.length >= 5} onPress={() => void pick(true)} /></View>{busy && <Txt style={s.hint}>Keep this screen open until the server confirms your upload.</Txt>}{error !== "" && <Notice tone="error">{error}</Notice>}
+  return <View style={{ gap: 12, marginBottom: 18 }}>{!compact && <Txt style={s.label}>{purpose === "identity" ? "Private identity evidence" : "Package photos"}</Txt>}{!minimal && <Txt style={s.hint}>{compact ? purpose === "identity" ? "JPEG, PNG, WebP or PDF. " : "JPEG, PNG or WebP. " : <>{purpose === "identity" ? "Upload a clear, legible identity document. Only you and authorized reviewers can access it. JPEG, PNG, WebP or PDF." : "Show the contents and packaging clearly. Photos are available only to authorized delivery participants and reviewers."} </>}Up to 5 files, 10 MB each.</Txt>}
+    {value.map(id => <View key={id} style={{ gap: 5 }}><EvidenceItem id={id} minimal={minimal} />{!disabled && <Button title="Remove attachment" small variant="ghost" disabled={busy || offline} onPress={() => onChange(value.filter(item => item !== id))} />}</View>)}
+    <View style={[s.row, { flexWrap: "wrap" }]}><Button title={busy ? "Uploading securely…" : purpose === "parcel" ? "Choose from gallery" : "Choose a file"} small variant="secondary" busy={busy} disabled={disabled || offline || value.length >= 5} onPress={() => void pick(false)} /><Button title="Take a photo" small variant="secondary" disabled={disabled || busy || offline || value.length >= 5} onPress={() => void pick(true)} /></View>{busy && <Txt style={s.hint}>Keep this screen open while your file uploads.</Txt>}{error !== "" && <Notice tone="error">{error}</Notice>}
   </View>;
 }
-function EvidenceItem({ id }: { id: string }) {
+function EvidenceItem({ id, minimal = false }: { id: string; minimal?: boolean }) {
   const file = useQuery(api.evidence.get, { evidenceId: id as Id<"evidence"> });
   const [error, setError] = useState("");
-  if (!file) return <View style={s.row}><ActivityIndicator color={colors.forest} /><Txt style={s.hint}>Loading attachment…</Txt></View>;
-  return <View style={{ backgroundColor: colors.soft, padding: 12, borderRadius: 10, gap: 8 }}>{file.contentType?.startsWith("image/") && file.url && <Image source={{ uri: file.url }} style={{ width: "100%", height: 140, borderRadius: 8 }} resizeMode="contain" accessibilityLabel={file.filename} />}<Txt numberOfLines={2} style={s.hint}>{file.filename} · {Math.ceil((file.size || 0) / 1024)} KB</Txt>{file.url ? <Button title="Open attachment ↗" small variant="ghost" onPress={() => void Linking.openURL(file.url!).catch(e => setError(errorMessage(e)))} /> : <Notice tone="warning">This attachment is currently unavailable.</Notice>}{error !== "" && <Notice tone="error">{error}</Notice>}</View>;
+  if (file === undefined) return <InlineSkeleton label="Loading attachment" />;
+  if (file === null) return <Notice tone="warning">This attachment is unavailable or private.</Notice>;
+  return <View style={{ backgroundColor: colors.soft, padding: 12, borderRadius: 10, gap: 8 }}>{file.contentType?.startsWith("image/") && file.url && <ProgressiveImage uri={file.url} style={{ width: "100%", height: 140, borderRadius: 8 }} resizeMode="contain" accessibilityLabel={file.filename} />}{!minimal && <ExpandableText numberOfLines={2} style={s.hint}>{file.filename} · {Math.ceil((file.size || 0) / 1024)} KB</ExpandableText>}{file.url && !minimal ? <Button title="Open attachment" icon={<ExternalLink size={15} color={colors.text} />} small variant="ghost" onPress={() => void Linking.openURL(file.url!).catch(e => setError(errorMessage(e)))} /> : !file.url ? <Notice tone="warning">This attachment is currently unavailable.</Notice> : null}{error !== "" && <Notice tone="error">{error}</Notice>}</View>;
 }
 export function EvidenceGallery({ ids }: { ids: string[] }) { return <View style={{ gap: 12 }}>{ids.map(id => <EvidenceItem key={id} id={id} />)}</View>; }

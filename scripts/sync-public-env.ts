@@ -13,14 +13,25 @@ const targets: Target[] = [
   { file: resolve(root, "apps/website/.env.local"), key: "NEXT_PUBLIC_CONVEX_URL" },
 ];
 
+const sharedExamplePath = resolve(root, ".env.shared.example");
+
 if (!existsSync(sharedEnvPath)) {
-  throw new Error("Missing .env.shared.local. Create it with PASSENGER_PUBLIC_CONVEX_URL=http://<your-lan-ip>:3210 or your Convex cloud URL.");
+  if (process.env.PASSENGER_PUBLIC_CONVEX_URL?.trim()) {
+    writeFileSync(sharedEnvPath, `PASSENGER_PUBLIC_CONVEX_URL=${process.env.PASSENGER_PUBLIC_CONVEX_URL.trim()}\n`, "utf8");
+    console.log("[passenger] Created .env.shared.local from PASSENGER_PUBLIC_CONVEX_URL environment variable.");
+  } else if (existsSync(sharedExamplePath)) {
+    const exampleContent = readFileSync(sharedExamplePath, "utf8");
+    writeFileSync(sharedEnvPath, exampleContent, "utf8");
+    console.log("[passenger] Initialized .env.shared.local from .env.shared.example.");
+  } else {
+    writeFileSync(sharedEnvPath, "PASSENGER_PUBLIC_CONVEX_URL=http://127.0.0.1:3210\n", "utf8");
+    console.log("[passenger] Initialized .env.shared.local with default local URL (http://127.0.0.1:3210).");
+  }
 }
 
 const sharedEnv = parseEnv(readFileSync(sharedEnvPath, "utf8"));
-const publicConvexUrl = sharedEnv.PASSENGER_PUBLIC_CONVEX_URL?.trim();
+const publicConvexUrl = sharedEnv.PASSENGER_PUBLIC_CONVEX_URL?.trim() || process.env.PASSENGER_PUBLIC_CONVEX_URL?.trim() || "http://127.0.0.1:3210";
 
-if (!publicConvexUrl) throw new Error("PASSENGER_PUBLIC_CONVEX_URL is required in .env.shared.local.");
 validateUrl(publicConvexUrl);
 
 for (const target of targets) {

@@ -7,7 +7,7 @@ import { Notice, PresentationSheet, Txt, s } from "./ui";
 export function ReceiverCodeSheet({ receiverPhone, busy, disabled, error, onClose, onShareSms, onShareWhatsApp }: { receiverPhone: string; busy?: "" | "sms" | "whatsapp"; disabled?: boolean; error?: string; onClose: () => void; onShareSms: () => void; onShareWhatsApp: () => void }) {
   return <PresentationSheet title="Share receiver code" onClose={onClose}>
     <View style={r.phoneBlock}>
-      <Txt style={s.eyebrow}>RECEIVER PHONE</Txt>
+      <Txt style={s.detailLabel}>Receiver phone</Txt>
       <Txt style={s.h3}>{receiverPhone}</Txt>
     </View>
     <Txt style={[s.muted, r.helperText]}>Share via SMS or WhatsApp.</Txt>

@@ -10,10 +10,10 @@ const PRODUCT_LINKS = [
 ];
 
 const COMPANY_LINKS = [
-  { label: "About", href: "#" },
-  { label: "Contact", href: "#" },
-  { label: "Terms", href: "#" },
-  { label: "Privacy", href: "#" },
+  { label: "About", href: "#about" },
+  { label: "Contact", href: "mailto:support@passenger.ng" },
+  { label: "Terms", href: "#faq" },
+  { label: "Privacy", href: "#safety" },
 ];
 
 export function Footer() {

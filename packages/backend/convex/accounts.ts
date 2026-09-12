@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { normalizePhone, type Person } from "@passenger/core";
+import { isPlaceholderPhone, normalizePhone, type Person } from "@passenger/core";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { audit, fail, findUserBySubject, person, personDto, requireActive, requireUser, subject } from "./lib";
@@ -67,12 +67,38 @@ export const bootstrapProfile = mutation({
       name: fallbackProfileName(identity),
       phone: placeholderPhone(sub),
       email: identity.email ?? undefined,
+      activationDestination: "name",
       verification: "required",
       joinedAt: Date.now(),
     });
     const user = (await ctx.db.get(id))!;
     await audit(ctx, user, "profile.created", "Profile created automatically from the signed-in account.");
     return person(user, true);
+  },
+});
+
+export const completeActivation = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireUser(ctx);
+    if (user.activationDestination) {
+      await ctx.db.patch(user._id, { activationDestination: undefined });
+    }
+    return { completed: true };
+  },
+});
+
+export const saveActivationName = mutation({
+  args: { name: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const name = args.name.trim();
+    if (!name || name.length > 120) fail("Enter your full name.");
+    if (user.activationDestination === "name") {
+      await ctx.db.patch(user._id, { name, activationDestination: "routes" });
+      await audit(ctx, user, "profile.name_added", "Name added during account setup.");
+    }
+    return { completed: true };
   },
 });
 
@@ -254,8 +280,16 @@ export const storePhoneVerificationCode = internalMutation({
     const user = await ctx.db.get(args.userId);
     if (!user) fail("User not found.");
     requireActive(user);
-    const owner = await ctx.db.query("users").withIndex("phone", q => q.eq("phone", args.phone)).unique();
-    if (owner && owner._id !== user._id) fail("That phone number is already connected to another account.");
+    if (isPlaceholderPhone(args.phone)) fail("Enter a valid mobile phone number.");
+
+    const matchingUsers = await ctx.db
+      .query("users")
+      .withIndex("phone", q => q.eq("phone", args.phone))
+      .collect();
+    const verifiedOwner = matchingUsers.find(
+      candidate => candidate._id !== user._id && candidate.phoneVerificationTime !== undefined
+    );
+    if (verifiedOwner) fail("That phone number is already connected to another account.");
 
     await ctx.db.patch(user._id, {
       phoneVerificationPendingPhone: args.phone,
@@ -275,6 +309,7 @@ export const requestPhoneVerification = action({
     if (target.suspended) fail("Your account is suspended. Active delivery and support records remain accessible.");
 
     const phone = normalizePhone(args.phone);
+    if (isPlaceholderPhone(phone)) fail("Enter a valid mobile phone number.");
     const code = randomDigits(PHONE_CODE_LENGTH);
     const requestedAt = Date.now();
     const expiresAt = requestedAt + PHONE_CODE_TTL_MS;
@@ -311,9 +346,20 @@ export const confirmPhoneVerification = mutation({
     if (code !== user.phoneVerificationCode) fail("That code is not correct.");
 
     const verifiedAt = Date.now();
-    if (!user.phoneVerificationPendingPhone) fail("Request a new verification code.");
+    const pendingPhone = user.phoneVerificationPendingPhone;
+    if (!pendingPhone || isPlaceholderPhone(pendingPhone)) fail("Request a new verification code.");
+
+    const matchingUsers = await ctx.db
+      .query("users")
+      .withIndex("phone", q => q.eq("phone", pendingPhone))
+      .collect();
+    const verifiedOwner = matchingUsers.find(
+      candidate => candidate._id !== user._id && candidate.phoneVerificationTime !== undefined
+    );
+    if (verifiedOwner) fail("That phone number is already connected to another account.");
+
     await ctx.db.patch(user._id, {
-      phone: user.phoneVerificationPendingPhone,
+      phone: pendingPhone,
       phoneVerificationTime: verifiedAt,
       phoneVerificationCode: undefined,
       phoneVerificationPendingPhone: undefined,

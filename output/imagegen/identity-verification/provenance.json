@@ -1,0 +1,19 @@
+{
+  "provider": "Azure OpenAI / Azure AI Foundry",
+  "deployment": "gpt-image-2-1",
+  "method": "Bundled imagegen CLI generate via azure_imagegen.py",
+  "prompt": "prompt.txt",
+  "source": "generated/identity-verification.png",
+  "asset": "apps/mobile/assets/illustrations/identity-verification.webp",
+  "quality": "high",
+  "dimensions": [
+    512,
+    512
+  ],
+  "bytes": 16564,
+  "processing": "Removed edge-connected white locally; padded and resized to 512px transparent WebP.",
+  "placements": {
+    "identity introduction": 156,
+    "identity notice": 72
+  }
+}

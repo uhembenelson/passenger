@@ -217,7 +217,8 @@ function AuthenticatedWorkspace() {
   const bootLoginRecorded = useRef(false);
   useEffect(() => {
     if (bootLoginRecorded.current || !snapshot || !snapshot.viewer) return;
-    if (snapshot.viewer.role !== "admin" && snapshot.viewer.role !== "compliance") return;
+    const isStaffViewer = snapshot.viewer.role === "admin" || snapshot.viewer.role === "compliance" || (snapshot.viewerPermissions && snapshot.viewerPermissions.length > 0);
+    if (!isStaffViewer) return;
     bootLoginRecorded.current = true;
     void ensureSeed().catch(() => {});
     const controller = new AbortController();
@@ -237,7 +238,8 @@ function AuthenticatedWorkspace() {
   }, [snapshot, ensureSeed, recordStaffLogin]);
   if (snapshot === undefined) return <Gate title="Getting everything in order" loading><p role="status">Loading live deliveries and trust reviews…</p></Gate>;
   if (!snapshot.viewer) return <ProfileSetup />;
-  if (snapshot.viewer.role !== "admin" && snapshot.viewer.role !== "compliance") return <Gate title="An admin seat is required"><p>You’re signed in as <strong>{snapshot.viewer.name}</strong>. This workspace is restricted to Passenger administrators and compliance officers. Ask your system administrator to add your email to <code>ADMIN_USER_EMAILS</code>.</p><div className="notice">Your account does not have access to operational or financial actions.</div><SignOutButton /></Gate>;
+  const isAuthorizedViewer = snapshot.viewer.role === "admin" || snapshot.viewer.role === "compliance" || (snapshot.viewerPermissions && snapshot.viewerPermissions.length > 0);
+  if (!isAuthorizedViewer) return <Gate title="An admin seat is required"><p>You’re signed in as <strong>{snapshot.viewer.name}</strong>. This workspace is restricted to Passenger administrators, compliance officers, and authorized team members. Ask your system administrator to assign you an operational role or add your email to <code>ADMIN_USER_EMAILS</code>.</p><div className="notice">Your account does not have access to operational or financial actions.</div><SignOutButton /></Gate>;
   if (snapshot.viewer.mustChangePassword) return <ForcePasswordChange onChangePassword={changeOwnPassword} />;
   async function act(action: AdminAction) {
     if (action.type === "user") await reviewUser({ userId: action.id as Id<"users">, decision: action.decision, tier: action.tier, note: action.note });

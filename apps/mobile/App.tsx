@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { ActivityIndicator, Platform } from "react-native";
+import { Platform } from "react-native";
 import { ConvexReactClient, useConvexAuth } from "convex/react";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -11,7 +11,7 @@ import { WorkSans_600SemiBold } from "@expo-google-fonts/work-sans/600SemiBold";
 import { AuthScreen, tokenStorage } from "./src/auth";
 import { LiveDataProvider } from "./src/data";
 import { Centered, PassengerShell } from "./src/screens";
-import { Button, colors, errorMessage, Notice, Txt, s } from "./src/ui";
+import { AppLoadingScreen, Button, errorMessage, Notice, ScreenSkeleton, Txt, s } from "./src/ui";
 
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL?.trim();
 const missing = [!convexUrl && "EXPO_PUBLIC_CONVEX_URL"].filter(Boolean);
@@ -36,7 +36,7 @@ export default function App() {
   }, [fontError]);
 
   if (!fontsLoaded && !fontError) {
-    return <SafeAreaProvider><StatusBar style="dark" /><Centered title="Preparing your Passenger experience." detail="Loading the design system fonts…"><ActivityIndicator color={colors.forest} /></Centered></SafeAreaProvider>;
+    return <SafeAreaProvider><StatusBar style="dark" /><AppLoadingScreen /></SafeAreaProvider>;
   }
 
   return <SafeAreaProvider><StatusBar style="dark" /><AppErrorBoundary>
@@ -48,7 +48,7 @@ export default function App() {
 }
 function LiveRoot() {
   const { isLoading, isAuthenticated } = useConvexAuth();
-  if (isLoading) return <Centered title="Opening your Passenger account." detail="Checking your secure session…"><ActivityIndicator color={colors.forest} /></Centered>;
+  if (isLoading) return <AppLoadingScreen />;
   if (!isAuthenticated) return <AuthScreen />;
   return <LiveDataProvider><PassengerShell /></LiveDataProvider>;
 }

@@ -34,15 +34,20 @@ export const sendPhoneVerificationCode = internalAction({
       ...(messagingServiceSid ? { MessagingServiceSid: messagingServiceSid } : { From: fromNumber! }),
     });
 
-    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: payload,
-      signal: AbortSignal.timeout(15_000),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: payload,
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      fail("We could not connect to the SMS service. Please check your connection and try again.");
+    }
 
     const result = await response.json().catch(() => null) as { sid?: string; status?: string; message?: string } | null;
     if (!response.ok || !result?.sid || (result.status && ["failed", "undelivered"].includes(result.status))) {
@@ -71,15 +76,20 @@ export const sendDeliveryCode = internalAction({
       ...(messagingServiceSid ? { MessagingServiceSid: messagingServiceSid } : { From: fromNumber! }),
     });
 
-    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: payload,
-      signal: AbortSignal.timeout(15_000),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: payload,
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      fail("We could not connect to the SMS service. Please check your connection and try again.");
+    }
 
     const result = await response.json().catch(() => null) as { sid?: string; status?: string; message?: string } | null;
     if (!response.ok || !result?.sid || (result.status && ["failed", "undelivered"].includes(result.status))) {

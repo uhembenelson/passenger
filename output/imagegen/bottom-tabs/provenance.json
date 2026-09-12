@@ -1,0 +1,15 @@
+{
+  "provider": "Azure OpenAI / Azure AI Foundry",
+  "deployment": "gpt-image-2-1",
+  "method": "Bundled imagegen CLI generate-batch",
+  "quality": "high",
+  "prompts": "prompts.jsonl",
+  "processing": "Removed edge-connected white pixels, preserved internal ivory highlights, padded and resized to transparent 256px WebP.",
+  "renderedSize": "30px inside a 36px by 32px bottom-navigation frame",
+  "assets": [
+    { "file": "apps/mobile/assets/navigation/tab-home.webp", "source": "generated/tab-home.png" },
+    { "file": "apps/mobile/assets/navigation/tab-milestones.webp", "source": "generated/tab-milestones.png" },
+    { "file": "apps/mobile/assets/navigation/tab-trips.webp", "source": "generated/tab-trips.png" },
+    { "file": "apps/mobile/assets/navigation/tab-profile.webp", "source": "generated/tab-profile.png" }
+  ]
+}

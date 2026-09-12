@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createServer } from "node:net";
-import { childPath, portInUse, selectedWorkspaces, supportedNode } from "./dev-runtime";
+import { childPath, findAvailablePort, portInUse, selectedWorkspaces, supportedNode } from "./dev-runtime";
 
 describe("shared dev supervisor", () => {
   test("defaults to all three business workspaces", () => expect(selectedWorkspaces([])).toEqual(["admin", "mobile", "backend"]));
@@ -20,5 +20,25 @@ describe("shared dev supervisor", () => {
     try { expect(await portInUse(address.port)).toBe(true); expect(server.listening).toBe(true); }
     finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
     expect(await portInUse(address.port)).toBe(false);
+  });
+  test("finds the next available port when the initial port is occupied", async () => {
+    const server = createServer(socket => socket.end());
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Missing test port");
+    try {
+      const port = await findAvailablePort(address.port);
+      expect(port).toBeGreaterThan(address.port);
+      expect(await portInUse(port)).toBe(false);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
+  });
+  test("skips reserved ports when finding available port", async () => {
+    const startPort = 42000;
+    const reserved = new Set<number>([startPort, startPort + 1]);
+    const port = await findAvailablePort(startPort, reserved);
+    expect(port).toBeGreaterThanOrEqual(startPort + 2);
+    expect(reserved.has(port)).toBe(false);
   });
 });
