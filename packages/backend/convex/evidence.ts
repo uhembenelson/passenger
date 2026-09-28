@@ -1,15 +1,16 @@
 import { v } from "convex/values";
+import { PERMISSIONS } from "@passenger/core";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { purpose } from "./schema";
-import { fail, isAdmin, participant, requireActive, requireUser } from "./lib";
+import { evidenceKind, purpose } from "./schema";
+import { fail, isAdmin, participant, requireActive, requireAdmin, requirePermission, requireUser } from "./lib";
 
 export async function validateEvidence(
   ctx: QueryCtx | MutationCtx,
   ids: Id<"evidence">[],
   ownerId: Id<"users">,
-  kind: "identity" | "parcel",
+  kind: "identity" | "parcel" | "proof_of_address",
 ) {
   if (!ids.length || ids.length > 5 || new Set(ids).size !== ids.length) {
     fail("Provide 1–5 distinct evidence files.");
@@ -56,6 +57,7 @@ export const register = mutation({
     storageId: v.id("_storage"),
     purpose,
     filename: v.string(),
+    kind: v.optional(evidenceKind),
   },
   handler: async (ctx, args) => {
     const u = await requireUser(ctx);
@@ -92,12 +94,15 @@ export const register = mutation({
 
     const contentType = meta.contentType ?? "";
     const allowedTypes =
-      args.purpose === "identity"
+      args.purpose === "identity" || args.purpose === "proof_of_address"
         ? ["image/jpeg", "image/png", "image/webp", "application/pdf"]
         : ["image/jpeg", "image/png", "image/webp"];
 
     if (!allowedTypes.includes(contentType)) {
-      fail("Upload a JPEG, PNG or WebP image (identity also accepts PDF).");
+      fail("Upload a JPEG, PNG or WebP image (identity and proof-of-address also accept PDF).");
+    }
+    if (args.kind === "verification_live_photo" && (args.purpose !== "identity" || !contentType.startsWith("image/"))) {
+      fail("A live identity check requires an image captured for identity verification.");
     }
 
     const filename = args.filename.trim();
@@ -111,6 +116,7 @@ export const register = mutation({
       ownerId: u._id,
       storageId: args.storageId,
       purpose: args.purpose,
+      kind: args.kind,
       filename,
       contentType,
       size: meta.size,
@@ -143,6 +149,42 @@ export const get = query({
       contentType: e.contentType,
       size: e.size,
       url: await ctx.storage.getUrl(e.storageId),
+    };
+  },
+});
+
+export const identityForReview = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const reviewer = await requireAdmin(ctx);
+    await requirePermission(ctx, reviewer, PERMISSIONS.COMPLIANCE_MANAGE);
+
+    const user = await ctx.db.get(args.userId);
+    if (!user) return null;
+
+    const evidence = await Promise.all(
+      (user.identityEvidenceIds ?? []).map(async evidenceId => {
+        const file = await ctx.db.get(evidenceId);
+        if (!file || file.ownerId !== user._id || file.purpose !== "identity") {
+          return { id: evidenceId, available: false as const };
+        }
+
+        return {
+          id: file._id,
+          available: true as const,
+          filename: file.filename,
+          contentType: file.contentType,
+          size: file.size,
+          createdAt: file.createdAt,
+          url: await ctx.storage.getUrl(file.storageId),
+        };
+      }),
+    );
+
+    return {
+      documentType: user.documentType,
+      submittedAt: user.identitySubmittedAt,
+      evidence,
     };
   },
 });

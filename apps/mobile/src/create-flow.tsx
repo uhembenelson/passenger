@@ -5,7 +5,7 @@ import * as SecureStore from "expo-secure-store";
 import { X } from "lucide-react-native";
 import { BrandIllustration } from "./illustrations";
 import { HomeTripBackground } from "./home-trip-background";
-import { BackButton, Button, colors, fontFamily, PresentationSheet, Txt } from "./ui";
+import { BackButton, Button, colors, fontFamily, Txt } from "./ui";
 
 type Mode = "sender" | "traveller";
 
@@ -20,7 +20,15 @@ export function useCreateIntro(mode: Mode, userId: string | undefined, editing: 
     setShow(null);
     void (async () => {
       try {
-        const seen = Platform.OS === "web" ? localStorage.getItem(key) : await SecureStore.getItemAsync(key);
+        const storedIntro = Platform.OS === "web"
+          ? Promise.resolve(localStorage.getItem(key))
+          : SecureStore.getItemAsync(key);
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+        const storageTimeout = new Promise<null>(resolve => {
+          timeout = setTimeout(() => resolve(null), 1200);
+        });
+        const seen = await Promise.race([storedIntro, storageTimeout]);
+        if (timeout) clearTimeout(timeout);
         if (active) setShow(seen !== "seen");
       } catch { if (active) setShow(true); }
     })();
@@ -41,27 +49,45 @@ export function useCreateIntro(mode: Mode, userId: string | undefined, editing: 
 
 export function CreateIntro({ mode, onContinue, onClose, replaying = false }: { mode: Mode; onContinue: () => void; onClose: () => void; replaying?: boolean }) {
   const sender = mode === "sender";
-  return <PresentationSheet title={sender ? "Send it with someone going your way" : "Let your trip help pay for itself"} onClose={onClose} containerStyle={{ width: "100%", maxWidth: 580, alignSelf: "center" }} footer={<Button title={replaying ? sender ? "Back to my parcel" : "Back to my trip" : sender ? "Let's send a parcel" : "Add my trip"} variant="lime" onPress={onContinue} />}>
-    <View>
-    <View style={styles.introArt}>
-      <HomeTripBackground compact />
-      <BrandIllustration name={sender ? "createParcel" : "createTrip"} size={156} />
-    </View>
-    <Txt style={styles.introBody}>{sender
-      ? "Passenger connects your parcel with a verified traveller already heading towards its destination."
-      : "Passenger helps you offset the cost of your trip by accepting deliveries you can take along with you."}</Txt>
-    <View style={styles.explanation}>
-      <Txt style={styles.explanationTitle}>{sender ? "Tell us what you're sending" : "Share the trip you're already taking"}</Txt>
-      <Txt style={styles.body}>{sender ? "Add parcel details and photos. The delivery fee is held in your wallet during review." : "Share your route and choose parcels that fit your plans."}</Txt>
-      <Txt style={styles.explanationTitle}>{sender ? "Choose a traveller, then hand it over" : "Deliver along the way and get paid"}</Txt>
-      <Txt style={styles.body}>{sender ? "Choose a traveller. Confirm pickup and delivery with your codes." : "Inspect the parcel at pickup. Get paid after delivery is confirmed."}</Txt>
-    </View>
-    </View>
-  </PresentationSheet>;
+  return <View style={styles.loadingOverlay}>
+    <SafeAreaView style={styles.loadingSafeArea}>
+      <View style={styles.loadingHeader}>
+        <Txt style={styles.loadingTitle}>{sender ? "Send it with someone going your way" : "Let your trip help pay for itself"}</Txt>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close introduction" onPress={onClose} style={styles.iconButton}><X size={22} color={colors.text} /></Pressable>
+      </View>
+      <ScrollView contentContainerStyle={styles.introContent}>
+        <View style={styles.introArt}>
+          <HomeTripBackground compact />
+          <BrandIllustration name={sender ? "createParcel" : "createTrip"} size={156} />
+        </View>
+        <Txt style={styles.introBody}>{sender
+          ? "Passenger connects your parcel with a verified traveller already heading towards its destination."
+          : "Passenger helps you offset the cost of your trip by accepting deliveries you can take along with you."}</Txt>
+        <View style={styles.explanation}>
+          <Txt style={styles.explanationTitle}>{sender ? "Tell us what you're sending" : "Share the trip you're already taking"}</Txt>
+          <Txt style={styles.body}>{sender ? "Add parcel details and photos. The delivery fee is held in your wallet during review." : "Share your route and choose parcels that fit your plans."}</Txt>
+          <Txt style={styles.explanationTitle}>{sender ? "Choose a traveller, then hand it over" : "Deliver along the way and get paid"}</Txt>
+          <Txt style={styles.body}>{sender ? "Choose a traveller. Confirm pickup and delivery with your codes." : "Inspect the parcel at pickup. Get paid after delivery is confirmed."}</Txt>
+        </View>
+      </ScrollView>
+      <View style={styles.introFooter}><Button title={replaying ? sender ? "Back to my parcel" : "Back to my trip" : sender ? "Let's send a parcel" : "Add my trip"} variant="lime" onPress={onContinue} /></View>
+    </SafeAreaView>
+  </View>;
 }
 
 export function CreateFlowLoading({ onClose }: { onClose: () => void }) {
-  return <PresentationSheet title="Getting ready" onClose={onClose}><ActivityIndicator accessibilityLabel="Loading" color={colors.text} /></PresentationSheet>;
+  // Keep the storage lookup out of a native Modal. Replacing one presenting
+  // Modal with another in the same render pass can leave an invisible native
+  // backdrop above the app and block every touch.
+  return <View style={styles.loadingOverlay}>
+    <SafeAreaView style={styles.loadingSafeArea}>
+      <View style={styles.loadingHeader}>
+        <Txt style={styles.loadingTitle}>Getting ready</Txt>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close form" onPress={onClose} style={styles.iconButton}><X size={22} color={colors.text} /></Pressable>
+      </View>
+      <View style={styles.loadingBody}><ActivityIndicator accessibilityLabel="Loading" color={colors.text} /></View>
+    </SafeAreaView>
+  </View>;
 }
 
 export function CreateFlowFrame({ title, description, onClose, onBack, locked, footer, children, screenKey }: React.PropsWithChildren<{
@@ -97,9 +123,16 @@ const styles = StyleSheet.create({
   footer: { width: "100%", maxWidth: 600, alignSelf: "center", paddingHorizontal: 24, paddingVertical: 16 },
   introArt: { height: 170, backgroundColor: colors.soft, borderRadius: 24, alignItems: "center", justifyContent: "center", overflow: "hidden", marginBottom: 20 },
   introBody: { fontSize: 17, lineHeight: 25, marginBottom: 20 },
+  introContent: { flexGrow: 1, width: "100%", maxWidth: 580, alignSelf: "center", padding: 24 },
+  introFooter: { width: "100%", maxWidth: 580, alignSelf: "center", paddingHorizontal: 24, paddingVertical: 16 },
   explanation: { gap: 8, marginBottom: 24 },
   explanationTitle: { fontFamily: fontFamily.medium, fontSize: 16, lineHeight: 23 },
   body: { color: colors.muted, fontSize: 14, lineHeight: 21, marginBottom: 8 },
   review: { backgroundColor: colors.paper, borderRadius: 20, padding: 18, gap: 8, marginBottom: 16 },
   reviewHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
+  loadingOverlay: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 1000, elevation: 1000, backgroundColor: colors.bg },
+  loadingSafeArea: { flex: 1 },
+  loadingHeader: { minHeight: 64, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  loadingTitle: { fontFamily: fontFamily.medium, fontSize: 18, lineHeight: 24 },
+  loadingBody: { flex: 1, alignItems: "center", justifyContent: "center" },
 });

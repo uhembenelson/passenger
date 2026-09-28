@@ -47,13 +47,9 @@ export function NeedsActionSheet({ shipment, onClose, onEdit }: Props) {
     }
   };
 
-  React.useEffect(() => {
-    if (!handoverMode && shipment.status === "funded") setHandoverMode(sender ? "sender" : "collect");
-    else if (!handoverMode && !sender && shipment.status === "in_transit") setHandoverMode("deliver");
-  }, [handoverMode, sender, shipment.status]);
   const title = actionTitle(shipment, sender, offers.length);
 
-  if (handoverMode) return <HandoverFlow shipment={shipment} mode={handoverMode} onClose={onClose} />;
+  if (handoverMode) return <HandoverFlow shipment={shipment} mode={handoverMode} onClose={() => setHandoverMode(undefined)} />;
 
   return <PresentationSheet title={title} onClose={() => !busy && onClose()}>
     <ActionContext shipment={shipment} />
@@ -86,6 +82,16 @@ export function NeedsActionSheet({ shipment, onClose, onEdit }: Props) {
       {shipment.payByAt ? <Txt style={a.meta}>Complete payment by {timeDate(shipment.payByAt)}</Txt> : null}
       <Button title={`Pay securely · ${money(shipment.feeNaira)}`} variant="lime" busy={busy === "pay"} disabled={!!busy || !actions.pay} onPress={() => void act("pay", () => data.pay(shipment.id))} />
       {!actions.pay ? <Notice tone="warning">Payment is unavailable. Check your verification status or payment deadline.</Notice> : null}
+    </View> : null}
+
+    {shipment.status === "funded" ? <View style={a.section}>
+      <Txt style={a.supporting}>{sender ? "Meet the traveller and confirm the parcel handover." : "Meet the sender, inspect the parcel, and confirm collection."}</Txt>
+      <Button title={sender ? "Continue handover" : "Confirm collection"} variant="lime" disabled={!!busy} onPress={() => setHandoverMode(sender ? "sender" : "collect")} />
+    </View> : null}
+
+    {!sender && shipment.status === "in_transit" ? <View style={a.section}>
+      <Txt style={a.supporting}>Give the parcel to the receiver, then confirm delivery with their code.</Txt>
+      <Button title="Confirm delivery" variant="lime" disabled={!!busy} onPress={() => setHandoverMode("deliver")} />
     </View> : null}
 
     {shipment.status === "disputed" ? <View style={a.section}>

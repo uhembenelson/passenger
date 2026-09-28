@@ -32,6 +32,11 @@ export function MobileTripsScreen({ navigation, notice, requestOpenScheduleTrip 
   const [editing, setEditing] = useState<Trip>();
   const [creating, setCreating] = useState(false);
   const [localNotice, setLocalNotice] = useState("");
+  React.useEffect(() => {
+    if (!localNotice) return;
+    const timer = setTimeout(() => setLocalNotice(""), 5000);
+    return () => clearTimeout(timer);
+  }, [localNotice]);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const { results: myTripResults, status: myTripStatus, loadMore: loadMoreMyTrips } = usePaginatedQuery(api.marketplace.myTripsPage, {}, { initialNumItems: 30 });
   const now = useMemo(() => Date.now(), [myTripResults]);
@@ -95,7 +100,7 @@ export function MobileTripsScreen({ navigation, notice, requestOpenScheduleTrip 
     {historyItems.length > 0 && <DraggableFAB onPress={openScheduleSheet} />}
     {navigation}
     {selected ? <ManageTripSheet trip={selected} onClose={() => setSelected(undefined)} onEdit={() => { setSelected(undefined); setEditing(selected); }} /> : null}
-    {editing ? <TripForm trip={editing} onClose={() => setEditing(undefined)} onSuccess={() => setEditing(undefined)} /> : null}
+    {editing ? <TripForm trip={editing} onClose={() => { setSelected(editing); setEditing(undefined); }} onSuccess={() => { setEditing(undefined); setLocalNotice("Your trip changes were saved."); }} /> : null}
     {creating ? <TripForm onClose={() => { setCreating(false); onScheduleTripFlowHandled?.(); }} onSuccess={() => {
       setCreating(false);
       setLocalNotice("Your trip is live.");

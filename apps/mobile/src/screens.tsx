@@ -12,7 +12,6 @@ import { usePassenger } from "./data";
 import { DeliveryDetail } from "./delivery";
 import { MobileHome } from "./mobile-home";
 import { MobileTripsScreen } from "./mobile-trips";
-import { PhoneVerificationHome } from "./phone-verification";
 import { Profile } from "./profile";
 import { IdentityVerificationCard } from "./identity-verification-card";
 import { NotificationsScreen } from "./sender-deliveries";
@@ -30,7 +29,12 @@ const HORIZONTAL_PADDING = 18;
 
 export function PassengerShell() {
   const data = usePassenger(); const { width } = useWindowDimensions(); const desktop = width >= 1000; const roomy = width >= 1250;
-  const [page, setPage] = useState<Page>("home"); const [mode, setMode] = useState<Mode>("sender"); const [form, setForm] = useState<"shipment" | "trip" | null>(null); const [prefill, setPrefill] = useState<Trip | undefined>(); const [prefillDraft, setPrefillDraft] = useState<Partial<CreateShipmentInput> | undefined>(); const [editingShipment, setEditingShipment] = useState<Shipment | undefined>(); const [selected, setSelected] = useState<string | null>(null); const [safety, setSafety] = useState(false); const [toast, setToast] = useState(""); const [phoneVerificationCelebration, setPhoneVerificationCelebration] = useState(false);
+  const [page, setPage] = useState<Page>("home"); const [mode, setMode] = useState<Mode>("sender"); const [form, setForm] = useState<"shipment" | "trip" | null>(null); const [prefill, setPrefill] = useState<Trip | undefined>(); const [prefillDraft, setPrefillDraft] = useState<Partial<CreateShipmentInput> | undefined>(); const [editingShipment, setEditingShipment] = useState<Shipment | undefined>(); const [selected, setSelected] = useState<string | null>(null); const [safety, setSafety] = useState(false); const [toast, setToast] = useState("");
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(""), 5000);
+    return () => clearTimeout(timer);
+  }, [toast]);
   useEffect(() => {
     void (async () => {
       try {
@@ -62,8 +66,13 @@ export function PassengerShell() {
     setMode("traveller");
     openForm("trip");
   };
-  const closeForm = () => { setForm(null); setEditingShipment(undefined); setPrefill(undefined); setPrefillDraft(undefined); };
-  const phoneReady = viewer.phoneVerificationEnabled === false || !!viewer.phoneVerificationTime;
+  const closeForm = (restoreParent = false) => {
+    if (restoreParent && editingShipment) setSelected(editingShipment.id);
+    setForm(null);
+    setEditingShipment(undefined);
+    setPrefill(undefined);
+    setPrefillDraft(undefined);
+  };
   const mobileNavigation = <MobileNavigation page={page} onSelect={setPage} />;
   const selectedShipment = snapshot.shipments.find(item => item.id === selected);
   if (page === "notifications") return <SafeAreaView style={x.safe} edges={["top", "bottom"]}>
@@ -71,9 +80,7 @@ export function PassengerShell() {
   </SafeAreaView>;
   if (!desktop) {
     const mobileContent = page === "home"
-      ? (!phoneReady || phoneVerificationCelebration
-          ? <PhoneVerificationHome viewer={viewer} celebrating={phoneVerificationCelebration} navigation={mobileNavigation} onCelebrationChange={setPhoneVerificationCelebration} onFindTravellers={() => setPage("routes")} onScheduleTrip={openTripCreation} onOpenNotifications={() => setPage("notifications")} onSafety={() => setSafety(true)} />
-          : <MobileHome
+      ? <MobileHome
               viewer={viewer}
               navigation={mobileNavigation}
               onBookTrip={(trip, draft) => { setPage("routes"); openForm("shipment", trip, draft); }}
@@ -82,7 +89,7 @@ export function PassengerShell() {
               onSendParcel={() => { setMode("sender"); openForm("shipment"); }}
               onScheduleTrip={openTripCreation}
               onOpenDelivery={setSelected}
-            />)
+            />
       : page === "routes"
           ? <MobileTripsScreen notice={toast} navigation={mobileNavigation} onTripScheduled={() => { setMode("traveller"); setToast("Your trip is published. You can find it under upcoming trips."); }} />
           : <Profile viewer={viewer} navigation={mobileNavigation} onToast={setToast} onSafety={() => setSafety(true)} onOpenDelivery={setSelected} onStartEarning={openTripCreation} />;
@@ -92,7 +99,7 @@ export function PassengerShell() {
       {mobileContent}
       {selectedShipment && <DeliveryDetail key={`${viewer.id}:${selectedShipment.id}`} shipment={selectedShipment} onClose={() => setSelected(null)} onEdit={shipmentActions(selectedShipment, viewer).edit ? () => openShipmentEdit(selectedShipment) : undefined} />}
       {safety && <SupportHub onClose={() => setSafety(false)} onOpenDelivery={id => { setSafety(false); setSelected(id); }} />}
-      {form === "shipment" && <ShipmentForm shipment={editingShipment} trip={prefill} draft={prefillDraft} onClose={closeForm} onSuccess={() => { const wasEditingShipment = !!editingShipment; closeForm(); setPage("home"); setMode("sender"); setToast(wasEditingShipment ? "Your parcel was updated and resubmitted for review." : "Your parcel is submitted for review. We'll notify you when it's reviewed."); }} />}
+      {form === "shipment" && <ShipmentForm shipment={editingShipment} trip={prefill} draft={prefillDraft} onClose={() => closeForm(true)} onSuccess={() => { const wasEditingShipment = !!editingShipment; closeForm(); setPage("home"); setMode("sender"); setToast(wasEditingShipment ? "Your parcel was updated and resubmitted for review." : "Your parcel is submitted for review. We'll notify you when it's reviewed."); }} />}
       {form === "trip" && <TripForm onClose={() => setForm(null)} onSuccess={() => { setForm(null); setMode("traveller"); setToast("Your trip is published. You can find it under upcoming trips."); }} />}
     </SafeAreaView>;
   }
@@ -108,7 +115,6 @@ export function PassengerShell() {
         <ScrollView contentContainerStyle={[x.scroll, !desktop && { paddingTop: 25 }]} keyboardShouldPersistTaps="handled"><View style={x.content}>
           <View style={[x.welcomeRow, width < 620 && { alignItems: "flex-start", flexDirection: "column", gap: 17 }]}><View><View style={s.row}><Txt style={x.welcome}>{page === "home" ? `Hello, ${viewer.name.split(" ")[0]}.` : page === "routes" ? "Going your way." : page === "matches" ? "Better, together." : "You're part of the journey."}</Txt>{page === "home" ? <Sparkles size={20} color="#96A16E" /> : null}</View></View><View style={x.modeSwitch}>{(["sender", "traveller"] as Mode[]).map(value => <Pressable accessibilityRole="tab" accessibilityState={{ selected: mode === value }} key={value} onPress={() => { setMode(value); setToast(""); }} style={[x.modeButton, mode === value && x.modeActive]}>{value === "sender" ? <Send size={14} color={mode === value ? "white" : colors.muted} /> : <Route size={14} color={mode === value ? "white" : colors.muted} />}<Txt style={{ color: mode === value ? "white" : colors.muted, fontSize: 11, fontWeight: "600" }}>{value === "sender" ? "I'm sending" : "I'm travelling"}</Txt></Pressable>)}</View></View>
           {toast !== "" && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss notification" onPress={() => setToast("")} style={{ marginBottom: 20 }}><Notice tone="success"><View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}><Txt>{toast}</Txt><X size={16} color={colors.muted} /></View></Notice></Pressable>}
-          {viewer.verification !== "verified" && page !== "profile" && <IdentityVerificationCard viewer={viewer} />}
           {page === "home" && <>
             <Hero mode={mode} compact={!roomy} onCreate={() => openForm(mode === "sender" ? "shipment" : "trip")} onLearn={() => setSafety(true)} />
             <View style={[x.stats, { marginTop: 24 }]}><Stat icon={Send} value={String(active.length).padStart(2, "0")} title={mode === "sender" ? "Active deliveries" : "Parcels to carry"} foot="A little closer, every step" /><Stat icon={Route} value={String(mode === "sender" ? mine.filter(item => item.status === "open").length : myTrips.length).padStart(2, "0")} title={mode === "sender" ? "Open parcels" : "Upcoming trips"} foot={mode === "sender" ? "Ready to find a route" : "Your spare space, put to use"} /><Stat icon={CheckCircle2} value={String(mine.filter(item => item.status === "delivered").length).padStart(2, "0")} title="Safely delivered" foot="Good things in good hands" /></View>
@@ -118,12 +124,13 @@ export function PassengerShell() {
           {page === "routes" && <RouteBrowser mode={mode} onCreate={openForm} />}
           {page === "matches" && <Matches {...contentProps} />}
           {page === "profile" && <View style={{ gap: 24 }}><Profile key={viewer.id} onStartEarning={openTripCreation} onToast={setToast} onSafety={() => setSafety(true)} onOpenDelivery={setSelected} /></View>}
+          {page === "home" && ((viewer.identityVerificationStatus ?? (viewer.verification === "required" ? "unverified" : viewer.verification)) !== "verified" || (viewer.kycTier ?? -1) < 1) && <IdentityVerificationCard viewer={viewer} />}
           <View style={x.footer}><Logo compact muted /><Txt style={{ fontSize: 10, color: "#90988B" }}>Good things, going places.</Txt><Pressable accessibilityRole="button" onPress={() => setSafety(true)} style={s.row}><Txt style={{ fontSize: 10, color: colors.muted }}>Made for trust</Txt><ArrowUpRight size={12} color={colors.muted} /></Pressable></View>
         </View></ScrollView>
         {!desktop && mobileNavigation}
       </View>
     </View>
-    {form === "shipment" && <ShipmentForm shipment={editingShipment} trip={prefill} draft={prefillDraft} onClose={() => { setForm(null); setEditingShipment(undefined); setPrefill(undefined); setPrefillDraft(undefined); }} onSuccess={() => { const wasEditingShipment = !!editingShipment; setForm(null); setEditingShipment(undefined); setPrefill(undefined); setPrefillDraft(undefined); setPage("home"); setMode("sender"); setToast(wasEditingShipment ? "Your parcel was updated and resubmitted for review." : "Your parcel is submitted for review. We'll notify you when it's reviewed."); }} />}
+    {form === "shipment" && <ShipmentForm shipment={editingShipment} trip={prefill} draft={prefillDraft} onClose={() => closeForm(true)} onSuccess={() => { const wasEditingShipment = !!editingShipment; closeForm(); setPage("home"); setMode("sender"); setToast(wasEditingShipment ? "Your parcel was updated and resubmitted for review." : "Your parcel is submitted for review. We'll notify you when it's reviewed."); }} />}
     {form === "trip" && <TripForm onClose={() => setForm(null)} onSuccess={() => { setForm(null); setMode("traveller"); setToast("Your trip is published. You can find it under upcoming trips."); }} />}
     {selectedShipment && <DeliveryDetail key={`${viewer.id}:${selectedShipment.id}`} shipment={selectedShipment} onClose={() => setSelected(null)} onEdit={shipmentActions(selectedShipment, viewer).edit ? () => openShipmentEdit(selectedShipment) : undefined} />}
     {safety && <SupportHub onClose={() => setSafety(false)} onOpenDelivery={id => { setSafety(false); setSelected(id); }} />}
@@ -275,7 +282,23 @@ const x = StyleSheet.create({
   topbar: { height: 75, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: HORIZONTAL_PADDING, backgroundColor: "#FAFAF5" }, topbarDivider: { height: 19, width: 1, backgroundColor: colors.border }, scroll: { paddingHorizontal: HORIZONTAL_PADDING, paddingTop: 32, paddingBottom: 12 }, content: { width: "100%", maxWidth: 1200, alignSelf: "center" }, welcomeRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 20, marginBottom: 27 }, welcome: { fontSize: 30, letterSpacing: -1, fontWeight: "500" }, modeSwitch: { flexDirection: "row", backgroundColor: "#ECEFE5", padding: 4, borderRadius: 11 }, modeButton: { paddingHorizontal: 13, paddingVertical: 11, borderRadius: 8 }, modeActive: { backgroundColor: colors.forest },
   hero: { backgroundColor: colors.forest, borderRadius: 19, flexDirection: "row", overflow: "hidden", minHeight: 295 }, heroHeadline: { fontFamily: serif, color: "#F6F7E9", letterSpacing: -1.5 }, heroCopy: { color: "#C0D1BD", fontSize: 12, lineHeight: 21, marginTop: 16, maxWidth: 350 }, artOrbit: { position: "absolute", height: 250, width: 185, borderWidth: 1, borderStyle: "dashed", borderColor: "#4B684B", borderRadius: 150, transform: [{ rotate: "-35deg" }] }, artCity: { position: "absolute", top: 38, left: 25, flexDirection: "row", alignItems: "center", gap: 7 }, parcel: { width: 133, height: 139, borderRadius: 5, backgroundColor: "#D8BD8C", transform: [{ rotate: "-12deg" }], borderBottomWidth: 12, borderBottomColor: "#BDA272", borderRightWidth: 8, borderRightColor: "#B59C71", overflow: "hidden" }, parcelTape: { position: "absolute", left: 47, top: 0, bottom: 0, width: 24, backgroundColor: "#E8D7B3" }, parcelLabel: { position: "absolute", top: 44, right: 15, width: 67, height: 74, backgroundColor: "#F7F5E6", borderRadius: 3, padding: 8, alignItems: "center", gap: 2 }, parcelShadow: { position: "absolute", width: 139, height: 30, borderRadius: 90, bottom: 69, backgroundColor: "#14352B", transform: [{ rotate: "-12deg" }] }, artStamp: { position: "absolute", backgroundColor: colors.lime, height: 43, width: 43, borderRadius: 22, alignItems: "center", justifyContent: "center", right: 21, bottom: 74, borderWidth: 5, borderColor: colors.forest }, stats: { flexDirection: "row", gap: 12 },
   searchBox: { backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.border, borderRadius: 13, paddingHorizontal: 19, paddingVertical: 13, flexDirection: "row", alignItems: "center", gap: 17 }, searchLabel: { color: colors.muted, fontSize: 8, letterSpacing: 1.5, marginBottom: 2 }, swap: { borderWidth: 1, borderColor: colors.border, width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" }, routeChip: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: colors.border }, shipmentRow: { padding: 17, borderRadius: 13, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", gap: 12 }, parcelIcon: { width: 39, height: 43, backgroundColor: "#F2F3EB", borderRadius: 10, alignItems: "center", justifyContent: "center" }, trustCard: { backgroundColor: "#E9EFDB", borderRadius: 16, padding: 24 }, trustIcon: { height: 38, width: 38, borderRadius: 13, borderWidth: 1, borderColor: "#CFD9B9", justifyContent: "center", alignItems: "center" }, footer: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 15, marginTop: 47, paddingTop: 23, paddingBottom: 22, borderTopWidth: 1, borderTopColor: colors.border, flexWrap: "wrap" },
-  bottomNav: { flexDirection: "row", backgroundColor: colors.paper, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 9, paddingBottom: Platform.OS === "web" ? 10 : 5, paddingHorizontal: 8 },
+  bottomNav: {
+    flexDirection: "row",
+    backgroundColor: colors.paper,
+    marginHorizontal: 16,
+    marginBottom: Platform.OS === "ios" ? 8 : 12,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === "web" ? 8 : 6,
+    paddingHorizontal: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
   bottomNavItem: { flex: 1, alignItems: "center", justifyContent: "center", minHeight: 54, gap: 4 },
   bottomNavIcon: { width: 36, height: 32, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   bottomNavIconActive: { backgroundColor: colors.soft },

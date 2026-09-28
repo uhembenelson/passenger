@@ -13,10 +13,12 @@ import { HandoverFlow } from "./handover-flow";
 import { TripCheckIn, TripHelp } from "./trip-check-in";
 import { ActiveJourneyCard } from "./active-journey-card";
 import { HomeTripBackground } from "./home-trip-background";
+import { IdentityVerificationCard, VerificationSummaryCard } from "./identity-verification-card";
+import { IdentityNumberVerification } from "./identity-number-verification";
 import { FindTravellerFlow } from "./find-traveller";
 import type { TravellerSearchDraft } from "./find-traveller";
 import { LocationReportingStatus, ParcelTracking } from "./parcel-tracking";
-import { Badge, Button, JourneyCardStack, errorMessage, fontFamily, Notice, Txt, colors } from "./ui";
+import { Avatar, Badge, Button, JourneyCardStack, errorMessage, fontFamily, Notice, Txt, colors } from "./ui";
 
 type Props = {
   viewer: Person;
@@ -50,10 +52,16 @@ export function MobileHome({
   const [locating, setLocating] = useState("");
   const [locationError, setLocationError] = useState("");
   const [locationNotice, setLocationNotice] = useState("");
+  React.useEffect(() => {
+    if (!locationNotice) return;
+    const timer = setTimeout(() => setLocationNotice(""), 5000);
+    return () => clearTimeout(timer);
+  }, [locationNotice]);
   const promotions = useQuery(api.promotions.listPublished, {});
   const { width } = useWindowDimensions();
   const promotionWidth = Math.min(340, width - 64);
   const [promotionError, setPromotionError] = useState("");
+  const [phoneCardOpen, setPhoneCardOpen] = useState(false);
   const unreadCount = useQuery(api.notifications.unreadCount, {}) ?? 0;
   const { results: myTrips } = usePaginatedQuery(api.marketplace.myTripsPage, {}, { initialNumItems: 30 });
   const now = useMemo(() => Date.now(), [myTrips]);
@@ -126,9 +134,12 @@ export function MobileHome({
     )
     .slice(0, 3);
 
-  const helpModal = helpId && shipmentsById.get(helpId) ? <TripHelp shipment={shipmentsById.get(helpId)!} onClose={() => setHelpId(undefined)} onProblem={category => { setReportContext({ kind: "delivery", id: helpId, category }); setHelpId(undefined); }} /> : null;
+  const helpModal = helpId && shipmentsById.get(helpId) ? <TripHelp shipment={shipmentsById.get(helpId)!} onClose={() => setHelpId(undefined)} onProblem={category => { setReportContext({ kind: "delivery", id: helpId, category }); }} /> : null;
   if (reportContext) {
     return <SupportHub initialContext={reportContext} onClose={() => setReportContext(undefined)} onOpenDelivery={id => { setReportContext(undefined); onOpenDelivery?.(id); }} />;
+  }
+  if (phoneCardOpen) {
+    return <IdentityNumberVerification viewer={viewer} onClose={() => setPhoneCardOpen(false)} />;
   }
   if (trackedShipment) {
     return <><ParcelTracking shipment={trackedShipment} onBack={() => setTrackingId(undefined)} onProblem={() => setHelpId(trackedShipment.id)} />{helpModal}</>;
@@ -171,19 +182,13 @@ export function MobileHome({
 
   return (
     <View style={h.screen}>
-      {checkInId && shipmentsById.get(checkInId) ? <TripCheckIn shipment={shipmentsById.get(checkInId)!} onClose={() => setCheckInId(undefined)} onProblem={category => { setReportContext({ kind: "delivery", id: checkInId, category }); setCheckInId(undefined); }} /> : null}
+      {checkInId && shipmentsById.get(checkInId) ? <TripCheckIn shipment={shipmentsById.get(checkInId)!} onClose={() => setCheckInId(undefined)} onProblem={category => { setReportContext({ kind: "delivery", id: checkInId, category }); }} /> : null}
       {handoverId && shipmentsById.get(handoverId) ? <HandoverFlow shipment={shipmentsById.get(handoverId)!} mode="deliver" onClose={() => setHandoverId(undefined)} /> : null}
       {helpModal}
       <HomeTripBackground />
-      <ScrollView contentContainerStyle={h.scroll}>
-        {offline ? (
-          <Notice tone="warning">
-            You're offline. Showing the latest received information; reconnect before making changes.
-          </Notice>
-        ) : null}
-
+      <View style={h.stickyHeader}>
         <View style={h.headerRow}>
-          <View style={{ flexShrink: 1 }}><Txt style={h.greeting}>Hi, {firstName(viewer.name)}</Txt><Txt style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 3 }}>{viewer.phoneVerificationTime && !viewer.activationDestination ? "Welcome back" : "Welcome to Passenger"}</Txt></View>
+          <View style={h.greetingGroup}><Avatar name={viewer.name} size={44} uri={viewer.image} /><View style={{ flexShrink: 1 }}><Txt style={h.greeting}>Hi, {firstName(viewer.name)}</Txt><Txt style={{ color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 3 }}>{viewer.identityNumberVerifiedAt && !viewer.activationDestination ? "Welcome back" : "Welcome to Passenger"}</Txt></View></View>
           <View style={h.headerIcons}>
             <Pressable
               accessibilityRole="button"
@@ -222,6 +227,13 @@ export function MobileHome({
             </Pressable>
           </View>
         </View>
+      </View>
+      <ScrollView contentContainerStyle={h.scroll}>
+        {offline ? (
+          <Notice tone="warning">
+            You're offline. Showing the latest received information; reconnect before making changes.
+          </Notice>
+        ) : null}
 
         {/* Primary Action Paths: Send a parcel & I'm travelling */}
         <View style={h.primaryPathsRow}>
@@ -437,6 +449,7 @@ export function MobileHome({
             </View>
           </View>
         )}
+        {!viewer.identityNumberVerifiedAt ? <VerificationSummaryCard title="Identity verification required" body="Verify with your BVN or NIN." accessibilityLabel="Verify with BVN or NIN" onPress={() => setPhoneCardOpen(true)} /> : ((viewer.identityVerificationStatus ?? (viewer.verification === "required" ? "unverified" : viewer.verification)) !== "verified" || (viewer.kycTier ?? -1) < 1) ? <IdentityVerificationCard viewer={viewer} /> : null}
       </ScrollView>
       {navigation}
     </View>
@@ -547,6 +560,13 @@ function clockTime(timestamp: number) {
 
 const h = StyleSheet.create({
   screen: { flex: 1, backgroundColor: semantic.color.background.app },
+  stickyHeader: {
+    paddingHorizontal: primitives.space[4],
+    paddingTop: primitives.space[5],
+    backgroundColor: semantic.color.background.app,
+    zIndex: 2,
+    elevation: 3,
+  },
   scroll: {
     flexGrow: 1,
     paddingHorizontal: primitives.space[4],
@@ -559,6 +579,7 @@ const h = StyleSheet.create({
     alignItems: "center",
     marginBottom: primitives.space[5],
   },
+  greetingGroup: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 1 },
   greeting: {
     fontSize: primitives.typography.size.headingH3,
     lineHeight: primitives.typography.lineHeight.headingH3,

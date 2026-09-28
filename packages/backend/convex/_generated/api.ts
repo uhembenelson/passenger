@@ -9,6 +9,7 @@
  */
 
 import type * as accounts from "../accounts.js";
+import type * as address from "../address.js";
 import type * as admin from "../admin.js";
 import type * as auth from "../auth.js";
 import type * as cancellationPolicies from "../cancellationPolicies.js";
@@ -19,12 +20,19 @@ import type * as deliveryCrypto from "../deliveryCrypto.js";
 import type * as deliveryProviders from "../deliveryProviders.js";
 import type * as deliveryState from "../deliveryState.js";
 import type * as emails from "../emails.js";
+import type * as engine from "../engine.js";
 import type * as escrowPolicies from "../escrowPolicies.js";
 import type * as evidence from "../evidence.js";
+import type * as faceModel from "../faceModel.js";
+import type * as facereg from "../facereg.js";
 import type * as faqs from "../faqs.js";
 import type * as finance from "../finance.js";
 import type * as financeSchema from "../financeSchema.js";
 import type * as financeState from "../financeState.js";
+import type * as geo from "../geo.js";
+import type * as geocoding_index from "../geocoding/index.js";
+import type * as geocoding_provider from "../geocoding/provider.js";
+import type * as geocoding_types from "../geocoding/types.js";
 import type * as http from "../http.js";
 import type * as journeys from "../journeys.js";
 import type * as kycTiers from "../kycTiers.js";
@@ -41,12 +49,17 @@ import type * as productConfig from "../productConfig.js";
 import type * as promotions from "../promotions.js";
 import type * as reviews from "../reviews.js";
 import type * as security from "../security.js";
+import type * as securityEngine from "../securityEngine.js";
 import type * as seed from "../seed.js";
 import type * as serviceArea from "../serviceArea.js";
 import type * as settings from "../settings.js";
 import type * as shipments from "../shipments.js";
 import type * as sms from "../sms.js";
 import type * as support from "../support.js";
+import type * as tier1 from "../tier1.js";
+import type * as verificationMigration from "../verificationMigration.js";
+import type * as verificationPolicy from "../verificationPolicy.js";
+import type * as verificationReview from "../verificationReview.js";
 import type * as wallet from "../wallet.js";
 
 import type {
@@ -58,6 +71,7 @@ import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
   accounts: typeof accounts;
+  address: typeof address;
   admin: typeof admin;
   auth: typeof auth;
   cancellationPolicies: typeof cancellationPolicies;
@@ -68,12 +82,19 @@ const fullApi: ApiFromModules<{
   deliveryProviders: typeof deliveryProviders;
   deliveryState: typeof deliveryState;
   emails: typeof emails;
+  engine: typeof engine;
   escrowPolicies: typeof escrowPolicies;
   evidence: typeof evidence;
+  faceModel: typeof faceModel;
+  facereg: typeof facereg;
   faqs: typeof faqs;
   finance: typeof finance;
   financeSchema: typeof financeSchema;
   financeState: typeof financeState;
+  geo: typeof geo;
+  "geocoding/index": typeof geocoding_index;
+  "geocoding/provider": typeof geocoding_provider;
+  "geocoding/types": typeof geocoding_types;
   http: typeof http;
   journeys: typeof journeys;
   kycTiers: typeof kycTiers;
@@ -90,12 +111,17 @@ const fullApi: ApiFromModules<{
   promotions: typeof promotions;
   reviews: typeof reviews;
   security: typeof security;
+  securityEngine: typeof securityEngine;
   seed: typeof seed;
   serviceArea: typeof serviceArea;
   settings: typeof settings;
   shipments: typeof shipments;
   sms: typeof sms;
   support: typeof support;
+  tier1: typeof tier1;
+  verificationMigration: typeof verificationMigration;
+  verificationPolicy: typeof verificationPolicy;
+  verificationReview: typeof verificationReview;
   wallet: typeof wallet;
 }> = anyApi as any;
 

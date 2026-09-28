@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { audit, fail, isAdmin, noOpenDispute, requireVerified, shipment, userBySubject } from "./lib";
+import { audit, fail, isAdmin, noOpenDispute, requireTransactionalVerification, requireVerified, shipment, userBySubject } from "./lib";
 
 export const operationKind = v.union(v.literal("payout"), v.literal("refund"));
 export function operationDto(p: Doc<"payouts">) {
@@ -38,7 +38,7 @@ async function eligibility(ctx: MutationCtx, s: Doc<"shipments">, p: Doc<"paymen
     const receiptAt = s.deliveredAt ?? (s.releaseApproved ? adjudicatedAt : 0);
     const eligibleAt = Math.max(s.disputeUntil ?? 0, receiptAt ? receiptAt + 24 * 60 * 60 * 1000 : 0);
     if (!eligibleAt || eligibleAt > Date.now()) fail("The 24-hour receipt/adjudication dispute window has not elapsed.");
-    const traveller = await ctx.db.get(s.travellerId); if (!traveller) fail("Traveller unavailable."); requireVerified(traveller); if (traveller.walletBlocked) fail("Traveller account is under payment review.");
+    const traveller = await ctx.db.get(s.travellerId); if (!traveller) fail("Traveller unavailable."); await requireTransactionalVerification(ctx, traveller._id); if (traveller.walletBlocked) fail("Traveller account is under payment review.");
     const bank = await ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", s.travellerId!)).first();
     if (!bank?.recipientCode || !bank.verifiedAt) fail("Traveller must resolve and verify their bank recipient before payout.");
     return bank;

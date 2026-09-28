@@ -22,6 +22,9 @@
 .form-stack textarea{resize:vertical;min-height:110px}
 .form-stack small{color:var(--muted);line-height:1.6}
 .button.primary{background:var(--forest);color:#fff}
+.button.danger{background:#dc2626;color:#fff}
+.button.danger:hover{background:#b91c1c}
+.button.wide{width:100%}
 .text-button{display:inline-flex;align-items:center;gap:6px;color:var(--forest-deep);font-size:13px;font-weight:600;padding:0;margin-top:4px}
 .setup-list{margin:0;padding-left:18px;color:var(--ds-color-text-secondary);display:flex;flex-direction:column;gap:8px}
 .notice{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:14px;background:#eef6f0;color:var(--forest-deep);font-size:13px;line-height:1.6;border:1px solid #d7eadb}
@@ -186,6 +189,19 @@
 .figma-user-field{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:16px;line-height:22px;font-weight:400;color:#374151}
 .figma-user-detail-menu{margin-top:4px}
 .figma-user-history-section{display:flex;flex-direction:column;gap:16px}
+.figma-evidence-meta{width:944px;max-width:100%;display:flex;flex-wrap:wrap;gap:12px}
+.figma-evidence-meta span{min-width:150px;display:flex;flex-direction:column;gap:4px;padding:12px 14px;border:1px solid #F3F3F3;border-radius:10px;background:#FFFFFF;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;color:#374151}
+.figma-evidence-meta strong{font-size:11px;line-height:14px;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF}
+.figma-evidence-grid{width:944px;max-width:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.figma-evidence-card{min-width:0;overflow:hidden;display:flex;flex-direction:column;gap:14px;padding:14px;border:1px solid #E5E7EB;border-radius:12px;background:#FFFFFF}
+.figma-evidence-card>img,.figma-evidence-card>iframe{width:100%;height:260px;border:0;border-radius:8px;background:#F7F7F8;object-fit:contain}
+.figma-evidence-preview-empty{height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border-radius:8px;background:#F7F7F8;color:#9CA3AF;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px}
+.figma-evidence-copy{display:flex;flex-direction:column;gap:4px;min-width:0;font-family:"Work Sans",Arial,Helvetica,sans-serif}
+.figma-evidence-copy strong{overflow-wrap:anywhere;font-size:14px;line-height:20px;color:#1F2937}
+.figma-evidence-copy span{font-size:12px;line-height:17px;color:#6B7280}
+.figma-evidence-card .button{align-self:flex-start}
+.figma-evidence-state{width:944px;max-width:100%;padding:16px;border:1px dashed #D1D5DB;border-radius:12px;background:#FFFFFF;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#6B7280}
+.figma-evidence-state.error{border-color:#FECACA;background:#FEF2F2;color:#991B1B}
 .figma-user-history-row{display:flex;gap:16px;flex-wrap:wrap}
 .figma-history-card{width:284px;min-height:170px;background:#FFFFFF;border:1px solid #F3F3F3;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px}
 .figma-history-status-row{display:flex;align-items:center;gap:8px}
@@ -215,6 +231,95 @@
 .figma-review-row span{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;font-weight:400;color:#374151;overflow-wrap:anywhere}
 .figma-review-row small{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;font-weight:400;color:#9CA3AF}
 .figma-review-note{width:284px;max-width:100%;padding:16px;border-radius:12px;background:#FFFFFF;border:1px solid #F3F3F3;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;font-weight:400;color:#374151}
+
+/* Compliance review enhancements */
+.figma-review-header{display:flex;flex-direction:column;gap:20px;padding:24px;background:#FFFFFF;border:1px solid #F3F3F3;border-radius:16px}
+.figma-review-header-top{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}
+.figma-review-header-title{display:flex;flex-direction:column;gap:6px}
+.figma-review-header-title h1{margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:24px;line-height:32px;font-weight:600;color:#1F2937}
+.figma-review-header-title .subtitle{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#6B7280}
+.figma-review-status{display:flex;align-items:center;gap:12px}
+.figma-review-status-badge{display:inline-flex;align-items:center;padding:8px 16px;border-radius:999px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;font-weight:600;text-transform:capitalize}
+.figma-review-status-badge.verified{background:#EAF5F0;color:#15803D}
+.figma-review-status-badge.rejected{background:#FFF2F2;color:#B42318}
+.figma-review-status-badge.pending{background:#F7F7F8;color:#374151;border:1px solid #E5E7EB}
+
+.figma-review-summary{display:flex;gap:24px;padding:20px;background:#FFFFFF;border:1px solid #F3F3F3;border-radius:16px}
+.figma-review-summary-avatar{width:80px;height:80px;border-radius:40px;background:#D5F6E6;display:grid;place-items:center;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:28px;line-height:1;font-weight:500;color:#27AB6B;flex-shrink:0}
+.figma-review-summary-content{flex:1;display:flex;flex-direction:column;gap:8px}
+.figma-review-summary-name{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.figma-review-summary-name h2{margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:22px;line-height:28px;font-weight:600;color:#1F2937}
+.figma-review-summary-field{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#4B5563}
+.figma-review-summary-field strong{font-weight:600;color:#1F2937}
+
+.figma-review-section{background:#FFFFFF;border:1px solid #F3F3F3;border-radius:16px;overflow:hidden}
+.figma-review-section-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #F3F3F3;background:#FAFAFA}
+.figma-review-section-header h3{margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:16px;line-height:24px;font-weight:600;color:#1F2937}
+.figma-review-section-body{padding:20px;display:flex;flex-direction:column;gap:16px}
+
+.figma-review-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.figma-review-grid-item{display:flex;flex-direction:column;gap:4px}
+.figma-review-grid-label{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF}
+.figma-review-grid-value{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1F2937}
+
+.figma-review-meta{display:flex;flex-wrap:wrap;gap:12px;padding:16px;background:#FAFAFA;border-radius:12px;border:1px solid #F3F3F3}
+.figma-review-meta-item{display:flex;flex-direction:column;gap:4px;min-width:140px;flex:1}
+.figma-review-meta-label{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:10px;line-height:13px;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF}
+.figma-review-meta-value{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;font-weight:500;color:#1F2937}
+
+.figma-review-score{display:flex;align-items:center;gap:12px;padding:16px;background:#FAFAFA;border-radius:12px;border:1px solid #F3F3F3}
+.figma-review-score-circle{width:56px;height:56px;border-radius:50%;background:conic-gradient(var(--ds-color-brand-primary) calc(var(--score) * 3.6deg), #E5E7EB 0deg);display:grid;place-items:center;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:18px;line-height:1;font-weight:600;color:#1F2937}
+.figma-review-score-circle::before{content:"";width:40px;height:40px;border-radius:50%;background:#FFFFFF}
+.figma-review-score-content{display:flex;flex-direction:column;gap:4px}
+.figma-review-score-label{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;text-transform:uppercase;letter-spacing:.06em;color:#9CA3AF}
+.figma-review-score-value{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:20px;line-height:28px;font-weight:600;color:#1F2937}
+
+.figma-review-flag{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:10px;background:#FFFFFF;border:1px solid #F3F3F3;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;color:#374151}
+.figma-review-flag.warning{border-color:#FDE68A;background:#FFFBEB}
+.figma-review-flag.error{border-color:#FECACA;background:#FEF2F2}
+.figma-review-flag.info{border-color:#BFDBFE;background:#EFF6FF}
+.figma-review-flag-icon{flex-shrink:0;width:18px;height:18px}
+.figma-review-flag-text{flex:1}
+.figma-review-flag-severity{font-weight:600;text-transform:capitalize}
+
+.figma-review-evidence{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.figma-review-evidence-card{display:flex;flex-direction:column;gap:12px;padding:16px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;transition:box-shadow .16s,border-color .16s}
+.figma-review-evidence-card:hover{box-shadow:0 8px 24px rgba(17,24,39,.1);border-color:#D1D5DB}
+.figma-review-evidence-card.unavailable{opacity:.6;background:#F9FAFB}
+.figma-review-evidence-preview{width:100%;height:180px;border-radius:8px;background:#F7F7F8;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.figma-review-evidence-preview img{width:100%;height:100%;object-fit:cover}
+.figma-review-evidence-preview iframe{width:100%;height:100%;border:0}
+.figma-review-evidence-preview-empty{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#9CA3AF;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px}
+.figma-review-evidence-info{display:flex;flex-direction:column;gap:6px;min-width:0}
+.figma-review-evidence-filename{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;font-weight:500;color:#1F2937;overflow-wrap:anywhere}
+.figma-review-evidence-meta{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:12px;line-height:17px;color:#6B7280}
+.figma-review-evidence-actions{display:flex;gap:8px;margin-top:4px}
+
+.figma-review-closed{border-left:4px solid var(--ds-color-border-subtle);padding:16px 20px;background:#FAFAFA;border-radius:0 0 16px 16px}
+.figma-review-closed-header{display:flex;align-items:center;gap:10px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#374151}
+.figma-review-closed-header .icon{color:#27AB6B}
+.figma-review-closed-note{margin-top:8px;padding:12px 14px;background:#FFFFFF;border:1px solid #F3F3F3;border-radius:10px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;color:#374151}
+
+.figma-review-form{padding:24px;background:#FFFFFF;border-top:1px solid #F3F3F3}
+.figma-review-form-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #F3F3F3}
+.figma-review-form-header h3{margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:18px;line-height:24px;font-weight:600;color:#1F2937}
+
+.form-stack .required-field{background:#FEF2F2;color:#B42318}
+
+@media(max-width:760px){
+  .figma-review-header{padding:16px}
+  .figma-review-header-title h1{font-size:20px}
+  .figma-review-summary{padding:16px;flex-direction:column}
+  .figma-review-summary-avatar{width:64px;height:64px;border-radius:32px;font-size:22px}
+  .figma-review-section-body{padding:16px}
+  .figma-review-grid{grid-template-columns:1fr}
+  .figma-review-evidence{grid-template-columns:1fr}
+  .figma-review-form{padding:16px}
+}
+.form-stack .confirmation-check{display:flex;flex-direction:row;align-items:flex-start;gap:10px;padding:12px 14px;border:1px solid #E5E7EB;border-radius:12px;background:#FFFFFF;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;line-height:19px;font-weight:500;color:#374151;cursor:pointer}
+.form-stack .confirmation-check input{width:18px;min-width:18px;height:18px;min-height:18px;margin:1px 0 0;padding:0;accent-color:#27AB6B;cursor:pointer}
+.review-readiness{margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#6B7280}
+.required-field{align-self:flex-start;padding:2px 7px;border-radius:999px;background:#FEF2F2;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:10px;line-height:14px;font-weight:600;color:#B42318}
 .main-shell-verifications{margin-left:297px}
 .main-content-verifications{padding:40px 30px 0;background:#F8F4FB;min-height:960px}
 .figma-payments-page{width:100%;display:flex;flex-direction:column;gap:28px}
@@ -233,6 +338,23 @@
 .figma-payments-pagination button{min-width:30px;height:30px;padding:0 10px;border-radius:15px;border:1px solid #E5E7EB;background:#FFFFFF;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:12px;line-height:14px;font-weight:500;color:#374151}
 .figma-payments-pagination button.active{background:var(--ds-color-action-primary);color:#FFFFFF;border-color:#34D186}
 .figma-payments-pagination button:disabled{opacity:.45}
+.figma-routes-page{width:100%;display:flex;flex-direction:column;gap:28px}
+.figma-routes-header h1{margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:24px;line-height:31px;font-weight:500;letter-spacing:-.02em;color:#1F2937}
+.figma-routes-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,249.75px));gap:28px}
+.figma-routes-controls{display:flex;justify-content:space-between;align-items:center;gap:16px;width:100%}
+.figma-routes-controls-left{display:flex;align-items:center;gap:16px;width:676.5px;max-width:100%}
+.figma-routes-table-wrap{width:100%;background:#FFFFFF;border:1px solid #F3F3F3;border-radius:12px;overflow:hidden}
+.figma-routes-table{width:100%;border-collapse:collapse}
+.figma-routes-table th{padding:13px 16px;text-align:left;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:16px;font-weight:500;color:#1F2937;border-bottom:1px solid #F3F3F3;background:#FFFFFF}
+.figma-routes-table td{padding:20px 16px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:16px;line-height:22px;font-weight:400;color:#374151;border-top:1px solid #F3F3F3;vertical-align:middle}
+.figma-route-status{display:inline-flex;align-items:center;padding:6px 11px;border-radius:21px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:16px;font-weight:500}
+.figma-route-status.active{background:#EAF5F0;color:#27AB6B}
+.figma-route-status.completed{background:#F0FDF4;color:#15803D}
+.figma-route-status.cancelled{background:#FFF2F2;color:#B42318}
+.figma-routes-pagination{display:flex;justify-content:flex-end;align-items:center;gap:8px}
+.figma-routes-pagination button{min-width:30px;height:30px;padding:0 10px;border-radius:15px;border:1px solid #E5E7EB;background:#FFFFFF;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:12px;line-height:14px;font-weight:500;color:#374151}
+.figma-routes-pagination button.active{background:var(--ds-color-action-primary);color:#FFFFFF;border-color:#27AB6B}
+.figma-routes-pagination button:disabled{opacity:.45}
 .figma-support-page{width:100%;display:flex;flex-direction:column;gap:28px;padding:0 30px}
 .figma-support-page-conv{padding:0}
 .figma-support-header h1{margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:24px;line-height:31px;font-weight:500;letter-spacing:-.02em;color:#1F2937}
@@ -618,6 +740,9 @@
   .figma-user-summary{width:100%}
   .figma-deliveries-controls{flex-direction:column;align-items:stretch}
   .figma-deliveries-controls-left{width:100%}
+  .figma-routes-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .figma-routes-controls{flex-direction:column;align-items:stretch}
+  .figma-routes-controls-left{width:100%}
 }
 
 @media(max-width:760px){
@@ -641,6 +766,10 @@
   .figma-payments-controls-left{width:100%;flex-direction:column;align-items:stretch}
   .figma-payments-kpis{grid-template-columns:1fr}
   .figma-payments-pagination{justify-content:flex-start;flex-wrap:wrap}
+  .figma-routes-controls,.figma-routes-table-wrap{width:100%}
+  .figma-routes-controls-left{width:100%;flex-direction:column;align-items:stretch}
+  .figma-routes-kpis{grid-template-columns:1fr}
+  .figma-routes-pagination{justify-content:flex-start;flex-wrap:wrap}
   .figma-support-tabs{width:100%}
   .figma-support-page{padding:0 20px}
   .figma-support-page-conv{padding:0}
@@ -697,3 +826,214 @@
 .support-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .support-editor { width: min(580px, 95vw); max-height: 90vh; overflow: auto; padding: 28px; }
 @media (max-width: 1000px) { .support-detail-grid { grid-template-columns: 1fr; } .support-heading { flex-wrap: wrap; } }
+
+/* ===== Figma detail drawer ===== */
+.drawer{position:fixed;top:0;right:0;bottom:0;left:auto;z-index:45;margin:0;padding:0;width:min(580px,100%);max-width:100%;max-height:100%;height:100%;border:0;border-left:1px solid #F3F3F3;background:#FFFFFF;box-shadow:-20px 0 46px #193A2814;display:flex;flex-direction:column;overflow:hidden}
+.drawer::backdrop{background:#193A285C;backdrop-filter:blur(2px)}
+.drawer .eyebrow{margin:0 0 7px}
+.drawer [class$="-detail-title"],.drawer .parcel-detail-title,.drawer .person-detail-title{gap:12px}
+.drawer[open]{animation:pasengerDrawerIn .22s ease-out}
+@keyframes pasengerDrawerIn{from{transform:translateX(18px);opacity:0}to{transform:translateX(0);opacity:1}}
+.drawer:focus{outline:none}
+.drawer-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:30px 30px 22px;border-bottom:1px solid #F3F3F3}
+.drawer-header .eyebrow{margin:0 0 8px;color:#79847A99;font-size:9px;font-weight:800;letter-spacing:1.6px}
+.drawer-header h2{margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:23px;line-height:1.2;font-weight:600;letter-spacing:-.6px;color:var(--ink)}
+.drawer-header .icon-button{border:0;background:#F4F6F1;color:#6b7d59;border-radius:9px;width:40px;height:40px;display:grid;place-items:center}
+.drawer-header .icon-button:hover{background:#EAEEE6;color:#27AB6B}
+.drawer-content{flex:1;overflow-y:auto;padding:26px 30px 30px;overscroll-behavior:contain}
+.drawer-content dl.detail-grid{padding-bottom:8px}
+.drawer-footer{display:flex;align-items:center;gap:10px;padding:16px 30px;border-top:1px solid #F3F3F3;color:#79847A99;background:#FCFDFB;font-size:11px}
+.drawer-footer svg{color:#27AB6B}
+.drawer-footer kbd{margin-left:auto;font-family:inherit;font-size:9px;border:1px solid #E4E9E4;border-radius:5px;padding:2px 6px;background:#FFFFFF;color:#657369;box-shadow:0 1px 0 #E4E9E4}
+
+.avatar{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:34px;background:linear-gradient(180deg,#E4F3E6,#D2E9D6);color:#2C7A4F;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:.5px;flex-shrink:0}
+.avatar.small{width:26px;height:26px;font-size:9px}
+.avatar:hover{box-shadow:0 0 0 2px #FFFFFF,0 0 0 3.5px #BFE3C9}
+
+.person-detail-button{display:flex;align-items:center;gap:12px;width:100%;padding:11px 13px;margin-top:18px;border:1px solid #EDF1EB;border-radius:12px;background:#FFFFFF;text-align:left;cursor:pointer}
+.person-detail-button .avatar{border:1px solid #DDEDE0}
+.person-detail-button span:not(.avatar){display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.person-detail-button small{font-size:8px;font-weight:800;letter-spacing:1px;color:#79847A99}
+.person-detail-button strong{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;font-weight:600;color:var(--ink)}
+.person-detail-button svg{color:#27AB6B}
+.person-detail-button:hover{border-color:#CFE9D8;box-shadow:0 1px 0 #C9E4D2}
+
+.related-parcel{display:flex;align-items:center;gap:12px;width:100%;padding:13px;margin-top:10px;border:1px solid #EDF1EB;border-radius:12px;background:#FFFFFF;text-align:left;cursor:pointer}
+.related-parcel svg{color:#27AB6B;flex-shrink:0}
+.related-parcel>span:nth-child(2){display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.related-parcel strong{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;color:var(--ink)}
+.related-parcel small{font-size:11px;color:#79847A99}
+.related-parcel:hover{border-color:#CFE9D8}
+
+.journey-stops{list-style:none;margin:4px 0 6px;padding:0;display:flex;flex-direction:column}
+.journey-stops li{display:flex;align-items:flex-start;gap:12px;position:relative;padding:11px 0}
+.journey-stops li+li::before{content:"";position:absolute;left:8px;top:-12px;height:24px;width:2px;background:#CBE6D3}
+.journey-stops li svg{position:relative;z-index:1;color:#27AB6B;background:#FFFFFF;padding:1px;margin-top:1px;flex-shrink:0}
+.journey-stops li strong{display:block;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;color:var(--ink)}
+.journey-stops li span{display:block;font-size:11px;color:#79847A99;margin-top:3px;line-height:1.45;max-width:52ch}
+.journey-stops li small{font-size:9px;font-weight:800;letter-spacing:.5px;color:#8EA28F;text-transform:uppercase;margin-left:auto;margin-top:3px;white-space:nowrap}
+
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;margin:0;padding:20px 0 4px;list-style:none}
+.detail-grid>div{display:flex;flex-direction:column;gap:3px}
+.detail-grid dt{font-size:8px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#79847A99}
+.detail-grid dd{margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;font-weight:500;color:var(--ink);overflow-wrap:anywhere;white-space:pre-wrap}
+.detail-grid dd button{font-size:inherit;color:#27AB6B}
+
+.detail-heading{margin:24px 0 4px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:15px;font-weight:600;letter-spacing:-.2px;color:var(--ink)}
+.journey-stops~.detail-heading,
+.journey-stops~.detail-grid{margin-top:18px}
+.detail-heading+.detail-grid{padding-top:8px}
+.description-box{margin:6px 0 0;padding:13px 14px;border-radius:10px;background:#F6F8F3;border:1px solid #EDF1EB;color:#4a5a46;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;line-height:1.55}
+.description-box+.notice,.detail-grid+.notice{margin-top:20px}
+.notice{display:flex;align-items:flex-start;gap:8px;padding:12px 14px;border-radius:10px;background:#F1F7F2;border:1px solid #DFEEE2;color:#45614a;font-size:11.5px;line-height:1.55}
+.notice svg{flex-shrink:0;color:#2C7A4F}
+.empty{text-align:center;padding:34px 16px;color:#79847A99;font-size:12px}
+.empty svg{margin:0 auto 10px;color:#C1CBAE}
+
+.parcel-detail-title,.dispute-detail-heading,.person-detail-title{display:flex;align-items:center;gap:12px;padding-bottom:18px;border-bottom:1px solid #F3F3F3;margin:4px 0 0}
+.parcel-icon{width:46px;height:46px;border-radius:12px;background:linear-gradient(180deg,#E4F3E6,#D2E9D6);color:#2C7A4F;display:grid;place-items:center;flex-shrink:0}
+.parcel-detail-title>div:last-child,.dispute-detail-heading>div:last-child,.person-detail-title>div:last-child{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.parcel-detail-title h3,.dispute-detail-heading h3,.person-detail-title h3{margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:18px;font-weight:600;letter-spacing:-.3px;color:var(--ink)}
+.parcel-detail-title span,.dispute-detail-heading span{font-size:11px;color:#79847A99}
+.detail-route{display:flex;align-items:center;gap:12px;padding:16px 0 2px;margin:0}
+.detail-route>div{display:flex;align-items:center;gap:10px;min-width:0}
+.detail-route svg{color:#27AB6B;flex-shrink:0}
+.detail-route div>span{display:flex;flex-direction:column;gap:1px}
+.detail-route small{font-size:8px;font-weight:800;letter-spacing:1px;color:#79847A99}
+.detail-route strong{font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;color:var(--ink)}
+.detail-route strong:last-child{margin-left:auto;text-align:right}
+.route-connector{flex:1;height:1px;background:repeating-linear-gradient(90deg,#D5E6DA 0 4px,transparent 4px 8px);min-width:18px;margin:0 2px}
+.parcel-detail-title+.detail-route{margin-top:2px}
+
+.guide-hero{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;padding:28px 20px 18px}
+.guide-hero svg{color:#27AB6B}
+.guide-hero h3{margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:20px;font-weight:600;letter-spacing:-.4px;color:var(--ink)}
+.guide-hero p{margin:0;font-size:12px;color:#79847A99}
+.guide-step{display:flex;gap:14px;padding:16px 4px;border-top:1px solid #F3F3F3}
+.guide-step h4{margin:0 0 4px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;color:var(--ink)}
+.guide-step p{margin:0;font-size:12px;line-height:1.55;color:#53615cfb}
+.guide-step svg{color:#27AB6B;flex-shrink:0}
+
+/* Figma Compliance Layout */
+.figma-compliance-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 32px;
+  align-items: flex-start;
+  width: 100%;
+}
+.figma-compliance-main {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+.figma-compliance-sidebar {
+  position: sticky;
+  top: 90px;
+  background: #FFFFFF;
+  border: 1px solid #F3F3F3;
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.04);
+}
+@media (max-width: 1000px) {
+  .figma-compliance-layout {
+    grid-template-columns: 1fr;
+  }
+  .figma-compliance-sidebar {
+    position: static;
+  }
+}
+
+/* Decision Toggle */
+.figma-decision-toggle {
+  display: flex;
+  gap: 12px;
+}
+.figma-decision-toggle label {
+  flex: 1;
+  cursor: pointer;
+  margin: 0;
+}
+.figma-decision-toggle input[type="radio"] {
+  display: none;
+}
+.figma-decision-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 16px;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  background: #F9FAFB;
+  font-family: "Work Sans", Arial, Helvetica, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  transition: all 0.2s;
+  text-align: center;
+}
+.figma-decision-toggle input[type="radio"]:checked + .figma-decision-card.approve {
+  background: #EAF5F0;
+  border-color: #34D186;
+  color: #1F8253;
+}
+.figma-decision-toggle input[type="radio"]:checked + .figma-decision-card.reject {
+  background: #FEF2F2;
+  border-color: #F87171;
+  color: #B91C1C;
+}
+
+.figma-compliance-sidebar .detail-heading {
+  font-family: "Work Sans", Arial, Helvetica, sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1F2937;
+  margin-bottom: 4px;
+}
+
+/* Fix sidebar text sizes */
+.figma-compliance-sidebar .detail-heading {
+  font-size: 20px;
+}
+.figma-decision-card {
+  font-size: 16px;
+}
+.figma-compliance-sidebar .form-stack label {
+  font-size: 14px;
+}
+.figma-compliance-sidebar .form-stack textarea {
+  font-size: 16px;
+}
+.figma-compliance-sidebar .confirmation-check {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.figma-compliance-sidebar .button {
+  font-size: 16px;
+  min-height: 48px;
+}
+
+/* Increase titles universally for the compliance redesign */
+.figma-user-detail-title-wrap h1 {
+  font-size: 28px !important;
+  line-height: 36px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.02em !important;
+}
+
+.figma-section-title {
+  font-size: 22px !important;
+  line-height: 28px !important;
+  font-weight: 600 !important;
+}
+
+.figma-compliance-sidebar .detail-heading {
+  font-size: 22px !important;
+  line-height: 28px !important;
+  font-weight: 600 !important;
+  margin-bottom: 12px !important;
+}

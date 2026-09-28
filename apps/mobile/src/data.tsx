@@ -1,13 +1,15 @@
-import React, { createContext, useContext, useMemo } from "react";
+import React, { createContext, useContext, useEffect, useMemo } from "react";
 import { Linking } from "react-native";
 import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import * as FileSystem from "expo-file-system/legacy";
+import { File as ExpoFile } from "expo-file-system";
+import { fetch as expoFetch } from "expo/fetch";
 import { useNetworkState } from "expo-network";
 import { api } from "@passenger/backend/convex/_generated/api";
 import type { Id } from "@passenger/backend/convex/_generated/dataModel";
-import { isValidPhone, normalizePhone, validateShipment, validateTrip } from "@passenger/core";
-import type { CreateShipmentInput, CreateTripInput, DashboardSnapshot, DocumentType } from "@passenger/core";
+import { isPlaceholderPhone, isValidPhone, normalizePhone, validateShipment, validateTrip } from "@passenger/core";
+import type { CreateShipmentInput, CreateTripInput, DashboardSnapshot, DocumentType, IdentityNumberType } from "@passenger/core";
 import { openAuthSignInScreen } from "./auth";
 
 export interface PassengerData {
@@ -17,7 +19,7 @@ export interface PassengerData {
   authError?: string;
   createShipment: (input: CreateShipmentInput) => Promise<void>;
   updateShipment: (shipmentId: string, input: CreateShipmentInput) => Promise<void>;
-  createTrip: (input: CreateTripInput) => Promise<void>;
+  createTrip: (input: CreateTripInput, clientRequestId?: string) => Promise<void>;
   updateTrip: (tripId: string, input: CreateTripInput) => Promise<void>;
   matchShipment: (shipmentId: string, tripId: string, input: { expiresAt: number; note: string }) => Promise<void>;
   acceptOffer: (offerId: string) => Promise<void>;
@@ -32,10 +34,13 @@ export interface PassengerData {
   pay: (shipmentId: string) => Promise<void>;
   ensureProfile: (name: string, phone: string) => Promise<void>;
   bootstrapProfile: () => Promise<void>;
+  normalizeUnverifiedPhone: () => Promise<void>;
   completeActivation: () => Promise<void>;
   saveActivationName: (name: string) => Promise<void>;
   requestPhoneVerification: (phone: string) => Promise<{ phone: string; resendAt: number; expiresAt: number; skipped?: boolean }>;
   confirmPhoneVerification: (code: string) => Promise<void>;
+  initiateIdentityNumberVerification: (input: { type: IdentityNumberType; identityNumber: string }) => Promise<{ identityId: string; type: IdentityNumberType; message: string }>;
+  verifyIdentityNumberOtp: (input: { type: IdentityNumberType; identityId: string; otp: string }) => Promise<{ type: IdentityNumberType; verifiedAt: number; fullName: string }>;
   updateParcelLocation: (shipmentId: string, input: { latitude: number; longitude: number; place: string }) => Promise<void>;
   updateContactDetails: (input: { email?: string; name?: string; image?: string }) => Promise<void>;
   updateProfileImage: (input: { uri: string; contentType?: string }) => Promise<void>;
@@ -74,6 +79,20 @@ export const shipmentId = (id: string) => id as Id<"shipments">;
 export const tripId = (id: string) => id as Id<"trips">;
 export const offerId = (id: string) => id as Id<"offers">;
 
+async function withResponseDeadline<T>(request: Promise<T>, message: string, timeoutMs = 15_000): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      request,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 export function LiveDataProvider({ children }: React.PropsWithChildren) {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const network = useNetworkState();
@@ -96,10 +115,13 @@ export function LiveDataProvider({ children }: React.PropsWithChildren) {
   const payment = useAction(api.payments.initialize);
   const profile = useMutation(api.accounts.ensureProfile);
   const bootstrapProfile = useMutation(api.accounts.bootstrapProfile);
+  const normalizeUnverifiedPhone = useMutation(api.accounts.normalizeUnverifiedPhone);
   const completeActivation = useMutation(api.accounts.completeActivation);
   const saveActivationName = useMutation(api.accounts.saveActivationName);
   const requestPhoneVerification = useAction(api.accounts.requestPhoneVerification);
   const confirmPhoneVerification = useAction(api.accounts.confirmPhoneVerification);
+  const initiateIdentityNumberVerification = useAction(api.accounts.initiateIdentityNumberVerification);
+  const verifyIdentityNumberOtp = useAction(api.accounts.verifyIdentityNumberOtp);
   const updateParcelLocation = useMutation(api.deliveries.updateLocation);
   const updateContactDetails = useMutation(api.accounts.updateContactDetails);
   const submitIdentity = useMutation(api.accounts.submitIdentity);
@@ -111,6 +133,11 @@ export function LiveDataProvider({ children }: React.PropsWithChildren) {
   const initializeTopUp = useAction(api.wallet.initializeTopUp);
   const verifyTopUp = useAction(api.wallet.verifyTopUp);
   const { signOut } = useAuthActions();
+  useEffect(() => {
+    const viewer = snapshot?.viewer;
+    if (!isAuthenticated || !viewer || viewer.phoneVerificationTime || viewer.phone.trim() === "") return;
+    void normalizeUnverifiedPhone({});
+  }, [isAuthenticated, normalizeUnverifiedPhone, snapshot?.viewer?.id, snapshot?.viewer?.phone, snapshot?.viewer?.phoneVerificationTime]);
   const actions = useMemo<PassengerActions>(() => {
     const connected = () => { if (offline) throw new Error("You're offline. Reconnect before making changes. Nothing has been submitted."); };
     return {
@@ -126,7 +153,14 @@ export function LiveDataProvider({ children }: React.PropsWithChildren) {
       validateShipment(normalized);
       await updateShipment({ shipmentId: shipmentId(id), ...normalized, evidenceIds: normalized.evidenceIds.map(evidenceId => evidenceId as Id<"evidence">) });
     },
-    createTrip: async input => { connected(); validateTrip(input); await createTrip(input); },
+    createTrip: async (input, clientRequestId) => {
+      connected();
+      validateTrip(input);
+      await withResponseDeadline(
+        createTrip({ ...input, ...(clientRequestId ? { clientRequestId } : {}) }),
+        "Passenger did not receive a response while publishing your trip. Check your connection and try again; the same trip will not be duplicated.",
+      );
+    },
     updateTrip: async (id, input) => { connected(); validateTrip(input); await updateTrip({ tripId: tripId(id), ...input }); },
     matchShipment: async (id, tId, input) => { connected(); await match({ shipmentId: shipmentId(id), tripId: tripId(tId), ...input }); },
     acceptOffer: async id => { connected(); await acceptOffer({ offerId: offerId(id) }); },
@@ -150,16 +184,26 @@ export function LiveDataProvider({ children }: React.PropsWithChildren) {
     },
     ensureProfile: async (name, phone) => { connected(); if (!name.trim() || name.length > 120 || !isValidPhone(phone)) throw new Error("Enter your name and a valid phone number."); await profile({ name, phone: normalizePhone(phone) }); },
     bootstrapProfile: async () => { connected(); await bootstrapProfile({}); },
+    normalizeUnverifiedPhone: async () => { connected(); await normalizeUnverifiedPhone({}); },
     completeActivation: async () => { connected(); await completeActivation({}); },
     saveActivationName: async name => { connected(); await saveActivationName({ name }); },
     requestPhoneVerification: async phone => { connected(); return requestPhoneVerification({ phone: normalizePhone(phone) }); },
     confirmPhoneVerification: async code => { connected(); await confirmPhoneVerification({ code }); },
+    initiateIdentityNumberVerification: async input => { connected(); return await initiateIdentityNumberVerification(input); },
+    verifyIdentityNumberOtp: async input => { connected(); return await verifyIdentityNumberOtp(input); },
     updateParcelLocation: async (id, input) => { connected(); await updateParcelLocation({ shipmentId: shipmentId(id), ...input }); },
     updateContactDetails: async input => { connected(); await updateContactDetails(input); },
     submitIdentity: async input => {
       connected();
-      const normalizedPhone = normalizePhone(input.phone);
-      await submitIdentity({ ...input, phone: normalizedPhone, evidenceIds: input.evidenceIds.map(id => id as Id<"evidence">) });
+      let phone = input.phone || "";
+      if (!isPlaceholderPhone(phone)) {
+        try {
+          phone = normalizePhone(phone);
+        } catch {
+          // Keep raw phone so backend can safely process or preserve user.phone
+        }
+      }
+      await submitIdentity({ ...input, phone, evidenceIds: input.evidenceIds.map(id => id as Id<"evidence">) });
     },
     requestAccountDeletion: async () => { connected(); await requestAccountDeletion({}); },
     updateProfileImage: async ({ uri, contentType }) => {
@@ -167,12 +211,12 @@ export function LiveDataProvider({ children }: React.PropsWithChildren) {
       const uploadUrl = await generateProfileImageUploadUrl({});
       const info = await FileSystem.getInfoAsync(uri);
       if (!info.exists || info.isDirectory) throw new Error("Passenger could not read that photo from your device.");
-      let response: FileSystem.FileSystemUploadResult;
+      let response: Awaited<ReturnType<typeof expoFetch>>;
       try {
-        response = await FileSystem.uploadAsync(uploadUrl, uri, {
-          httpMethod: "POST",
-          uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        response = await expoFetch(uploadUrl, {
+          method: "POST",
           headers: { "Content-Type": contentType || "image/jpeg" },
+          body: new ExpoFile(uri),
         });
       } catch {
         throw new Error("We could not upload your profile photo. Please check your connection and try again.");
@@ -180,7 +224,7 @@ export function LiveDataProvider({ children }: React.PropsWithChildren) {
       if (response.status < 200 || response.status >= 300) throw new Error("The profile photo upload failed. Please try again.");
       let payload: { storageId?: Id<"_storage"> };
       try {
-        payload = JSON.parse(response.body) as { storageId?: Id<"_storage"> };
+        payload = (await response.json()) as { storageId?: Id<"_storage"> };
       } catch {
         throw new Error("Unable to read the profile photo upload response. Please try again.");
       }
@@ -215,6 +259,8 @@ export function LiveDataProvider({ children }: React.PropsWithChildren) {
     completeActivation,
     cancel,
     confirmPhoneVerification,
+    initiateIdentityNumberVerification,
+    verifyIdentityNumberOtp,
     createShipment,
     createTrip,
     declineOffer,

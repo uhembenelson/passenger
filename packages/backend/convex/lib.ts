@@ -3,6 +3,7 @@ import type { Offer, Person, Shipment, ShipmentStatus, Trip, FeeConfig, Permissi
 import { assertTransition, normalizePhone, quoteFee, routeSegment, tripRoute, validateShipment, validateTrip } from "@passenger/core";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
+import { verificationPolicy } from "./verificationPolicy";
 
 export function smsConfigured() {
   return !!(process.env.TERMII_API_KEY && process.env.TERMII_SENDER_ID);
@@ -68,20 +69,32 @@ export async function getFeeConfig(ctx: QueryCtx | MutationCtx): Promise<FeeConf
   };
 }
 
+export type TierName = "Tier 0" | "Tier 1" | "Tier 2" | "Tier 3";
+
+export function effectiveTierName(user: Pick<Doc<"users">, "kycTier" | "tier">): TierName | null {
+  if (user.kycTier !== undefined) return `Tier ${user.kycTier}` as TierName;
+  if (user.tier === "Tier 1" || user.tier === "Tier 2" || user.tier === "Tier 3") return user.tier;
+  return null;
+}
+
 export type TierLimits = {
-  tier: "Tier 1" | "Tier 2" | "Tier 3";
+  tier: "No Tier" | "Tier 0" | TierName;
   maxCapacityKg: number;
   maxShipmentValueNaira: number;
 };
 
-export async function getTierLimits(ctx: QueryCtx | MutationCtx, user: Pick<Doc<"users">, "tier" | "verification">): Promise<TierLimits> {
-  const tier = user.tier ?? "Tier 1";
+export async function getTierLimits(ctx: QueryCtx | MutationCtx, user: Pick<Doc<"users">, "kycTier" | "tier">): Promise<TierLimits> {
+  const tier = effectiveTierName(user);
+  if (tier === null || tier === "Tier 0") {
+    return { tier: tier === null ? "No Tier" : "Tier 0", maxCapacityKg: 0, maxShipmentValueNaira: 0 };
+  }
   const configs = await ctx.db.query("kycTiers").withIndex("by_created").collect();
   const config = configs.find((c) => c.tierName.trim().toLowerCase() === tier.toLowerCase());
+  const fallback = tier === "Tier 1" ? verificationPolicy.tier1DefaultLimits : { maxCapacityKg: 100, maxShipmentValueNaira: 500000 };
   return {
     tier,
-    maxCapacityKg: config?.maxCapacityKg ?? 100,
-    maxShipmentValueNaira: config ? config.maxShipmentValueNaira : 500000,
+    maxCapacityKg: config?.maxCapacityKg ?? fallback.maxCapacityKg,
+    maxShipmentValueNaira: config ? config.maxShipmentValueNaira : fallback.maxShipmentValueNaira,
   };
 }
 
@@ -192,6 +205,94 @@ export const requireVerified = (user: Doc<"users">) => {
   if (user.verification !== "verified") fail("Manual identity verification is required.");
 };
 
+// Stable verification/security error codes (plan §28).
+// Frontend maps these to user-friendly messages instead of parsing strings.
+export const VERIFICATION_ERROR_CODES = {
+  VERIFICATION_REQUIRED: "VERIFICATION_REQUIRED",
+  PHONE_VERIFICATION_REQUIRED: "PHONE_VERIFICATION_REQUIRED",
+  IDENTITY_NUMBER_VERIFICATION_REQUIRED: "IDENTITY_NUMBER_VERIFICATION_REQUIRED",
+  TIER1_REQUIRED: "TIER1_REQUIRED",
+  VERIFICATION_PENDING: "VERIFICATION_PENDING",
+  VERIFICATION_REJECTED: "VERIFICATION_REJECTED",
+  ADDRESS_VERIFICATION_REQUIRED: "ADDRESS_VERIFICATION_REQUIRED",
+  ADDRESS_SESSION_EXPIRED: "ADDRESS_SESSION_EXPIRED",
+  LOCATION_ACCURACY_TOO_LOW: "LOCATION_ACCURACY_TOO_LOW",
+  ADDRESS_GEOCODING_UNAVAILABLE: "ADDRESS_GEOCODING_UNAVAILABLE",
+  EVIDENCE_REQUIRED: "EVIDENCE_REQUIRED",
+  NOT_AUTHORISED: "NOT_AUTHORISED",
+  SELF_REVIEW_NOT_ALLOWED: "SELF_REVIEW_NOT_ALLOWED",
+} as const;
+export type VerificationErrorCode = (typeof VERIFICATION_ERROR_CODES)[keyof typeof VERIFICATION_ERROR_CODES];
+
+export function failWithCode(code: VerificationErrorCode, message = ""): never {
+  throw new ConvexError({ code, message: message || code });
+}
+
+// Tier represents trust earned, not merely account status.
+// A missing tier must never be silently read as a real tier (plan §2).
+export function getUserTier(user: Pick<Doc<"users">, "kycTier">): number | null {
+  return user.kycTier ?? null;
+}
+
+export function identityStatus(user: Pick<Doc<"users">, "identityVerificationStatus">): NonNullable<Doc<"users">["identityVerificationStatus"]> {
+  return user.identityVerificationStatus ?? "unverified";
+}
+
+export function isPhoneVerified(user: Pick<Doc<"users">, "phoneVerifiedAt" | "phoneVerificationTime">): boolean {
+  return user.phoneVerifiedAt !== undefined || user.phoneVerificationTime !== undefined;
+}
+
+export function isIdentityNumberVerified(user: Pick<Doc<"users">, "identityNumberVerifiedAt" | "identityNumberVerificationType">): boolean {
+  return user.identityNumberVerifiedAt !== undefined && (user.identityNumberVerificationType === "BVN" || user.identityNumberVerificationType === "NIN");
+}
+
+export async function requireIdentityNumberVerified(ctx: QueryCtx | MutationCtx, userId: Id<"users">): Promise<Doc<"users">> {
+  const user = await ctx.db.get(userId);
+  if (!user) fail("Member not found.");
+  if (!isIdentityNumberVerified(user)) failWithCode(VERIFICATION_ERROR_CODES.IDENTITY_NUMBER_VERIFICATION_REQUIRED, "Verify your identity with BVN or NIN to continue.");
+  return user;
+}
+
+export async function requirePhoneVerified(ctx: QueryCtx | MutationCtx, userId: Id<"users">): Promise<Doc<"users">> {
+  const user = await ctx.db.get(userId);
+  if (!user) fail("Member not found.");
+  if (!isPhoneVerified(user)) failWithCode(VERIFICATION_ERROR_CODES.PHONE_VERIFICATION_REQUIRED, "Verify your phone number to continue.");
+  return user;
+}
+
+export async function requireTier(ctx: QueryCtx | MutationCtx, userId: Id<"users">, minimumTier: number): Promise<Doc<"users">> {
+  const user = await ctx.db.get(userId);
+  if (!user) fail("Member not found.");
+  const tier = getUserTier(user);
+  if (tier === null || tier < minimumTier) {
+    failWithCode(
+      minimumTier <= 1 ? VERIFICATION_ERROR_CODES.TIER1_REQUIRED : VERIFICATION_ERROR_CODES.VERIFICATION_REQUIRED,
+      "A higher verification tier is required for this action.",
+    );
+  }
+  return user;
+}
+
+export async function requireTransactionalVerification(ctx: QueryCtx | MutationCtx, userId: Id<"users">): Promise<Doc<"users">> {
+  const user = await ctx.db.get(userId);
+  if (!user) fail("Member not found.");
+  if (identityStatus(user) !== "verified" || (getUserTier(user) ?? -1) < 1) {
+    failWithCode(VERIFICATION_ERROR_CODES.VERIFICATION_REQUIRED, "Identity verification is required to send or carry packages.");
+  }
+  return user;
+}
+
+export async function markPhoneVerified(ctx: MutationCtx, user: Doc<"users">, verifiedAt = Date.now()): Promise<void> {
+  const currentTier = getUserTier(user);
+  const nextTier = Math.max(currentTier ?? 0, 0) as NonNullable<Doc<"users">["kycTier"]>;
+  await ctx.db.patch(user._id, {
+    phoneVerifiedAt: verifiedAt,
+    phoneVerificationTime: verifiedAt,
+    kycTier: nextTier,
+  });
+  await audit(ctx, user, "verification.phone_verified", currentTier === null ? "Phone number verified by one-time code. Tier 0 granted." : `Phone number verified by one-time code. Tier ${nextTier} retained.`);
+}
+
 export function person(user: Doc<"users">, privateFields = false, includeCompliance = privateFields): Person {
   return {
     id: user._id,
@@ -199,7 +300,17 @@ export function person(user: Doc<"users">, privateFields = false, includeComplia
     phone: privateFields ? user.phone : "",
     email: privateFields ? user.email : undefined,
     image: user.image,
-    tier: user.tier ?? (user.verification === "verified" ? "Tier 2" : "Tier 1"),
+    tier: effectiveTierName(user) ?? undefined,
+    kycTier: user.kycTier,
+    identityVerificationStatus: identityStatus(user),
+    identityNumberVerificationType: privateFields ? user.identityNumberVerificationType : undefined,
+    identityNumberVerifiedAt: privateFields ? user.identityNumberVerifiedAt : undefined,
+    identityNumberLast4: privateFields ? user.identityNumberLast4 : undefined,
+    identityNumberVerifiedName: privateFields ? user.identityNumberVerifiedName : undefined,
+    identityBioData: privateFields ? user.identityBioData : undefined,
+    identityFaceVerificationStatus: privateFields ? user.identityFaceVerificationStatus : undefined,
+    identityFaceVerifiedAt: privateFields ? user.identityFaceVerifiedAt : undefined,
+    phoneVerifiedAt: privateFields ? user.phoneVerifiedAt : undefined,
     verification: user.verification,
     role: isCompliance(user) ? "compliance" : isAdmin(user) ? "admin" : "member",
     joinedAt: user.joinedAt,
@@ -207,10 +318,11 @@ export function person(user: Doc<"users">, privateFields = false, includeComplia
     suspended: user.suspended ?? false,
     ...(privateFields
       ? {
-          phoneVerificationEnabled: smsConfigured(),
+          phoneVerificationEnabled: true,
           phoneVerificationTime: includeCompliance ? user.phoneVerificationTime : undefined,
           suspensionReason: user.suspensionReason,
           identityNote: includeCompliance ? user.identityNote : undefined,
+          lastVerificationReviewNote: includeCompliance ? user.lastVerificationReviewNote : undefined,
           identitySubmittedAt: includeCompliance ? user.identitySubmittedAt : undefined,
           documentType: includeCompliance ? user.documentType : undefined,
           identityEvidenceIds: includeCompliance ? user.identityEvidenceIds : undefined,

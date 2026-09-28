@@ -77,6 +77,7 @@ async function marketplaceFixture() {
     await admin.mutation(api.admin.reviewUser, {
       userId: user.id as Id<"users">,
       decision: "verified",
+      tier: "Tier 1",
       note: "Verified for marketplace testing.",
     });
   }
@@ -132,6 +133,31 @@ async function marketplaceFixture() {
 }
 
 describe("marketplace matching queries", () => {
+  it("deduplicates retried trip submissions after a delayed client response", async () => {
+    const f = await marketplaceFixture();
+    const input = {
+      origin: "Jos",
+      destination: "Abuja",
+      stops: [],
+      departureAt: Date.now() + 3 * 86_400_000,
+      arrivalAt: Date.now() + 4 * 86_400_000,
+      capacityKg: 6,
+      maxParcelWeightKg: 3,
+      acceptedCategories: ["Electronics"],
+      clientRequestId: "trip:retry-safe-123",
+    };
+
+    const first = await f.traveller1.mutation(api.marketplace.createTrip, input);
+    const retry = await f.traveller1.mutation(api.marketplace.createTrip, input);
+
+    expect(retry).toBe(first);
+    const matchingRequests = await f.t.run(ctx => ctx.db
+      .query("trips")
+      .withIndex("by_traveller_request", q => q.eq("travellerId", f.traveller1Id).eq("clientRequestId", input.clientRequestId))
+      .collect());
+    expect(matchingRequests).toHaveLength(1);
+  });
+
   it("paginates sent parcel history beyond the dashboard limit without exposing other senders", async () => {
     const f = await marketplaceFixture();
     await f.sender.run(async ctx => {

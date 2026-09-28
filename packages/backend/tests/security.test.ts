@@ -176,6 +176,71 @@ describe("identity and least privilege", () => {
     await expect(member2.action(api.accounts.requestPhoneVerification, { phone: "+2348011223344" }))
       .rejects.toThrow("already connected");
   });
+  it("still gates placeholder identity submissions behind phone verification when SMS credentials are absent", async () => {
+    vi.stubEnv("TERMII_API_KEY", "");
+    vi.stubEnv("TERMII_SENDER_ID", "");
+    const t = convexTest(schema, modules);
+    const member = t.withIdentity(identity("identity-placeholder"));
+    const profile = await member.mutation(api.accounts.bootstrapProfile, {});
+    await t.run(async ctx => ctx.db.patch(profile.id as Id<"users">, { phone: "+2340000000000", phoneVerificationTime: undefined }));
+
+    const evidenceId = await member.run(async ctx => {
+      const bytes = "identity-front";
+      const storageId = await ctx.storage.store(new Blob([bytes], { type: "image/jpeg" }));
+      return ctx.db.insert("evidence", { ownerId: profile.id as Id<"users">, storageId, purpose: "identity", filename: "identity-front.jpg", contentType: "image/jpeg", size: bytes.length, createdAt: Date.now() });
+    });
+
+    await expect(member.mutation(api.accounts.submitIdentity, { name: "Identity Member", phone: "+2340000000000", documentType: "national_id", evidenceIds: [evidenceId] })).rejects.toThrow("Verify your identity with BVN or NIN");
+  });
+  it("still gates placeholder identity submissions behind phone verification when SMS is on", async () => {
+    const t = convexTest(schema, modules);
+    const member = t.withIdentity(identity("identity-placeholder-sms"));
+    const profile = await member.mutation(api.accounts.bootstrapProfile, {});
+    await t.run(async ctx => ctx.db.patch(profile.id as Id<"users">, { phone: "+2340000000000", phoneVerificationTime: undefined }));
+    const evidenceId = await member.run(async ctx => {
+      const bytes = "identity-front";
+      const storageId = await ctx.storage.store(new Blob([bytes], { type: "image/jpeg" }));
+      return ctx.db.insert("evidence", { ownerId: profile.id as Id<"users">, storageId, purpose: "identity", filename: "identity-front.jpg", contentType: "image/jpeg", size: bytes.length, createdAt: Date.now() });
+    });
+    await expect(member.mutation(api.accounts.submitIdentity, { name: "Identity Member", phone: "+2340000000000", documentType: "national_id", evidenceIds: [evidenceId] })).rejects.toThrow("Verify your identity with BVN or NIN");
+  });
+  it("shows submitted identity files only to authorized compliance reviewers", async () => {
+    const f = await fixture();
+    const evidenceId = await f.outsider.run(async ctx => {
+      const bytes = "identity-review-file";
+      const storageId = await ctx.storage.store(new Blob([bytes], { type: "image/jpeg" }));
+      return ctx.db.insert("evidence", {
+        ownerId: f.outsiderId,
+        storageId,
+        purpose: "identity",
+        filename: "national-id.jpg",
+        contentType: "image/jpeg",
+        size: bytes.length,
+        createdAt: Date.now(),
+      });
+    });
+    const submittedAt = Date.now();
+    await f.t.run(ctx => ctx.db.patch(f.outsiderId, {
+      verification: "pending",
+      documentType: "national_id",
+      identitySubmittedAt: submittedAt,
+      identityEvidenceIds: [evidenceId],
+    }));
+
+    const adminDashboard = await f.admin.query(api.marketplace.dashboard, {});
+    expect(adminDashboard.people.find(person => person.id === f.outsiderId)).toMatchObject({
+      documentType: "national_id",
+      identitySubmittedAt: submittedAt,
+      identityEvidenceIds: [evidenceId],
+    });
+    await expect(f.admin.query(api.evidence.identityForReview, { userId: f.outsiderId })).resolves.toMatchObject({
+      documentType: "national_id",
+      submittedAt,
+      evidence: [{ id: evidenceId, available: true, filename: "national-id.jpg", url: expect.any(String) }],
+    });
+    await expect(f.outsider.query(api.evidence.identityForReview, { userId: f.outsiderId })).rejects.toThrow("Administrator access required");
+    expect(await f.outsider.query(api.evidence.get, { evidenceId })).toMatchObject({ id: evidenceId, filename: "national-id.jpg" });
+  });
   it("fails closed for prototype tier and withdrawal endpoints", async () => {
     const f = await fixture();
     await expect(f.outsider.mutation(api.accounts.upgradeToTier2, { bvn: "12345678901" })).rejects.toThrow("identity evidence");

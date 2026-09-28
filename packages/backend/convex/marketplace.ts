@@ -2,9 +2,10 @@ import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { calculateDeliveryFee, PERMISSIONS } from "@passenger/core";
 import type { CreateShipmentInput, DashboardSnapshot, PermissionKey } from "@passenger/core";
-import { tripArgs, createDefinition as createTripDefinition } from "./journeys";
+import { createTripArgs, createDefinition as createTripDefinition } from "./journeys";
 import { query, mutation } from "./_generated/server";
-import { findUserBySubject, isAdmin, isCompliance, isStaff, offerDto, participant, personDto, requireUser, requireVerified, safeNormalizePhone, safeValidateShipment, shipmentDto, tripDto, audit, requireSender, shipment, releaseCapacity, transition, fail, effectiveChatStatus } from "./lib";
+import { findUserBySubject, isAdmin, isCompliance, isStaff, offerDto, participant, personDto, requireUser, requireTransactionalVerification,
+  requireVerified, safeNormalizePhone, safeValidateShipment, shipmentDto, tripDto, audit, requireSender, shipment, releaseCapacity, transition, fail, effectiveChatStatus } from "./lib";
 import { validateEvidence } from "./evidence";
 import { proposeOffer } from "./offers";
 import { assertSupportedRoute, getServiceArea } from "./serviceArea";
@@ -260,7 +261,7 @@ export const dashboard = query({
 
     return {
       viewer: viewerMemberRecord ? { ...viewerPerson, mustChangePassword: viewerMemberRecord.mustChangePassword ?? false } : viewerPerson,
-      people: await Promise.all(users.map(u => personDto(ctx, u, adminView || u._id === viewer._id, isCompliance(viewer) || u._id === viewer._id))),
+      people: await Promise.all(users.map(u => personDto(ctx, u, adminView || u._id === viewer._id, viewerPermissions.includes(PERMISSIONS.COMPLIANCE_MANAGE) || u._id === viewer._id))),
       trips,
       shipments: await Promise.all(selected.map(s => shipmentDto(ctx, s, adminView || participant(s, viewer)))),
       events: events.map(e => ({ id: e._id, shipmentId: e.shipmentId, actorName: e.actorName, action: e.action, detail: e.detail, createdAt: e.createdAt })),
@@ -322,7 +323,7 @@ export const createShipment = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    requireVerified(user);
+    await requireTransactionalVerification(ctx, user._id);
     await assertSupportedRoute(ctx, args.origin, args.destination);
     safeValidateShipment(args satisfies CreateShipmentInput);
     const limits = await getTierLimits(ctx, user);
@@ -363,7 +364,7 @@ export const createShipment = mutation({
   },
 });
 
-export const createTrip = mutation({ args: tripArgs, handler: async (ctx, args) => createTripDefinition.handler(ctx, args) });
+export const createTrip = mutation({ args: createTripArgs, handler: async (ctx, args) => createTripDefinition.handler(ctx, args) });
 
 export const matchShipment = mutation({
   args: {

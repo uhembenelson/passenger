@@ -93,6 +93,8 @@ async function ensureVerified(ctx: MutationCtx, admin: Doc<"users">, user: Doc<"
   const reviewedAt = Date.now();
   await ctx.db.patch(user._id, {
     verification: "verified",
+    identityVerificationStatus: "verified",
+    kycTier: user.kycTier ?? 1,
     identityReviewedAt: reviewedAt,
     identityNote: `Seeded verification for ${user.name} so app scenarios are accessible.`,
   });

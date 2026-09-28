@@ -112,6 +112,11 @@ const form = StyleSheet.create({
   stops: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 14, marginBottom: 18, backgroundColor: "#FCFCF8" },
   stop: { borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 14, paddingBottom: 14 },
   stopTools: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  weightRow: { flexDirection: "row", alignItems: "center", gap: primitives.space[5] },
+  weightControl: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", borderWidth: primitives.borderWidth.sm, borderColor: semantic.color.border.action, backgroundColor: semantic.color.background.surface },
+  weightControlPressed: { backgroundColor: semantic.color.background.successSoft, transform: [{ scale: 0.96 }] },
+  weightControlDisabled: { opacity: primitives.opacity.disabled },
+  weightValue: { flex: 1, textAlign: "center", color: semantic.color.text.primary, fontSize: 30, lineHeight: 38, fontFamily: fontFamily.semibold },
   footerStack: { gap: primitives.space[2] },
 });
 
@@ -360,12 +365,19 @@ function parseLocalDateTime(value: LocalDateTime, label: string) {
 }
 
 function WeightLimit({ label, value, maximum, disabled, onChange }: { label: string; value: number; maximum: number; disabled: boolean; onChange: (value: number) => void }) {
+  const minimum = Math.min(0.5, maximum);
+  const decreaseDisabled = disabled || value <= minimum;
+  const increaseDisabled = disabled || value >= maximum;
   return <View style={[form.sectionCard, { paddingVertical: 20 }]}>
     <Txt style={form.sectionLabel}>{label}</Txt>
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 20 }}>
-      <Button title="" accessibilityLabel={`Decrease ${label.toLowerCase()}`} icon={<Minus size={22} color={colors.text} />} variant="secondary" disabled={disabled || value <= Math.min(0.5, maximum)} onPress={() => onChange(adjustWeightLimit(value, -1, maximum))} style={{ width: 52, minHeight: 52 }} />
-      <Txt accessibilityLiveRegion="polite" style={{ flex: 1, textAlign: "center", fontSize: 30, fontFamily: fontFamily.semibold }}>{value} kg</Txt>
-      <Button title="" accessibilityLabel={`Increase ${label.toLowerCase()}`} icon={<Plus size={22} color={colors.text} />} variant="secondary" disabled={disabled || value >= maximum} onPress={() => onChange(adjustWeightLimit(value, 1, maximum))} style={{ width: 52, minHeight: 52 }} />
+    <View style={form.weightRow}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Decrease ${label.toLowerCase()} by half a kilogram`} accessibilityState={{ disabled: decreaseDisabled }} disabled={decreaseDisabled} hitSlop={8} onPress={() => onChange(adjustWeightLimit(value, -1, maximum))} style={({ pressed }) => [form.weightControl, pressed && !decreaseDisabled && form.weightControlPressed, decreaseDisabled && form.weightControlDisabled]}>
+        <Minus size={24} color={semantic.color.brand.primaryStrong} strokeWidth={2.4} />
+      </Pressable>
+      <Txt accessibilityLiveRegion="polite" style={form.weightValue}>{value} kg</Txt>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Increase ${label.toLowerCase()} by half a kilogram`} accessibilityState={{ disabled: increaseDisabled }} disabled={increaseDisabled} hitSlop={8} onPress={() => onChange(adjustWeightLimit(value, 1, maximum))} style={({ pressed }) => [form.weightControl, pressed && !increaseDisabled && form.weightControlPressed, increaseDisabled && form.weightControlDisabled]}>
+        <Plus size={24} color={semantic.color.brand.primaryStrong} strokeWidth={2.4} />
+      </Pressable>
     </View>
   </View>;
 }
@@ -408,9 +420,10 @@ function accessMessage(data: ReturnType<typeof usePassenger>) {
   const viewer = data.snapshot.viewer;
   if (!viewer) return "Sign in and complete your profile before publishing or editing.";
   if (viewer.suspended) return `Your account is suspended. New parcels and trips, including edits, are unavailable. You can still access active deliveries and support.${viewer.suspensionReason ? ` Reason: ${viewer.suspensionReason}` : ""}`;
-  if (viewer.verification !== "verified") {
-    if (viewer.verification === "pending") return "Your identity is being reviewed. You can publish or edit once operations verifies your account.";
-    if (viewer.verification === "rejected") return "Your identity needs changes. Open My profile to read the review note and resubmit your evidence before publishing or editing.";
+  const identity = viewer.identityVerificationStatus ?? (viewer.verification === "required" ? "unverified" : viewer.verification);
+  if (identity !== "verified" || (viewer.kycTier ?? -1) < 1) {
+    if (identity === "pending") return "Your identity is being reviewed. You can publish or edit once operations verifies your account.";
+    if (identity === "rejected") return "Your identity needs changes. Open My profile to read the review note and resubmit your evidence before publishing or editing.";
     return "Verify your identity in My profile before publishing or editing a parcel or trip.";
   }
   return "";
@@ -518,7 +531,8 @@ export function ShipmentForm({ onClose, onSuccess, trip, shipment, draft }: { on
       <Button title={screen === "review" ? rejected ? "Resubmit parcel" : shipment ? "Save and resubmit" : "Submit for review" : uploading ? "Uploading photos" : returnToReview ? "Save changes" : "Continue"} variant="lime" onPress={screen === "review" ? submit : advance} busy={busy} disabled={disabled || uploading || (screen === "review" && !!submissionBlocker)} />
       {screen === "review" && !declared && <Txt style={[s.hint, { textAlign: "center" }]}>Confirm the declaration below your parcel details to submit.</Txt>}
     </View>}>
-    {!!blocked && (data.snapshot?.viewer && !data.offline && !data.authError && !data.authLoading && !data.snapshot.viewer.suspended && data.snapshot.viewer.verification !== "verified"
+    {!!blocked && (data.snapshot?.viewer && !data.offline && !data.authError && !data.authLoading && !data.snapshot.viewer.suspended
+      && ((data.snapshot.viewer.identityVerificationStatus ?? (data.snapshot.viewer.verification === "required" ? "unverified" : data.snapshot.viewer.verification)) !== "verified" || (data.snapshot.viewer.kycTier ?? -1) < 1)
       ? <IdentityVerificationCard viewer={data.snapshot.viewer} />
       : <View style={form.notice}><Notice tone="warning">{blocked}</Notice></View>)}
     {rejected && <View style={form.notice}><Notice tone="warning">{current?.reviewNote ? `Review note: ${current.reviewNote}` : "Update your parcel details, then send them for another review."}</Notice></View>}
@@ -601,6 +615,7 @@ export function TripForm({ onClose, onSuccess, trip }: { onClose: () => void; on
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
+  const creationRequestId = useRef(`trip:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 12)}`);
   const [saved, setSaved] = useState(false);
   const current = trip ? data.snapshot?.trips.find(item => item.id === trip.id) ?? trip : undefined;
   // These live records can prove a commitment, not prove its absence. The server
@@ -641,7 +656,7 @@ export function TripForm({ onClose, onSuccess, trip }: { onClose: () => void; on
       };
       validateTrip(input);
       if (trip) await data.updateTrip(trip.id, input);
-      else await data.createTrip(input);
+      else await data.createTrip(input, creationRequestId.current);
       setSaved(true);
     } catch (e) {
       setError(errorMessage(e));
@@ -675,7 +690,8 @@ export function TripForm({ onClose, onSuccess, trip }: { onClose: () => void; on
       {!!error && <Notice tone="error">{error}</Notice>}
       <Button title={screen === "review" ? trip ? "Save trip changes" : "Publish my trip" : returnToReview ? "Save changes" : "Continue"} variant="lime" onPress={screen === "review" ? submit : advance} busy={busy} disabled={disabled || (screen === "review" && (!agree || !acceptedCategories.length))} />
     </View>}>
-    {!!blocked && (data.snapshot?.viewer && !data.offline && !data.authError && !data.authLoading && !data.snapshot.viewer.suspended && data.snapshot.viewer.verification !== "verified"
+    {!!blocked && (data.snapshot?.viewer && !data.offline && !data.authError && !data.authLoading && !data.snapshot.viewer.suspended
+      && ((data.snapshot.viewer.identityVerificationStatus ?? (data.snapshot.viewer.verification === "required" ? "unverified" : data.snapshot.viewer.verification)) !== "verified" || (data.snapshot.viewer.kycTier ?? -1) < 1)
       ? <IdentityVerificationCard viewer={data.snapshot.viewer} />
       : <View style={form.notice}><Notice tone="warning">{blocked}</Notice></View>)}
     {trip && !observedCommitment && <View style={form.notice}><Notice>You can change your plans until a delivery is accepted. Existing bookings may prevent these changes.</Notice></View>}

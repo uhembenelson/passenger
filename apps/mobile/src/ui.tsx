@@ -118,11 +118,11 @@ export function Field({ label, hint, style, ...props }: TextInputProps & { label
   return <View style={s.field}><Txt style={s.label}>{label}</Txt><TextInput allowFontScaling maxFontSizeMultiplier={typography.inputScaleCap} accessibilityLabel={label} placeholderTextColor={semantic.color.text.tertiary} {...props} style={[s.input, props.multiline && s.inputMultiline, style]} />{hint && <Txt style={s.hint}>{hint}</Txt>}</View>;
 }
 
-export function AuthField({ label, hint, style, rightAccessory, onFocus, onBlur, accessibilityLabel, ...props }: TextInputProps & { label?: string; hint?: string; rightAccessory?: React.ReactNode }) {
+export const AuthField = React.forwardRef<TextInput, TextInputProps & { label?: string; hint?: string; rightAccessory?: React.ReactNode }>(function AuthField({ label, hint, style, rightAccessory, onFocus, onBlur, accessibilityLabel, ...props }, ref) {
   const [focused, setFocused] = React.useState(false);
   const resolvedLabel = accessibilityLabel || label || props.placeholder || "Input";
-  return <View style={s.authField}>{label ? <Txt style={s.authFieldLabel}>{label}</Txt> : null}<View style={[s.authInputShell, focused && s.authInputShellFocused]}><TextInput allowFontScaling maxFontSizeMultiplier={typography.inputScaleCap} accessibilityLabel={resolvedLabel} placeholderTextColor={semantic.color.text.tertiary} selectionColor={colors.lime} cursorColor={colors.lime} onFocus={event => { setFocused(true); onFocus?.(event); }} onBlur={event => { setFocused(false); onBlur?.(event); }} {...props} style={[s.authInput, rightAccessory ? s.authInputWithAccessory : undefined, props.multiline && s.inputMultiline, style]} />{rightAccessory ? <View style={s.authInputAccessory}>{rightAccessory}</View> : null}</View>{hint && <Txt style={s.hint}>{hint}</Txt>}</View>;
-}
+  return <View style={s.authField}>{label ? <Txt style={s.authFieldLabel}>{label}</Txt> : null}<View style={[s.authInputShell, focused && s.authInputShellFocused]}><TextInput ref={ref} allowFontScaling maxFontSizeMultiplier={typography.inputScaleCap} accessibilityLabel={resolvedLabel} placeholderTextColor={semantic.color.text.tertiary} selectionColor={colors.lime} cursorColor={colors.lime} onFocus={event => { setFocused(true); onFocus?.(event); }} onBlur={event => { setFocused(false); onBlur?.(event); }} {...props} style={[s.authInput, rightAccessory ? s.authInputWithAccessory : undefined, props.multiline && s.inputMultiline, style]} />{rightAccessory ? <View style={s.authInputAccessory}>{rightAccessory}</View> : null}</View>{hint && <Txt style={s.hint}>{hint}</Txt>}</View>;
+});
 
 export function Badge({ label, tone = "green" }: { label: string; tone?: "green" | "amber" | "red" | "neutral" }) {
   const tint = tone === "green"

@@ -16,6 +16,7 @@ export function EarningsScreen({ onBack, onStartEarning }: { onBack: () => void;
   const bank = useQuery(api.finance.bankAccount, {});
   const [bankOpen, setBankOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
+  const [returnToPayout, setReturnToPayout] = useState<string | null>(null);
   const item = earnings?.find(entry => entry.id === selected);
   const total = earnings?.reduce((sum, entry) => sum + entry.amountKobo, 0) ?? 0;
   const paid = earnings?.filter(entry => entry.status === "paid").reduce((sum, entry) => sum + entry.amountKobo, 0) ?? 0;
@@ -69,11 +70,11 @@ export function EarningsScreen({ onBack, onStartEarning }: { onBack: () => void;
         <Txt style={e.muted}>{item.reference} · Delivered {date(item.deliveredAt)}</Txt>
         <Txt style={e.muted}>{item.status === "paid" ? "Your payout has been sent to your bank." : item.status === "failed" ? "Your bank transfer did not complete. Contact support so we can check it." : item.status === "held" ? "This payout is on hold while we review the delivery or its payment. Contact support if you need help." : item.status === "verification_required" ? "Complete identity verification in Account Tier to receive your payout." : item.status === "bank_required" ? "Add your bank account. Once verified, any earnings past the 24-hour wait are processed automatically." : item.status === "processing" ? "Your transfer is processing. You do not need to request another payout." : `Automatic payout from ${item.payoutAt ? date(item.payoutAt) : "24 hours after confirmed delivery"}. Bank processing times may vary.`}</Txt>
         <Txt style={e.caption}>Amount shown is after the 10% platform fee.</Txt>
-        {item.status === "bank_required" && <Button title="Add payout account" onPress={() => { setSelected(null); setBankOpen(true); }} />}
+        {item.status === "bank_required" && <Button title="Add payout account" onPress={() => { setReturnToPayout(item.id); setSelected(null); setBankOpen(true); }} />}
         <Button title="Done" variant="secondary" onPress={() => setSelected(null)} />
       </View>
     </PresentationSheet>}
-    {bankOpen && <PayoutAccount onClose={() => setBankOpen(false)} />}
+    {bankOpen && <PayoutAccount onClose={() => { setBankOpen(false); if (returnToPayout) setSelected(returnToPayout); setReturnToPayout(null); }} />}
   </View>;
 }
 

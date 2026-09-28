@@ -33,6 +33,7 @@ export function NotificationsScreen({ navigation, notice: externalNotice, onNoti
 
   const [tab, setTab] = useState<DeliveryTab>("attention");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedSource, setSelectedSource] = useState<"attention" | "notification">("attention");
   const [receiverCodeId, setReceiverCodeId] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState<"" | "sms" | "whatsapp">("");
   const [shareError, setShareError] = useState("");
@@ -54,13 +55,15 @@ export function NotificationsScreen({ navigation, notice: externalNotice, onNoti
     .filter(shipment => viewer?.id && (shipment.senderId === viewer?.id || shipment.travellerId === viewer?.id))
     .sort((a, b) => b.updatedAt - a.updatedAt), [snapshot?.shipments, viewer?.id]);
   const attention = useMemo(() => deliveries.filter(shipment => needsAction(shipment, viewer?.id ?? "", pendingOffersByShipment.get(shipment.id) ?? 0)), [deliveries, pendingOffersByShipment, viewer?.id]);
+  const unreadCount = useQuery(api.notifications.unreadCount, {});
 
   const linkedDelivery = useQuery(api.notifications.delivery, viewer && selectedId && !shipmentsById.has(selectedId) ? { shipmentId: selectedId as Id<"shipments"> } : "skip");
   const selected = selectedId ? shipmentsById.get(selectedId) ?? linkedDelivery : undefined;
   const receiverCodeShipment = receiverCodeId ? shipmentsById.get(receiverCodeId) : undefined;
   const visible = tab === "attention" ? attention : [];
+  const needsActionCount = attention.length + (unreadCount ?? 0);
   const empty = emptyState(tab);
-  const openForm = useCallback((next: FormState) => { setSelectedId(null); setReceiverCodeId(null); setShareError(""); setShareDraft(null); setNotice(""); setForm(next); }, []);
+  const openForm = useCallback((next: FormState) => { setSelectedId(null); setSelectedSource("attention"); setReceiverCodeId(null); setShareError(""); setShareDraft(null); setNotice(""); setForm(next); }, []);
   const openReceiverCodeSheet = useCallback((shipment: Shipment) => { setSelectedId(null); setNotice(""); setShareError(""); setShareDraft(null); setReceiverCodeId(shipment.id); }, []);
   const shareReceiverCode = async (channel: "sms" | "whatsapp") => {
     if (!receiverCodeShipment || shareBusy) return;
@@ -93,7 +96,7 @@ export function NotificationsScreen({ navigation, notice: externalNotice, onNoti
     const next = nextStep(shipment, sender, pendingOffers);
     const onPress = tab === "attention" && sender && shipment.status === "in_transit"
       ? () => openReceiverCodeSheet(shipment)
-      : () => setSelectedId(shipment.id);
+      : () => { setSelectedSource("attention"); setSelectedId(shipment.id); };
     return <DeliveryListItem shipment={shipment} tripDepartureAt={trip?.departureAt} sender={sender} next={next} onPress={onPress} />;
   }, [openReceiverCodeSheet, pendingOffersByShipment, tab, tripsById, viewer?.id]);
 
@@ -107,7 +110,7 @@ export function NotificationsScreen({ navigation, notice: externalNotice, onNoti
         {tabs.map(item => {
           const active = item.id === tab;
           return <Pressable key={item.id} accessibilityRole="tab" accessibilityState={{ selected: active }} onPress={() => setTab(item.id)} style={[d.tabButton, active && d.tabButtonActive]}>
-            <View style={d.tabLabelRow}><Txt numberOfLines={1} style={[d.tabLabel, active && d.tabLabelActive]}>{item.label}</Txt>{item.id === "attention" ? <View style={[d.tabCount, active && d.tabCountActive]}><Txt style={[d.tabCountText, active && d.tabCountTextActive]}>{attention.length}</Txt></View> : null}</View>
+            <View style={d.tabLabelRow}><Txt numberOfLines={1} style={[d.tabLabel, active && d.tabLabelActive]}>{item.label}</Txt>{item.id === "attention" ? <View style={[d.tabCount, active && d.tabCountActive]}><Txt style={[d.tabCountText, active && d.tabCountTextActive]}>{needsActionCount}</Txt></View> : null}</View>
           </Pressable>;
         })}
       </View>
@@ -120,7 +123,16 @@ export function NotificationsScreen({ navigation, notice: externalNotice, onNoti
       renderItem={renderDelivery}
       keyExtractor={deliveryKey}
       ListHeaderComponent={listHeader}
-      ListEmptyComponent={tab === "all" ? <Inbox showHeading={false} onDetail={setSelectedId} /> : <Empty illustration="milestonesClear" title={empty.title} detail={empty.detail} action="View all notifications" onAction={() => setTab("all")} />}
+      ListEmptyComponent={tab === "all"
+        ? <Inbox showHeading={false} onDetail={id => { setSelectedSource("notification"); setSelectedId(id); }} />
+        : unreadCount === undefined
+          ? <ContentSkeleton rows={3} />
+          : unreadCount > 0
+            ? <Inbox showHeading={false} unreadOnly onDetail={id => { setSelectedSource("notification"); setSelectedId(id); }} />
+            : <Empty illustration="milestonesClear" title={empty.title} detail={empty.detail} action="View all notifications" onAction={() => setTab("all")} />}
+      ListFooterComponent={tab === "attention" && attention.length > 0 && (unreadCount ?? 0) > 0
+        ? <View style={d.unreadSection}><Txt style={d.unreadSectionTitle}>Unread notifications</Txt><Inbox showHeading={false} unreadOnly onDetail={id => { setSelectedSource("notification"); setSelectedId(id); }} /></View>
+        : null}
       ItemSeparatorComponent={DeliverySeparator}
       contentContainerStyle={d.scroll}
       initialNumToRender={6}
@@ -134,7 +146,7 @@ export function NotificationsScreen({ navigation, notice: externalNotice, onNoti
     {selectedId && !selected ? <Sheet title="Delivery update" onClose={() => setSelectedId(null)}>
       {linkedDelivery === null ? <Notice>This delivery is no longer available to your account.</Notice> : data.offline ? <Notice tone="warning">Reconnect to load this delivery.</Notice> : <ContentSkeleton rows={3} />}
     </Sheet> : null}
-    {selected && tab === "attention" ? <NeedsActionSheet
+    {selected && tab === "attention" && selectedSource === "attention" ? <NeedsActionSheet
       key={`${viewer.id}:${selected.id}`}
       shipment={selected}
       onClose={() => setSelectedId(null)}
@@ -154,7 +166,7 @@ export function NotificationsScreen({ navigation, notice: externalNotice, onNoti
       onShareSms={() => void shareReceiverCode("sms")}
       onShareWhatsApp={() => void shareReceiverCode("whatsapp")}
     /> : null}
-    {form ? <ShipmentForm shipment={form.shipment} onClose={() => setForm(undefined)} onSuccess={() => {
+    {form ? <ShipmentForm shipment={form.shipment} onClose={() => { if (form.shipment) setSelectedId(form.shipment.id); setForm(undefined); }} onSuccess={() => {
       setForm(undefined);
       setTab("attention");
       setNotice("Your parcel was updated and resubmitted for review.");
@@ -250,4 +262,6 @@ const d = StyleSheet.create({
   reference: { marginBottom: primitives.space[4], color: semantic.color.text.tertiary, fontSize: primitives.typography.size.bodyXs, lineHeight: primitives.typography.lineHeight.bodyXs, fontFamily: fontFamily.medium },
   nextStep: { marginTop: primitives.space[4], color: semantic.color.text.secondary, fontSize: primitives.typography.size.bodySm, lineHeight: primitives.typography.lineHeight.bodySm, fontFamily: fontFamily.regular },
   itemSeparator: { height: primitives.space[4] },
+  unreadSection: { marginTop: primitives.space[6], gap: primitives.space[3] },
+  unreadSectionTitle: { color: semantic.color.text.primary, fontSize: primitives.typography.size.headingH3, lineHeight: primitives.typography.lineHeight.headingH3, fontFamily: fontFamily.semibold },
 });

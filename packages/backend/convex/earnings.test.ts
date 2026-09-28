@@ -13,7 +13,8 @@ async function fixture() {
   const travellerId = (await traveller.mutation(api.accounts.ensureProfile, { name: "Traveller", phone: "+2348000000001" })).id as Id<"users">;
   const senderId = (await sender.mutation(api.accounts.ensureProfile, { name: "Sender", phone: "+2348000000002" })).id as Id<"users">;
   const shipmentId = await t.run(async ctx => {
-    await ctx.db.patch(travellerId, { verification: "verified" });
+    const verifiedAt = Date.now();
+    await ctx.db.patch(travellerId, { verification: "verified", identityVerificationStatus: "verified", kycTier: 1, phoneVerifiedAt: verifiedAt, phoneVerificationTime: verifiedAt });
     const id = await ctx.db.insert("shipments", { reference: "EARN-TEST", senderId, travellerId, origin: "Jos", destination: "Abuja", description: "Books", category: "Books", weightKg: 1, valueNaira: 1000, feeNaira: 500, receiverName: "Receiver", receiverPhone: "+2348000000010", status: "delivered", paymentStatus: "held", deliveredAt: Date.now() - 86400001, createdAt: Date.now(), updatedAt: Date.now(), approved: true, reservationActive: false });
     await ctx.db.insert("payments", { shipmentId: id, reference: "payment-test", amountKobo: 50000, travellerNetKobo: 45000, currency: "NGN", status: "paid", providerTransactionId: "provider-test", createdAt: Date.now() });
     return id;

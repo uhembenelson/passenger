@@ -49,11 +49,11 @@ const PassengerPassword = Password<DataModel>({
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ConvexError("Enter a valid email address.");
 
     if (flow !== "signUp") {
-      return { email, subject: email, name: "Passenger member", phone: "+2340000000000", verification: "required" as const, joinedAt: Date.now() };
+      return { email, subject: email, name: "Passenger member", phone: "", verification: "required" as const, identityVerificationStatus: "unverified" as const, joinedAt: Date.now() };
     }
 
     const name = email.split("@")[0]!.replace(/[._-]+/g, " ").trim().slice(0, 120) || "Passenger member";
-    return { email, subject: email, name, phone: "+2340000000000", verification: "required" as const, joinedAt: Date.now() };
+    return { email, subject: email, name, phone: "", verification: "required" as const, identityVerificationStatus: "unverified" as const, joinedAt: Date.now() };
   },
   validatePasswordRequirements(password) {
     if (password.length < 10 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {

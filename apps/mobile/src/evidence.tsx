@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Linking, Platform, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import { File as ExpoFile } from "expo-file-system";
 import * as FileSystem from "expo-file-system/legacy";
+import { fetch as expoFetch } from "expo/fetch";
 import * as ImagePicker from "expo-image-picker";
 import * as SecureStore from "expo-secure-store";
 import { ExternalLink } from "lucide-react-native";
@@ -10,11 +12,14 @@ import { api } from "@passenger/backend/convex/_generated/api";
 import type { Id } from "@passenger/backend/convex/_generated/dataModel";
 import { usePassengerState } from "./data";
 import { Button, colors, errorMessage, ExpandableText, InlineSkeleton, Notice, ProgressiveImage, s, Txt } from "./ui";
+import { LivenessCameraModal } from "./liveness-camera";
 
 const ALLOWED_MIME_TYPES = {
   identity: ["image/jpeg", "image/png", "image/webp", "application/pdf"],
+  proof_of_address: ["image/jpeg", "image/png", "image/webp", "application/pdf"],
   parcel: ["image/jpeg", "image/png", "image/webp"],
 } as const;
+type EvidencePurpose = keyof typeof ALLOWED_MIME_TYPES;
 
 type UploadAsset = { uri?: string; file?: Blob; filename: string; mime?: string | null; size?: number | null };
 const PENDING_EVIDENCE_RESUME_KEY = "passenger.pendingEvidenceResume";
@@ -70,7 +75,7 @@ function inferMimeType(filename: string) {
   return "";
 }
 
-function resolveMimeType(purpose: "identity" | "parcel", filename: string, mime?: string | null) {
+function resolveMimeType(purpose: EvidencePurpose, filename: string, mime?: string | null) {
   const normalized = mime?.trim().toLowerCase().split(";")[0] ?? "";
   const aliased = normalized === "image/jpg" || normalized === "image/pjpeg"
     ? "image/jpeg"
@@ -81,7 +86,7 @@ function resolveMimeType(purpose: "identity" | "parcel", filename: string, mime?
   const allowed = ALLOWED_MIME_TYPES[purpose] as readonly string[];
   const resolved = allowed.includes(aliased) ? aliased : allowed.includes(inferred) ? inferred : aliased || inferred;
   if (!allowed.includes(resolved)) {
-    throw new Error(purpose === "identity" ? "Choose a JPEG, PNG, or WebP image, or a PDF document." : "Choose a JPEG, PNG, or WebP image.");
+    throw new Error(purpose === "parcel" ? "Choose a JPEG, PNG, or WebP image." : "Choose a JPEG, PNG, or WebP image, or a PDF document.");
   }
   return resolved;
 }
@@ -95,11 +100,12 @@ async function getAssetSize(asset: UploadAsset) {
   return info.size;
 }
 
-export function EvidencePicker({ purpose, value, onChange, disabled, resumeKey, compact = false, minimal = false, onBusyChange }: { purpose: "identity" | "parcel"; value: string[]; onChange: (ids: string[]) => void; disabled?: boolean; resumeKey?: string; compact?: boolean; minimal?: boolean; onBusyChange?: (busy: boolean) => void }) {
+export function EvidencePicker({ purpose, value, onChange, disabled, resumeKey, compact = false, minimal = false, onBusyChange, cameraOnly = false, kind }: { purpose: EvidencePurpose; value: string[]; onChange: (ids: string[]) => void; disabled?: boolean; resumeKey?: string; compact?: boolean; minimal?: boolean; onBusyChange?: (busy: boolean) => void; cameraOnly?: boolean; kind?: "verification_live_photo" }) {
   const uploadUrl = useMutation(api.evidence.generateUploadUrl);
   const register = useMutation(api.evidence.register);
   const { offline } = usePassengerState();
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const [livenessOpen, setLivenessOpen] = useState(false);
   const checkedPending = useRef(false);
   useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
   const upload = async (asset: UploadAsset) => {
@@ -115,25 +121,27 @@ export function EvidencePicker({ purpose, value, onChange, disabled, resumeKey, 
       body = await response.json();
     } else {
       if (!asset.uri) throw new Error("Passenger could not read that file from your device.");
-      const response = await FileSystem.uploadAsync(url, asset.uri, {
-        httpMethod: "POST",
-        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-        headers: { "Content-Type": mime },
-      });
-      if (response.status < 200 || response.status >= 300) throw new Error("The upload did not complete. Check your connection and choose the file again.");
+      let response: Awaited<ReturnType<typeof expoFetch>>;
       try {
-        body = JSON.parse(response.body);
-      } catch {
-        throw new Error("Unable to read upload response. Check your connection and try again.");
+        response = await expoFetch(url, {
+          method: "POST",
+          headers: { "Content-Type": mime },
+          body: new ExpoFile(asset.uri),
+        });
+      } catch (e) {
+        console.warn(`[evidence] upload read failed on ${Platform.OS}:${asset.uri}`, e);
+        throw new Error(`Passenger could not read that file (${Platform.OS} · ${asset.uri}) to upload it. Choose the file again.`);
       }
+      if (!response.ok) throw new Error("The upload did not complete. Check your connection and choose the file again.");
+      body = await response.json();
     }
     if (!body || typeof body !== "object" || !("storageId" in body) || typeof body.storageId !== "string") throw new Error("The storage service did not confirm this upload.");
-    return await register({ storageId: body.storageId as Id<"_storage">, purpose, filename: asset.filename });
+    return await register({ storageId: body.storageId as Id<"_storage">, purpose, filename: asset.filename, ...(kind ? { kind } : {}) });
   };
   const processAsset = async (asset?: UploadAsset) => {
     if (!asset) return;
     const id = await upload(asset);
-    onChange([...value, id]);
+    onChange(cameraOnly ? [id] : [...value, id]);
     await setPendingEvidenceResumeKey(null);
   };
   const pick = async (camera: boolean) => {
@@ -144,8 +152,8 @@ export function EvidencePicker({ purpose, value, onChange, disabled, resumeKey, 
       if (camera) {
         if (resumeKey) await setPendingEvidenceResumeKey(resumeKey);
         const permission = await ImagePicker.requestCameraPermissionsAsync();
-        if (!permission.granted) throw new Error("Allow camera access in your device settings, or choose an existing file instead.");
-        const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.8 });
+        if (!permission.granted) throw new Error(cameraOnly ? "Allow camera access in your device settings to take your live identity photo." : "Allow camera access in your device settings, or choose an existing file instead.");
+        const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.8, ...(cameraOnly ? { cameraType: ImagePicker.CameraType.front } : {}), allowsEditing: false });
         const photo = !result.canceled ? result.assets[0] : undefined;
         if (!photo) await setPendingEvidenceResumeKey(null);
         if (photo) asset = uploadAssetFromPickerAsset(photo);
@@ -156,7 +164,7 @@ export function EvidencePicker({ purpose, value, onChange, disabled, resumeKey, 
         const photo = !result.canceled ? result.assets[0] : undefined;
         if (photo) asset = uploadAssetFromPickerAsset(photo);
       } else {
-        const result = await DocumentPicker.getDocumentAsync({ type: ["image/jpeg", "image/png", "image/webp", "application/pdf"], copyToCacheDirectory: true, multiple: false, base64: false });
+        const result = await DocumentPicker.getDocumentAsync({ type: ["image/jpeg", "image/png", "image/webp", "application/pdf"], copyToCacheDirectory: Platform.OS !== "android", multiple: false, base64: false });
         const file = !result.canceled ? result.assets[0] : undefined;
         if (file) asset = { uri: file.uri, file: file.file, filename: file.name || `document-${Date.now()}`, mime: file.mimeType, size: file.size ?? file.file?.size };
       }
@@ -185,9 +193,17 @@ export function EvidencePicker({ purpose, value, onChange, disabled, resumeKey, 
       }
     })();
   }, [offline, onChange, purpose, register, resumeKey, uploadUrl, value]);
-  return <View style={{ gap: 12, marginBottom: 18 }}>{!compact && <Txt style={s.label}>{purpose === "identity" ? "Private identity evidence" : "Package photos"}</Txt>}{!minimal && <Txt style={s.hint}>{compact ? purpose === "identity" ? "JPEG, PNG, WebP or PDF. " : "JPEG, PNG or WebP. " : <>{purpose === "identity" ? "Upload a clear, legible identity document. Only you and authorized reviewers can access it. JPEG, PNG, WebP or PDF." : "Show the contents and packaging clearly. Photos are available only to authorized delivery participants and reviewers."} </>}Up to 5 files, 10 MB each.</Txt>}
+  const privateDocument = purpose !== "parcel";
+  const maxFiles = cameraOnly ? 1 : 5;
+  return <View style={{ gap: 12, marginBottom: 18 }}>{!compact && <Txt style={s.label}>{cameraOnly ? "Live identity photo" : purpose === "identity" ? "Private identity evidence" : purpose === "proof_of_address" ? "Private proof of address" : "Package photos"}</Txt>}{!minimal && <Txt style={s.hint}>{cameraOnly ? "Use the front camera now. Existing photos cannot be selected. Keep your face centred, remove sunglasses and use even lighting." : compact ? privateDocument ? "JPEG, PNG, WebP or PDF. " : "JPEG, PNG or WebP. " : <>{purpose === "identity" ? "Upload a clear, legible identity document. Only you and authorized reviewers can access it. JPEG, PNG, WebP or PDF." : purpose === "proof_of_address" ? "Upload a clear bill, statement or official document showing your current address. Only authorized reviewers can access it." : "Show the contents and packaging clearly. Photos are available only to authorized delivery participants and reviewers."} </>} {!cameraOnly ? "Up to 5 files, 10 MB each." : "The photo is private and used only for identity comparison."}</Txt>}
     {value.map(id => <View key={id} style={{ gap: 5 }}><EvidenceItem id={id} minimal={minimal} />{!disabled && <Button title="Remove attachment" small variant="ghost" disabled={busy || offline} onPress={() => onChange(value.filter(item => item !== id))} />}</View>)}
-    <View style={[s.row, { flexWrap: "wrap" }]}><Button title={busy ? "Uploading securely…" : purpose === "parcel" ? "Choose from gallery" : "Choose a file"} small variant="secondary" busy={busy} disabled={disabled || offline || value.length >= 5} onPress={() => void pick(false)} /><Button title="Take a photo" small variant="secondary" disabled={disabled || busy || offline || value.length >= 5} onPress={() => void pick(true)} /></View>{busy && <Txt style={s.hint}>Keep this screen open while your file uploads.</Txt>}{error !== "" && <Notice tone="error">{error}</Notice>}
+    <View style={[s.row, { flexWrap: "wrap" }]}>{!cameraOnly ? <Button title={busy ? "Uploading securely…" : purpose === "parcel" ? "Choose from gallery" : "Choose a file"} small variant="secondary" busy={busy} disabled={disabled || offline || value.length >= maxFiles} onPress={() => void pick(false)} /> : null}<Button title={busy ? "Uploading securely…" : cameraOnly && value.length ? "Retake live photo" : cameraOnly ? "Take live photo" : "Take a photo"} small variant="secondary" busy={cameraOnly ? busy : undefined} disabled={disabled || busy || offline || (!cameraOnly && value.length >= maxFiles)} onPress={() => cameraOnly ? setLivenessOpen(true) : void pick(true)} /></View>{busy && <Txt style={s.hint}>Keep this screen open while your file uploads.</Txt>}{error !== "" && <Notice tone="error">{error}</Notice>}
+    {livenessOpen ? <LivenessCameraModal visible onClose={() => setLivenessOpen(false)} onCapture={asset => {
+      setLivenessOpen(false);
+      setBusy(true);
+      setError("");
+      void processAsset(asset).catch(cause => setError(errorMessage(cause))).finally(() => setBusy(false));
+    }} /> : null}
   </View>;
 }
 function EvidenceItem({ id, minimal = false }: { id: string; minimal?: boolean }) {

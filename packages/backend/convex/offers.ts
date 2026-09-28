@@ -14,6 +14,7 @@ import {
   notifyParticipants,
   offerDto,
   requireSender,
+  requireTransactionalVerification,
   requireUser,
   requireVerified,
   shipment,
@@ -107,7 +108,7 @@ export async function proposeOffer(
   },
 ) {
   const user = await requireUser(ctx);
-  requireVerified(user);
+  await requireTransactionalVerification(ctx, user._id);
 
   const s = await shipment(ctx, args.shipmentId);
   const t = await ctx.db.get(args.tripId);
@@ -120,7 +121,7 @@ export async function proposeOffer(
 
   const sender = await ctx.db.get(s.senderId);
   if (!sender) fail("Sender unavailable.");
-  requireVerified(sender);
+  await requireTransactionalVerification(ctx, sender._id);
 
   await compatible(ctx, s, t);
 
@@ -180,7 +181,7 @@ export const accept = mutation({
   args: { offerId: v.id("offers") },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    requireVerified(user);
+    await requireTransactionalVerification(ctx, user._id);
 
     const offer = await ctx.db.get(args.offerId);
     if (!offer || offer.status !== "pending" || offer.expiresAt <= Date.now()) {
@@ -197,7 +198,7 @@ export const accept = mutation({
 
     const traveller = await ctx.db.get(t.travellerId);
     if (!traveller) fail("Traveller unavailable.");
-    requireVerified(traveller);
+    await requireTransactionalVerification(ctx, traveller._id);
 
     const { segment, loads } = await compatible(ctx, s, t);
 

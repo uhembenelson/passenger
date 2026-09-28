@@ -34,6 +34,8 @@ import { primitives, semantic } from "@passenger/design-tokens";
 import { usePassenger } from "./data";
 import { getPendingEvidenceResumeKey } from "./evidence";
 import { IdentityVerification } from "./identity-verification";
+import { VerificationSummaryCard } from "./identity-verification-card";
+import { IdentityNumberVerification } from "./identity-number-verification";
 import { TopUpSheet, WalletTransactionHistory } from "./wallet";
 import { BackButton,
   Avatar,
@@ -55,8 +57,7 @@ import { BackButton,
 import { EarningsScreen } from "./earnings";
 import { ParcelHistory } from "./parcel-history";
 
-type SubScreen = "earnings" | "menu" | "personal_info" | "account_tier" | "wallet" | "parcel_history";
-type ChangePasswordStep = null | "phone" | "otp";
+type SubScreen = "earnings" | "menu" | "personal_info" | "account_tier" | "identity_number_verification" | "wallet" | "parcel_history";
 
 export function Profile({
   viewer: propViewer,
@@ -77,7 +78,6 @@ export function Profile({
   const viewer = propViewer ?? data.snapshot?.viewer;
 
   const [subScreen, setSubScreen] = useState<SubScreen>("menu");
-  const [changePasswordStep, setChangePasswordStep] = useState<ChangePasswordStep>(null);
   const [toastMessage, setToastMessage] = useState("");
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
@@ -120,9 +120,12 @@ export function Profile({
           viewer={viewer}
           toastMessage={toastMessage}
           onBack={() => setSubScreen("menu")}
-          onChangePassword={() => setChangePasswordStep("phone")}
           onToast={showToast}
         />
+      )}
+
+      {subScreen === "identity_number_verification" && (
+        <IdentityNumberVerification viewer={viewer} onClose={() => setSubScreen("menu")} />
       )}
 
       {subScreen === "account_tier" && (
@@ -130,7 +133,6 @@ export function Profile({
           viewer={viewer}
           onBack={() => setSubScreen("menu")}
           onToast={showToast}
-          autoOpenTier2={subScreen === "account_tier"}
         />
       )}
 
@@ -144,18 +146,6 @@ export function Profile({
 
       {subScreen === "parcel_history" && <ParcelHistory onBack={() => setSubScreen("menu")} />}
 
-      {changePasswordStep !== null && (
-        <ChangePasswordModal
-          step={changePasswordStep}
-          initialPhone={viewer.phone}
-          onClose={() => setChangePasswordStep(null)}
-          onStepChange={setChangePasswordStep}
-          onSuccess={() => {
-            setChangePasswordStep(null);
-            showToast(viewer.phoneVerificationEnabled === false ? "Phone number saved." : "Phone number verified.");
-          }}
-        />
-      )}
 
       {deleteModalOpen && (
         <DeleteAccountModal
@@ -192,8 +182,10 @@ function ProfileMenuView({
   onDeleteAccount: () => void;
   onLogout: () => void;
 }) {
-  const isVerified = viewer.verification === "verified";
-  const tierLabel = viewer.tier || (isVerified ? "Tier 2" : "Tier 1");
+  const identityStatus = viewer.identityVerificationStatus ?? (viewer.verification === "required" ? "unverified" : viewer.verification);
+  const isVerified = identityStatus === "verified" && (viewer.kycTier ?? -1) >= 1;
+  const identityNumberRequired = !viewer.identityNumberVerifiedAt;
+  const tierLabel = viewer.tier ?? "No Tier";
 
   return (
     <ScrollView contentContainerStyle={p.scroll}>
@@ -206,6 +198,8 @@ function ProfileMenuView({
           <Txt style={p.userSubtitle}>{tierLabel}</Txt>
         </View>
       </View>
+
+      {!isVerified ? <VerificationSummaryCard accessibilityLabel={identityNumberRequired ? "Verify with BVN or NIN" : "Open account verification"} onPress={() => onSelect(identityNumberRequired ? "identity_number_verification" : "account_tier")} title={identityNumberRequired ? "Identity verification required" : identityStatus === "pending" ? "Verification under review" : identityStatus === "rejected" ? "Verification needs changes" : identityStatus === "draft" ? "Continue account verification" : "Account verification required"} body={identityNumberRequired ? "Verify with your BVN or NIN." : identityStatus === "pending" ? "We’ll notify you after compliance reviews your application." : "Complete verification to send parcels, share trips and receive payouts."} /> : null}
 
       <View style={p.divider} />
 
@@ -297,13 +291,11 @@ function PersonalInformationView({
   viewer,
   toastMessage,
   onBack,
-  onChangePassword,
   onToast,
 }: {
   viewer: Person;
   toastMessage: string;
   onBack: () => void;
-  onChangePassword: () => void;
   onToast: (msg: string) => void;
 }) {
   const data = usePassenger();
@@ -367,8 +359,8 @@ function PersonalInformationView({
             <Txt style={p.toastText}>{toastMessage}</Txt>
           </View>
         )}
-        {viewer.verification === "pending" ? <Notice tone="warning">Your identity is under review. Passenger will update this screen when operations completes the review.</Notice> : null}
-        {viewer.verification === "rejected" && viewer.identityNote ? <Notice tone="error">{viewer.identityNote}</Notice> : null}
+        {viewer.identityVerificationStatus === "pending" ? <Notice tone="warning">Your identity is under review. Passenger will update this screen when operations completes the review.</Notice> : null}
+        {viewer.identityVerificationStatus === "rejected" && (viewer.lastVerificationReviewNote || viewer.identityNote) ? <Notice tone="error">{viewer.lastVerificationReviewNote || viewer.identityNote}</Notice> : null}
       </View>
 
       <View style={p.avatarCentered}>
@@ -417,18 +409,6 @@ function PersonalInformationView({
         </Pressable>
       </View>
 
-      <View style={p.formSection}>
-        <Txt style={p.sectionHeading}>Phone security</Txt>
-        <Pressable
-          accessibilityRole="button"
-          onPress={onChangePassword}
-          style={p.passwordRow}
-        >
-          <Txt style={p.passwordRowText}>{viewer.phoneVerificationEnabled === false ? "Change phone number" : viewer.phoneVerificationTime ? "Change verified phone number" : "Verify phone number"}</Txt>
-          <ChevronRight size={18} color="#9CA3AF" />
-        </Pressable>
-        <View style={p.thinDivider} />
-      </View>
     </ScrollView>
   );
 }
@@ -673,7 +653,46 @@ function AccountTierView({
   onToast: (msg: string) => void;
   autoOpenTier2?: boolean;
 }) {
-  const currentTier = viewer.tier ?? (viewer.verification === "verified" ? "Tier 2" : "Tier 1");
+  const [verificationOpen, setVerificationOpen] = useState(!!autoOpenTier2);
+  const [identityNumberFlowOpen, setIdentityNumberFlowOpen] = useState(false);
+  const identityStatus = viewer.identityVerificationStatus ?? (viewer.verification === "required" ? "unverified" : viewer.verification);
+  const identityNumberVerified = !!viewer.identityNumberVerifiedAt;
+  const numericTier = viewer.kycTier ?? -1;
+  const statusCopy = identityStatus === "verified" ? "Identity and address verified" : identityStatus === "pending" ? "Compliance review in progress" : identityStatus === "draft" ? "Verification application in progress" : identityStatus === "rejected" ? "Changes requested" : "Identity verification not started";
+  if (identityNumberFlowOpen) return <IdentityNumberVerification viewer={viewer} onClose={() => setIdentityNumberFlowOpen(false)} />;
+  return <View style={tierStyles.container}>
+    <ScrollView contentContainerStyle={tierStyles.scrollContent}>
+      <View style={tierStyles.header}><BackButton accessibilityLabel="Back to profile" onPress={onBack} /><Txt style={tierStyles.headerTitle}>Account Tier</Txt><View style={{ width: 24 }} /></View>
+      <Notice>Your verification moves forward in order. Only the requirement immediately after your current tier can be completed; later tiers stay locked.</Notice>
+      <View style={tierStyles.cardsList}>
+        <TierPathCard title="Tier 0" badge={numericTier === 0 ? "Current" : numericTier > 0 ? "Complete" : "Next"} muted={numericTier < 0 && !identityNumberVerified} description={identityNumberVerified ? `${viewer.identityNumberVerificationType ?? "Identity number"} verified. This unlocks the Tier 1 application.` : "Verify your identity with either BVN or NIN."} />
+        <TierPathCard title="Tier 1" badge={numericTier === 1 ? "Current" : numericTier > 1 ? "Complete" : identityStatus === "pending" ? "Under review" : identityStatus === "rejected" ? "Needs changes" : numericTier === 0 ? "Next" : "Locked"} muted={numericTier < 0} description={`${statusCopy}. Provide identity evidence, your current address, proof of address and a live location check. Compliance makes the final decision.`}>{(viewer.lastVerificationReviewNote ?? viewer.identityNote) ? <Notice tone="warning">{viewer.lastVerificationReviewNote ?? viewer.identityNote}</Notice> : null}</TierPathCard>
+        <TierPathCard title="Tier 2" badge={numericTier === 2 ? "Current" : numericTier > 2 ? "Complete" : "Locked"} muted={numericTier < 2} description={numericTier >= 1 ? "Higher limits require a separate operations review. Self-service Tier 2 applications are not enabled yet." : "Complete Tier 1 first. Tier 2 cannot be selected or skipped to."} />
+        <TierPathCard title="Tier 3" badge={numericTier === 3 ? "Current" : "Locked"} muted={numericTier < 3} description={numericTier >= 2 ? "The highest tier is assigned only after an operations review. Self-service Tier 3 upgrades are disabled." : "Complete the preceding tiers first. Tier 3 cannot be selected or skipped to."} />
+      </View>
+    </ScrollView>
+    {identityStatus !== "verified" ? <View style={tierStyles.footer}>{!identityNumberVerified ? <Notice tone="warning">Verify with BVN or NIN before continuing.</Notice> : null}<Pressable accessibilityRole="button" disabled={identityStatus === "pending"} onPress={() => identityNumberVerified ? setVerificationOpen(true) : setIdentityNumberFlowOpen(true)} style={[tierStyles.greenPillButton, identityStatus === "pending" && { opacity: 0.5 }]}><Txt style={tierStyles.greenPillButtonText}>{identityStatus === "pending" ? "Review in progress" : !identityNumberVerified ? "Verify with BVN or NIN" : identityStatus === "rejected" ? "Update Tier 1 application" : identityStatus === "draft" ? "Continue Tier 1 application" : "Begin Tier 1 verification"}</Txt></Pressable></View> : null}
+    {verificationOpen ? <IdentityVerification viewer={viewer} onClose={() => setVerificationOpen(false)} onSuccess={() => { setVerificationOpen(false); onToast("Verification status updated"); }} /> : null}
+  </View>;
+}
+
+function TierPathCard({ title, badge, description, muted = false, children }: React.PropsWithChildren<{ title: string; badge: string; description: string; muted?: boolean }>) {
+  const positive = badge === "Current" || badge === "Complete";
+  return <View style={[tierStyles.card, muted && { opacity: 0.62 }]}><View style={tierStyles.cardHeader}><View style={tierStyles.cardHeaderLeft}><Txt style={tierStyles.tierName}>{title}</Txt><View style={positive ? tierStyles.currentBadge : tierStyles.nextBadge}><Txt style={positive ? tierStyles.currentBadgeText : tierStyles.nextBadgeText}>{badge}</Txt></View></View></View><View style={tierStyles.cardBody}><View style={tierStyles.divider} /><Txt style={tierStyles.tierDescription}>{description}</Txt>{children}</View></View>;
+}
+
+function LegacyAccountTierView({
+  viewer,
+  onBack,
+  onToast,
+  autoOpenTier2,
+}: {
+  viewer: Person;
+  onBack: () => void;
+  onToast: (msg: string) => void;
+  autoOpenTier2?: boolean;
+}) {
+  const currentTier = viewer.tier ?? "No Tier";
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
     if (currentTier === "Tier 3") return { tier1: false, tier2: false, tier3: true };
     if (currentTier === "Tier 2") return { tier1: false, tier2: true, tier3: true };
@@ -865,12 +884,12 @@ function AccountTierView({
       {/* Bottom Floating Upgrade Button */}
       {currentTier === "Tier 1" && viewer.verification !== "pending" && (
         <View style={tierStyles.footer}>
-          {(viewer.phoneVerificationEnabled !== false && !viewer.phoneVerificationTime) ? <Notice tone="warning">Verify your phone number from Home before submitting identity evidence.</Notice> : null}
+          {(!(viewer.phoneVerifiedAt ?? viewer.phoneVerificationTime) && !(viewer.phoneVerificationEnabled === false && viewer.phone.trim())) ? <Notice tone="warning">Verify your phone number from Home before submitting identity evidence.</Notice> : null}
           <Pressable
             accessibilityRole="button"
             onPress={() => setTier2ModalOpen(true)}
-            disabled={(viewer.phoneVerificationEnabled !== false && !viewer.phoneVerificationTime)}
-            style={[tierStyles.greenPillButton, (viewer.phoneVerificationEnabled !== false && !viewer.phoneVerificationTime) && { opacity: 0.5 }]}
+            disabled={(!(viewer.phoneVerifiedAt ?? viewer.phoneVerificationTime) && !(viewer.phoneVerificationEnabled === false && viewer.phone.trim()))}
+            style={[tierStyles.greenPillButton, (!(viewer.phoneVerifiedAt ?? viewer.phoneVerificationTime) && !(viewer.phoneVerificationEnabled === false && viewer.phone.trim())) && { opacity: 0.5 }]}
           >
             <Txt style={tierStyles.greenPillButtonText}>{viewer.verification === "rejected" ? "Resubmit identity" : "Verify my identity"}</Txt>
           </Pressable>
@@ -1903,6 +1922,30 @@ const p = StyleSheet.create({
     fontSize: 13,
     color: "#6B7280",
     marginTop: 4,
+  },
+  verificationSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 20,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: "#EAF7EF",
+    borderWidth: 1,
+    borderColor: "#CBEAD5",
+  },
+  verificationSummaryTitle: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontFamily: fontFamily.semibold,
+    color: "#1F2937",
+  },
+  verificationSummaryBody: {
+    marginTop: 5,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: fontFamily.regular,
+    color: "#4B5563",
   },
   divider: {
     height: 1,

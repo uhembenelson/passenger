@@ -3,7 +3,7 @@ import { PERMISSIONS } from "@passenger/core";
 import { mutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { audit, fail, noOpenDispute, note, notify, releaseCapacity, requireAdmin, requirePermission, requireUser, shipment, transition } from "./lib";
+import { audit, fail, failWithCode, getUserTier, identityStatus, noOpenDispute, note, notify, releaseCapacity, requireAdmin, requirePermission, requireUser, shipment, transition, VERIFICATION_ERROR_CODES } from "./lib";
 import { stripLegacyTripPricePerKg } from "./maintenance";
 
 export const reviewUser = mutation({
@@ -21,11 +21,18 @@ export const reviewUser = mutation({
     if (user._id === admin._id) fail("An administrator cannot review their own identity.");
 
     const detail = note(args.note, "Review note", 5);
-    const patch: { verification: typeof user.verification; identityNote: string; identityReviewedAt: number; tier?: "Tier 1" | "Tier 2" | "Tier 3" } = {
+    const patch: { verification: typeof user.verification; identityNote: string; identityReviewedAt: number; tier?: "Tier 1" | "Tier 2" | "Tier 3"; kycTier?: 0 | 1 | 2 | 3; identityVerificationStatus?: typeof user.identityVerificationStatus } = {
       verification: args.decision,
       identityNote: detail,
       identityReviewedAt: Date.now(),
     };
+    if (args.decision === "verified") {
+      patch.kycTier = Number((args.tier ?? user.tier ?? "Tier 1").replace("Tier ", "")) as 1 | 2 | 3;
+      patch.identityVerificationStatus = "verified";
+    } else {
+      patch.identityVerificationStatus = "rejected";
+      patch.kycTier = 0;
+    }
     if (args.decision === "verified" && args.tier) patch.tier = args.tier;
     if (args.decision === "verified" && !user.tier) patch.tier = args.tier ?? "Tier 1";
     await ctx.db.patch(user._id, patch);
@@ -34,20 +41,176 @@ export const reviewUser = mutation({
   },
 });
 
+// Compliance-only repair for accounts that were incorrectly marked as phone
+// verified (for example, legacy accounts that received a synthetic number).
+// The name lookup is deliberately exact and rejects ambiguity so an operator
+// cannot accidentally change the wrong member.
+export const rollbackPhoneVerification = mutation({
+  args: {
+    name: v.string(),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    await requirePermission(ctx, admin, PERMISSIONS.COMPLIANCE_MANAGE);
+
+    const requestedName = args.name.trim().toLocaleLowerCase();
+    if (!requestedName) fail("Member name is required.");
+    const matches = (await ctx.db.query("users").collect()).filter(
+      user => user.name.trim().toLocaleLowerCase() === requestedName,
+    );
+    if (matches.length === 0) fail("Member not found.");
+    if (matches.length > 1) fail("More than one member has that name. Use an account-specific repair flow.");
+
+    const user = matches[0];
+    if (!user.phoneVerificationTime && !user.phoneVerifiedAt && !user.phone.trim()) {
+      fail("The member is already unverified.");
+    }
+
+    const detail = note(args.reason, "Phone verification rollback reason", 5);
+    const hasIndependentIdentity =
+      user.identityVerificationStatus === "verified" ||
+      user.verification === "verified" ||
+      user.identityVerifiedAt !== undefined;
+    await ctx.db.patch(user._id, {
+      phone: "",
+      phoneVerificationTime: undefined,
+      phoneVerifiedAt: undefined,
+      phoneVerificationCode: undefined,
+      phoneVerificationAttempts: undefined,
+      phoneVerificationPendingPhone: undefined,
+      phoneVerificationExpiresAt: undefined,
+      phoneVerificationRequestedAt: undefined,
+      // A phone-only account should not retain the placeholder KYC tier.
+      ...(hasIndependentIdentity || user.kycTier !== 0 ? {} : { kycTier: undefined }),
+    });
+    await audit(ctx, admin, "user.phone_verification.rolled_back", `Rolled back phone verification for ${user._id}. ${detail}`);
+    return { userId: user._id, name: user.name };
+  },
+});
+
 export const updateUserTier = mutation({
   args: {
     userId: v.id("users"),
     tier: v.union(v.literal("Tier 1"), v.literal("Tier 2"), v.literal("Tier 3")),
+    reason: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
     await requirePermission(ctx, admin, PERMISSIONS.COMPLIANCE_MANAGE);
     const user = await ctx.db.get(args.userId);
     if (!user) fail("Member not found.");
-    if (user.verification !== "verified") fail("Only verified members can be assigned a tier.");
-    if (user.tier === args.tier) fail("The member already has that tier.");
-    await ctx.db.patch(user._id, { tier: args.tier });
+    const currentTier = getUserTier(user);
+    const targetTier = Number(args.tier.replace("Tier ", "")) as 1 | 2 | 3;
+    if (currentTier === targetTier) fail("The member already has that tier.");
+
+    // Tier 1+ normally requires a verified identity. A privileged override is
+    // allowed only with an explicit documented reason (plan §admin.ts).
+    const verified = identityStatus(user) === "verified";
+    const override = !verified;
+    if (override) {
+      if (!args.reason) fail("Assigning a tier requires a verified identity. Supply a reason to override.");
+      const detail = note(args.reason, "Override reason", 5);
+      await ctx.db.patch(user._id, { tier: args.tier, kycTier: targetTier });
+      await audit(ctx, admin, "user.tier.overridden", `Assigned ${args.tier} to ${user._id} with override reason: ${detail}`);
+      return;
+    }
+    await ctx.db.patch(user._id, { tier: args.tier, kycTier: targetTier });
     await audit(ctx, admin, "user.tier.updated", `Changed tier for ${user._id} to ${args.tier}.`);
+  },
+});
+
+// Submission-based review (plan §admin.ts). The full security assessment must
+// exist before a compliance reviewer approves or rejects a Tier 1 application.
+// The reviewer's own submissions are never reviewable, and a submission that
+// is no longer pending (e.g. already reviewed) cannot be reviewed again.
+export const reviewVerificationSubmission = mutation({
+  args: {
+    submissionId: v.id("verificationSubmissions"),
+    decision: v.union(v.literal("verified"), v.literal("rejected")),
+    note: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    await requirePermission(ctx, admin, PERMISSIONS.COMPLIANCE_MANAGE);
+
+    const submission = await ctx.db.get(args.submissionId);
+    if (!submission) fail("Verification submission not found.");
+    if (submission.userId === admin._id) failWithCode(VERIFICATION_ERROR_CODES.SELF_REVIEW_NOT_ALLOWED, "An administrator cannot review their own verification.");
+    if (submission.status !== "pending") fail("Only pending verification submissions may be reviewed.");
+    if (!submission.securityAssessment) failWithCode(VERIFICATION_ERROR_CODES.ADDRESS_VERIFICATION_REQUIRED, "The security assessment must be completed before review.");
+
+    const now = Date.now();
+    const user = await ctx.db.get(submission.userId);
+    if (!user) fail("Member not found.");
+    if (user.identityBioData?.imageBase64 && !submission.liveIdentityEvidenceId) {
+      failWithCode(VERIFICATION_ERROR_CODES.EVIDENCE_REQUIRED, "A live identity photo is required before this verification can be reviewed.");
+    }
+    if (args.decision === "verified" && user.identityBioData?.imageBase64 &&
+        (submission.faceMatchStatus !== "matched" || submission.faceMatchEvidenceId !== submission.liveIdentityEvidenceId ||
+          submission.faceMatchProviderIdentityId !== user.identityNumberProviderReference)) {
+      failWithCode(VERIFICATION_ERROR_CODES.EVIDENCE_REQUIRED, "The live face must match the verified BVN/NIN image before approval.");
+    }
+
+    const userDoc = user as Doc<"users">;
+    const currentTier = getUserTier(userDoc) ?? 0;
+    const detail = note(args.note, "Review explanation", 5);
+
+    if (args.decision === "verified") {
+      await ctx.db.patch(submission._id, {
+        status: "verified",
+        reviewDecision: "verified",
+        reviewNote: detail,
+        reviewedAt: now,
+        reviewedBy: admin._id,
+        updatedAt: now,
+      });
+      await ctx.db.patch(user._id, {
+        verification: "verified",
+        identityVerificationStatus: "verified",
+        identityFaceVerificationStatus: submission.liveIdentityEvidenceId ? "verified" : user.identityFaceVerificationStatus,
+        identityFaceVerifiedAt: submission.liveIdentityEvidenceId ? now : user.identityFaceVerifiedAt,
+        kycTier: Math.max(currentTier, 1) as 0 | 1 | 2 | 3,
+        identityVerifiedAt: now,
+        identityReviewedAt: now,
+        identityNote: detail,
+        securityEngineScore: submission.securityAssessment.score,
+        securityEngineDecision: submission.securityAssessment.decision,
+        lastVerificationReviewNote: detail,
+        lastVerificationReviewedAt: now,
+        lastVerificationReviewedBy: admin._id,
+        ...(submission.liveAddressResult
+          ? {
+              addressVerifiedAt: submission.liveAddressResult.verifiedAt,
+              addressVerificationConfidence: submission.securityAssessment.score,
+            }
+          : {}),
+      });
+      await notify(ctx, user._id, "Identity verified", "Your identity and address verification are complete.");
+      await audit(ctx, admin, "verification.approved", `Tier 1 approved for ${user._id} on submission ${submission._id}. Score ${submission.securityAssessment.score}. ${detail}`);
+    } else {
+      await ctx.db.patch(submission._id, {
+        status: "rejected",
+        reviewDecision: "rejected",
+        reviewedAt: now,
+        reviewedBy: admin._id,
+        reviewNote: detail,
+        updatedAt: now,
+      });
+      await ctx.db.patch(user._id, {
+        verification: "rejected",
+        identityVerificationStatus: "rejected",
+        identityFaceVerificationStatus: submission.liveIdentityEvidenceId ? "rejected" : user.identityFaceVerificationStatus,
+        kycTier: 0,
+        identityReviewedAt: now,
+        identityNote: detail,
+        lastVerificationReviewNote: detail,
+        lastVerificationReviewedAt: now,
+        lastVerificationReviewedBy: admin._id,
+      });
+      await notify(ctx, user._id, "Identity review needs changes", detail);
+      await audit(ctx, admin, "verification.rejected", `Tier 1 rejected for ${user._id} on submission ${submission._id}. ${detail}`);
+    }
   },
 });
 

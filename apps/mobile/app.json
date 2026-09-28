@@ -11,6 +11,6 @@
     "ios": { "supportsTablet": true, "bundleIdentifier": "app.passenger.mobile" },
     "android": { "package": "app.passenger.mobile" },
     "web": { "bundler": "metro", "name": "Passenger · Good things, going places", "shortName": "Passenger", "favicon": "./assets/favicon.png" },
-    "plugins": ["expo-secure-store", "expo-web-browser", ["expo-location", { "locationWhenInUsePermission": "Passenger uses your location only when you tap Update parcel location, so the sender can see the parcel's latest check-in." }]]
+    "plugins": ["expo-secure-store", "expo-web-browser", ["expo-image-picker", { "cameraPermission": "Passenger uses your front camera to take a live identity photo for comparison with your verified BVN or NIN photo." }], ["expo-location", { "locationWhenInUsePermission": "Passenger uses your location only when you tap Update parcel location, so the sender can see the parcel's latest check-in." }]]
   }
 }

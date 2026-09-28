@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Activity, ArrowRight, ArrowUpRight, Bell, Box, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, CircleDollarSign, CircleHelp, Clock3, CreditCard, EllipsisVertical, FileDown, Flag, Headset, Home, Info, LayoutDashboard, MapPin, Menu, MessageSquareMore, Package, Pencil, Route, Search, Send, Settings, ShieldCheck, Star, Timer, Trash2, Truck, Users, Waypoints, X, type LucideIcon } from "lucide-react";
 import { formatErrorMessage, money, PERMISSIONS, STATUS_LABELS, tripRoute, type DashboardSnapshot, type PermissionKey, type Shipment, type Person, type Trip, type Dispute, type Offer, type SupportUserDetails, type SupportActivityEntry, type AgentScoreboardEntry } from "@passenger/core";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@passenger/backend/convex/_generated/api";
 import type { Id } from "@passenger/backend/convex/_generated/dataModel";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -57,6 +57,7 @@ const figmaSidebarNav: { id: View; title: string; icon: LucideIcon; count?: "pen
   { id: "compliance", title: "Compliance", icon: ShieldCheck, count: "pendingUsers" },
   { id: "verifications", title: "Users", icon: Users },
   { id: "deliveries", title: "Deliveries", icon: Truck },
+  { id: "routes", title: "Travel routes", icon: Route },
   { id: "payments", title: "Transactions", icon: CircleDollarSign },
   { id: "offers", title: "Carry offers", icon: MessageSquareMore },
   { id: "support", title: "Support", icon: Headset, count: "openDisputes" },
@@ -263,6 +264,17 @@ const [composer, setComposer] = useState("");
     link.click();
     URL.revokeObjectURL(url);
   }
+  function exportRoutesReport() {
+    const rows = [["Route", "Traveler", "Departure", "Capacity", "Status"]].concat(tripsShown.map(t => [tripRoute(t).join(" -> "), t.travellerName, new Date(t.departureAt).toLocaleDateString("en-GB"), `${t.capacityKg} kg`, humanize(t.status ?? "active")]));
+    const csv = rows.map(row => row.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "passenger-routes-report.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
   const filteredShipments = shipments.filter(s => matching(`${s.reference} ${s.senderName} ${s.travellerName ?? ""} ${s.origin} ${s.destination} ${s.description} ${s.exception ?? ""}`) && (filter === "exceptions" ? exceptions.some(e => e.id === s.id) : view === "payments" ? statusMatch(s.paymentStatus) : statusMatch(s.status))).sort((a, b) => b.updatedAt - a.updatedAt);
   const pageSize = view === "overview" ? 5 : 10;
   const safePage = Math.min(page, Math.max(0, Math.ceil(filteredShipments.length / pageSize) - 1));
@@ -300,6 +312,10 @@ const [composer, setComposer] = useState("");
   const deliveriesPage = Math.min(page, Math.max(0, Math.ceil(deliveriesShown.length / deliveriesPageSize) - 1));
   const visibleDeliveries = deliveriesShown.slice(deliveriesPage * deliveriesPageSize, (deliveriesPage + 1) * deliveriesPageSize);
   const deliveriesPageCount = Math.max(1, Math.ceil(deliveriesShown.length / deliveriesPageSize));
+  const routesPageSize = 8;
+  const routesPageCount = Math.max(1, Math.ceil(tripsShown.length / routesPageSize));
+  const routesPage = Math.min(page, routesPageCount - 1);
+  const visibleRoutes = tripsShown.slice(routesPage * routesPageSize, (routesPage + 1) * routesPageSize);
   return <div className={`app-shell app-shell-${view}`}>
     <a className="skip-link" href="#main-content">Skip to content</a>
     {mobileNav && <button className="nav-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
@@ -343,7 +359,7 @@ const [composer, setComposer] = useState("");
         )}
       </aside>
     <div className={`main-shell main-shell-${view}`}>
-      {view !== "overview" && view !== "verifications" && view !== "compliance" && view !== "deliveries" && view !== "payments" && view !== "support" && view !== "settings" && view !== "security" && view !== "monitoring" && view !== "notifications" && <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" onClick={() => setMobileNav(!mobileNav)} aria-label="Toggle navigation" aria-expanded={mobileNav}><Menu size={20} /></button><span>Workspace</span><ChevronRight size={13} /><strong>{title}</strong></div><div className="topbar-right"><span className="environment live"><span />Live records</span><button className="icon-button notification-button" aria-label={`Notifications, ${unread} unread`} onClick={() => navigate("notifications")}><Bell size={19} />{unread > 0 && <i />}</button></div></header>}
+      {view !== "overview" && view !== "verifications" && view !== "compliance" && view !== "deliveries" && view !== "payments" && view !== "support" && view !== "settings" && view !== "security" && view !== "monitoring" && view !== "notifications" && view !== "routes" && <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" onClick={() => setMobileNav(!mobileNav)} aria-label="Toggle navigation" aria-expanded={mobileNav}><Menu size={20} /></button><span>Workspace</span><ChevronRight size={13} /><strong>{title}</strong></div><div className="topbar-right"><span className="environment live"><span />Live records</span><button className="icon-button notification-button" aria-label={`Notifications, ${unread} unread`} onClick={() => navigate("notifications")}><Bell size={19} />{unread > 0 && <i />}</button></div></header>}
       <main id="main-content" className={`main-content main-content-${view}`}>
         {view === "overview"
           ? <>
@@ -388,7 +404,7 @@ const [composer, setComposer] = useState("");
                 </section>
               </div>
             </>
-          : view === "verifications" || view === "compliance" || view === "deliveries" || view === "payments" || view === "support" || view === "settings" || view === "security" || view === "monitoring" || view === "notifications"
+          : view === "verifications" || view === "compliance" || view === "deliveries" || view === "payments" || view === "support" || view === "settings" || view === "security" || view === "monitoring" || view === "notifications" || view === "routes"
             ? null
             : <><div className="page-heading"><div><p className="eyebrow">OPERATIONS WORKSPACE</p><h1 ref={headingRef} tabIndex={-1}>{title}</h1><p>Live records. Thoughtful decisions. An accountable trail.</p></div><span className="date-chip"><Clock3 size={15} />{new Date(now).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span></div>
               <div className="content-toolbar"><div className="workspace-tabs"><button onClick={() => navigate("overview")}>Overview</button><button onClick={() => { navigate("deliveries"); setFilter("exceptions"); }}>Exceptions<span>{exceptions.length}</span></button></div><label className="global-search"><Search size={16} /><input ref={searchRef} aria-label={`Search ${title}`} placeholder={`Search ${title.toLowerCase()}…`} value={query} onChange={e => { setQuery(e.target.value); setPage(0); }} /><kbd>/</kbd>{query && <button aria-label="Clear search" onClick={() => setQuery("")}><X size={14} /></button>}</label></div></>}
@@ -414,9 +430,36 @@ const [composer, setComposer] = useState("");
           link.click();
           URL.revokeObjectURL(url);
         }}><FileDown size={18} />Generate report</button></div><div className="figma-payments-table-wrap"><table className="figma-payments-table"><thead><tr><th>User</th><th>Transaction Type</th><th>Amount</th><th>Date</th><th>Time</th></tr></thead><tbody>{visibleWallet.map(t => <tr key={t.id}><td>{people.find(p => p.id === t.userId)?.name ?? "-"}</td><td>{WALLET_KIND_LABELS[t.kind] ?? t.kind}</td><td>{money(t.amountNaira)}</td><td>{new Date(t.createdAt).toLocaleDateString("en-GB")}</td><td>{new Date(t.createdAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</td></tr>)}{!visibleWallet.length && <tr><td colSpan={5} className="figma-empty-row">No transactions found</td></tr>}</tbody></table></div>{walletPageCount > 1 && <div className="figma-payments-pagination"><button disabled={walletPage === 0} onClick={() => setPage(current => Math.max(0, current - 1))}>Previous</button>{Array.from({ length: walletPageCount }, (_, index) => <button key={index} className={index === walletPage ? "active" : ""} onClick={() => setPage(index)}>{index + 1}</button>)}<button disabled={walletPage === walletPageCount - 1} onClick={() => setPage(current => Math.min(walletPageCount - 1, current + 1))}>Next</button></div>}</section>}
-        {view === "routes" && <><div className="table-controls"><SelectFilter label="Journey status" value={filter} onChange={setFilter} options={["active", "cancelled", "completed"]} /></div><div className="route-grid">{tripsShown.map(t => <button className="panel route-card" key={t.id} onClick={() => setSelection({ type: "route", id: t.id })}><div className="route-card-top"><span className="route-icon"><Route size={21} /></span><Status status={t.status ?? "active"} /></div><h2>{t.origin}<ArrowRight size={20} />{t.destination}</h2><p>{t.stops?.length ? `Via ${t.stops.join(" → ")}` : "Direct route"}</p><p><Clock3 size={14} />{fullDate(t.departureAt)}</p><div className="route-capacity"><span>{t.capacityKg} kg <small>total capacity</small></span><strong>{t.maxParcelWeightKg ?? t.capacityKg} kg<small> max parcel</small></strong></div><div className="route-card-bottom"><Avatar name={t.travellerName} small /><span>{t.travellerName}</span><ArrowUpRight size={17} /></div></button>)}</div>{!tripsShown.length && <Empty title="No journeys found" description="Published journeys matching this view will appear here." />}</>}
+        {view === "routes" && <section className="figma-routes-page">
+          <div className="figma-routes-header"><h1 ref={headingRef} tabIndex={-1}>Travel routes</h1></div>
+          <div className="figma-routes-kpis">
+            <FigmaMetricCard title="Active routes" value={String(trips.filter(t => (t.status ?? "active") === "active").length)} compact />
+            <FigmaMetricCard title="Completed routes" value={String(trips.filter(t => t.status === "completed").length)} compact />
+          </div>
+          <div className="figma-routes-controls">
+            <div className="figma-routes-controls-left">
+              <label className="figma-users-search"><Search size={20} /><input ref={searchRef} aria-label="Search routes" placeholder="Search routes" value={query} onChange={e => { setQuery(e.target.value); setPage(0); }} /></label>
+              <label className="figma-users-filter"><span>Filter</span><ChevronDown size={18} /><select aria-label="Filter routes" value={filter} onChange={e => { setFilter(e.target.value); setPage(0); }}><option value="all">All</option>{["active", "cancelled", "completed"].map(status => <option key={status} value={status}>{humanize(status)}</option>)}</select></label>
+            </div>
+            <button className="figma-users-report" onClick={exportRoutesReport}><FileDown size={18} />Generate report</button>
+          </div>
+          <div className="figma-routes-table-wrap">
+            <table className="figma-routes-table">
+              <thead><tr><th>Route</th><th>Traveler</th><th>Departure</th><th>Capacity</th><th>Status</th></tr></thead>
+              <tbody>{visibleRoutes.map(t => <tr key={t.id}>
+                <td><button className="figma-user-name-button" onClick={() => setSelection({ type: "route", id: t.id })}>{t.origin} -&gt; {t.destination}</button></td>
+                <td>{t.travellerName}</td>
+                <td>{new Date(t.departureAt).toLocaleDateString("en-GB")}</td>
+                <td>{t.capacityKg} kg</td>
+                <td><span className={`figma-route-status ${t.status ?? "active"}`}>{humanize(t.status ?? "active")}</span></td>
+              </tr>)}{!visibleRoutes.length && <tr><td colSpan={5} className="figma-empty-row">No routes found</td></tr>}</tbody>
+            </table>
+          </div>
+          {routesPageCount > 1 && <div className="figma-routes-pagination"><button disabled={routesPage === 0} onClick={() => setPage(current => Math.max(0, current - 1))}>Previous</button>{Array.from({ length: routesPageCount }, (_, index) => <button key={index} className={index === routesPage ? "active" : ""} onClick={() => setPage(index)}>{index + 1}</button>)}<button disabled={routesPage === routesPageCount - 1} onClick={() => setPage(current => Math.min(routesPageCount - 1, current + 1))}>Next</button></div>}
+        </section>}
         {view === "offers" && <Panel title="Carry offers" count={offersShown.length}><div className="notice">Carry offers and delivery proposals will appear here.</div><div className="member-list">{offersShown.map(o => <OfferRow key={o.id} offer={o} snapshot={snapshot} now={now} onSelect={setSelection} />)}</div>{!offersShown.length && <Empty title="No carry offers yet" description="Carry offers matching this view will appear here." />}</Panel>}
-        {(view === "verifications" || view === "compliance") && (selection?.type === "user"
+        {view === "compliance" && !selection && <VerificationQueue />}
+        {(view === "verifications" || view === "compliance") && !(view === "compliance" && !selection) && (selection?.type === "user"
           ? <FigmaUserDetailPage user={people.find(person => person.id === selection.id)} shipments={shipments} walletTransactions={snapshot.walletTransactions ?? []} reviews={snapshot.reviews ?? []} onAction={submit} onUpdateTier={onUpdateTier} viewerIsCompliance={hasPerm(PERMISSIONS.COMPLIANCE_MANAGE)} onBack={() => setSelection(null)} />
           : <section className="figma-users-page"><div className="figma-users-header"><h1 ref={headingRef} tabIndex={-1}>{view === "compliance" ? "Compliance" : "User management"}</h1></div><div className="figma-users-controls"><div className="figma-users-controls-left"><label className="figma-users-search"><Search size={20} /><input ref={searchRef} aria-label="Search users" placeholder="Search users" value={query} onChange={e => { setQuery(e.target.value); setPage(0); }} /></label><label className="figma-users-filter"><span>Filter</span><ChevronDown size={18} /><select aria-label="Filter users" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">All</option><option value="required">Required</option><option value="pending">Pending</option><option value="verified">Verified</option><option value="rejected">Rejected</option><option value="suspended">Suspended</option></select></label></div><button className="figma-users-report" onClick={exportUsersReport}><FileDown size={18} />Generate report</button></div><div className="figma-users-table-wrap"><table className="figma-users-table"><thead><tr><th>Name</th><th>Email address</th><th>Phone number</th><th>Status</th><th>Actions</th></tr></thead><tbody>{peopleShown.map(person => <tr key={person.id}><td><button className="figma-user-name-button" onClick={() => setSelection({ type: "user", id: person.id })}>{person.name}</button></td><td>{person.email ?? "-"}</td><td>{person.phone}</td><td><span className={`figma-user-status ${person.suspended ? "suspended" : person.verification === "verified" ? "active" : "pending"}`}>{person.suspended ? "Suspended" : person.verification === "verified" ? "Active" : person.verification === "rejected" ? "Rejected" : person.verification === "required" ? "Required" : "Pending"}</span></td><td><div className="figma-user-actions"><button className="figma-user-menu-trigger" aria-label={`Actions for ${person.name}`} onClick={event => { event.stopPropagation(); setOpenUserMenu(current => current === person.id ? null : person.id); }}><EllipsisVertical size={18} /></button>{openUserMenu === person.id && <div className="figma-user-menu" onClick={event => event.stopPropagation()}><button onClick={() => { setOpenUserMenu(null); setSelection({ type: "user", id: person.id }); }}>Open user</button><button onClick={() => { setOpenUserMenu(null); setSelection({ type: "user", id: person.id }); }}>Review details</button></div>}</div></td></tr>)}{!peopleShown.length && <tr><td colSpan={5} className="figma-empty-row">No users found</td></tr>}</tbody></table></div></section>)}
         {view === "disputes" && <Panel title="Disputes & incident inbox" count={disputesShown.length}><div className="table-controls"><SelectFilter label="Dispute status" value={filter} onChange={setFilter} options={["open", "resolved"]} /></div><div className="dispute-list">{disputesShown.map(d => <button className="dispute-row" key={d.id} onClick={() => setSelection({ type: "dispute", id: d.id })}><span className="dispute-icon"><Flag size={20} /></span><span className="dispute-info"><strong>{shipments.find(s => s.id === d.shipmentId)?.reference ?? "Delivery dispute"}<Status status={d.status} /></strong><span>{d.reason}</span><small>{d.informationRequest ? "Information requested · " : ""}{fullDate(d.createdAt)}</small></span><ArrowUpRight size={18} /></button>)}</div>{!disputesShown.length && <Empty title="A clear road ahead" description="No disputes match this view. Delivery exceptions remain visible in the delivery queue." />}</Panel>}
@@ -426,7 +469,7 @@ const [composer, setComposer] = useState("");
         {view === "settings" && <SystemSettings settings={snapshot.settings ?? []} feeConfig={snapshot.feeConfig} escrowPolicies={snapshot.escrowPolicies ?? []} cancellationPolicies={snapshot.cancellationPolicies ?? []} kycTiers={snapshot.kycTiers ?? []} serviceArea={snapshot.serviceArea} mobileConfig={snapshot.mobileConfig} onCreateSetting={onCreateSetting} onUpdateSetting={onUpdateSetting} onDeleteSetting={onDeleteSetting} onUpdateFeeConfig={onUpdateFeeConfig} onCreateEscrow={onCreateEscrow} onUpdateEscrow={onUpdateEscrow} onDeleteEscrow={onDeleteEscrow} onCreateCancellation={onCreateCancellation} onUpdateCancellation={onUpdateCancellation} onDeleteCancellation={onDeleteCancellation} onCreateKycTier={onCreateKycTier} onUpdateKycTier={onUpdateKycTier} onDeleteKycTier={onDeleteKycTier} onUpdateServiceArea={onUpdateServiceArea} />}
         {view === "security" && <SecurityCompliance adminRoles={snapshot.adminRoles ?? []} teamMembers={snapshot.teamMembers ?? []} permissions={snapshot.permissions ?? []} permissionGrants={snapshot.permissionGrants ?? []} suspiciousList={snapshot.suspiciousAccounts ?? []} loginsList={snapshot.adminLogins ?? []} actionsList={snapshot.adminActions ?? []} viewerPermissions={viewerPerms} onCreateRole={onCreateAdminRole} onUpdateRole={onUpdateAdminRole} onDeleteRole={onDeleteAdminRole} onCreateTeamMember={onCreateTeamMember} onInviteTeamMember={onInviteTeamMember} onUpdateTeamMember={onUpdateTeamMember} onDeleteTeamMember={onDeleteTeamMember} onCreatePermission={onCreatePermission} onUpdatePermission={onUpdatePermission} onDeletePermission={onDeletePermission} onSetPermissionGrant={onSetPermissionGrant} />}
         {view === "monitoring" && <RealTimeMonitoring snapshot={snapshot} />}
-        {view !== "overview" && view !== "verifications" && view !== "compliance" && view !== "deliveries" && view !== "payments" && view !== "support" && view !== "settings" && view !== "security" && view !== "monitoring" && view !== "notifications" && <footer className="page-footer"><span><Waypoints size={13} /> Made for the journeys that connect us.</span><span>Server-owned records · No simulated transactions</span></footer>}
+        {view !== "overview" && view !== "verifications" && view !== "compliance" && view !== "deliveries" && view !== "payments" && view !== "support" && view !== "settings" && view !== "security" && view !== "monitoring" && view !== "notifications" && view !== "routes" && <footer className="page-footer"><span><Waypoints size={13} /> Made for the journeys that connect us.</span><span>Server-owned records · No simulated transactions</span></footer>}
       </main>
     </div>
     {qaChatId && <div className="figma-resolve-modal-overlay" role="dialog" aria-modal="true" aria-label="Quality review" onClick={() => setQaChatId(null)}><div className="figma-resolve-modal" onClick={e => e.stopPropagation()}><button className="figma-resolve-modal-close" aria-label="Close" onClick={() => setQaChatId(null)}><X size={22} /></button><h2 className="figma-resolve-modal-title">Quality review</h2><form className="figma-resolve-modal-form" onSubmit={async e => { e.preventDefault(); if (!onQaReview) return; try { await onQaReview({ chatId: qaChatId, score: qaScore, note: qaNote.trim() }); setToast("QA review recorded."); setQaChatId(null); } catch (err) { console.error("Failed to save QA review", err); setToast(formatErrorMessage(err, "Failed to save QA review.")); } }}><div className="figma-resolve-modal-field"><span>Verdict</span><div className="figma-qa-score-row"><button type="button" className={`figma-qa-score ${qaScore === "approved" ? "approved" : ""}`} onClick={() => setQaScore("approved")}>Approved</button><button type="button" className={`figma-qa-score ${qaScore === "needs_work" ? "needs-work" : ""}`} onClick={() => setQaScore("needs_work")}>Needs work</button></div></div><label className="figma-resolve-modal-field"><span>QA note</span><textarea value={qaNote} onChange={e => setQaNote(e.target.value)} placeholder="What was handled well or needs improvement?" rows={3} /></label><div className="figma-resolve-modal-actions"><button type="submit" className="figma-resolve-modal-submit">Save review</button></div></form></div></div>}
@@ -459,13 +502,178 @@ function TierControl({ user, onUpdate }: { user: Person; onUpdate: (args: { user
   return <div className="figma-user-history-section"><div className="figma-section-title">Tier assignment</div><div className="action-form"><label>Tier<select value={tier} onChange={e => setTier(e.target.value as "Tier 1" | "Tier 2" | "Tier 3")} disabled={busy}><option value="Tier 1">Tier 1</option><option value="Tier 2">Tier 2</option><option value="Tier 3">Tier 3</option></select></label>{message && <p role="status" className="notice">{message}</p>}{error && <p role="alert" className="error-message">{error}</p>}<button className="button primary" disabled={busy || tier === current} onClick={async () => { setBusy(true); setMessage(""); setError(""); try { await onUpdate({ userId: user.id as Id<"users">, tier }); setMessage("Tier updated. New limits apply immediately."); } catch (e) { setError(formatErrorMessage(e, "Failed to update tier.")); } finally { setBusy(false); } }}>{busy ? "Updating…" : "Change tier"}</button></div></div>;
 }
 
+function VerificationQueue() {
+  const queue = useQuery(api.verificationReview.listVerificationSubmissionsForReview, {});
+  const metrics = useQuery(api.verificationReview.getVerificationMetrics, {});
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const details = useQuery(api.verificationReview.getVerificationSubmissionForReview, selectedId ? { submissionId: selectedId as Id<"verificationSubmissions"> } : "skip");
+  const review = useMutation(api.admin.reviewVerificationSubmission);
+  const [decision, setDecision] = useState<"verified" | "rejected">("verified");
+  const [note, setNote] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const valid = note.trim().length >= 5 && confirmed;
+
+  if (selectedId && details === undefined) return <section className="figma-users-page"><div className="figma-users-header"><h1>Compliance review</h1></div><div className="figma-empty-row">Loading the verification submission…</div></section>;
+  if (selectedId && details === null) return <section className="figma-users-page"><div className="figma-users-header"><h1>Compliance review</h1></div><div className="figma-evidence-state error">This submission is unavailable.</div><button className="button secondary" onClick={() => setSelectedId(null)}>Back to queue</button></section>;
+  if (selectedId && details) {
+    const statusClass = details.submission.status === "verified" ? "active" : details.submission.status === "rejected" ? "suspended" : "pending";
+    const statusLabel = humanize(details.submission.reviewDecision ?? details.submission.status);
+    const evidenceGroups = [["Identity evidence", details.identity.evidence], ["Proof-of-address evidence", details.proofAddress?.evidence ?? []]] as const;
+    const decisionStatus = (decision: string | { status?: string }): string => {
+      const value = typeof decision === "string" ? decision : decision.status;
+      if (value === "match" || value === "pass") return "active";
+      if (value === "mismatch" || value === "high_risk") return "cancelled";
+      return "pending";
+    };
+
+    return <section className="figma-user-detail-page">
+      <div className="figma-user-detail-header"><button className="figma-user-detail-back" onClick={() => setSelectedId(null)}><ChevronLeft size={20} /></button><div className="figma-user-detail-title-wrap"><h1>Tier 1 compliance review</h1></div></div>
+
+      <div className="figma-compliance-layout">
+        <div className="figma-compliance-main">
+          <div className="figma-user-summary"><div className="figma-user-summary-left"><div className="figma-user-avatar">{details.user.name.split(" ").map(part => part[0]).slice(0, 2).join("")}</div><div className="figma-user-summary-copy"><div className="figma-user-name-row"><h2>{details.user.name}</h2><span className="figma-user-tier">{details.user.currentTier ?? "No Tier"}</span><span className={`figma-user-status ${statusClass}`}>{statusLabel}</span></div><div className="figma-user-field">{details.user.email ?? "No email"}</div><div className="figma-user-field">{details.user.phone} · {details.user.phoneVerified ? "Phone verified" : "Phone not verified"}</div><div className="figma-user-field">Submitted {details.submission.submittedAt ? fullDate(details.submission.submittedAt) : "Unknown"} · Version {details.submission.version}</div></div></div></div>
+
+          {details.submission.status !== "pending" && <div className="notice"><ShieldCheck size={18} /><div>Review closed · {statusLabel} · reviewed {details.submission.reviewedAt ? fullDate(details.submission.reviewedAt) : "at an unknown time"}{details.submission.reviewNote ? <div><strong>Reviewer note:</strong> {details.submission.reviewNote}</div> : null}. This record is retained for the compliance audit trail.</div></div>}
+
+          <div className="figma-user-history-section"><div className="figma-section-title">Legal identity</div><dl className="detail-grid"><Detail label="Legal name" value={details.identity.legalName ? [details.identity.legalName.firstName, details.identity.legalName.middleName, details.identity.legalName.lastName].filter(Boolean).join(" ") : "Not provided"} /><Detail label="Document type" value={details.identity.documentType ? humanize(details.identity.documentType) : "Not provided"} /><Detail label="Document number" value={details.identity.documentNumber ?? "Not provided"} /><Detail label="Document address" value={details.identity.documentAddressText ?? "Not provided"} /><Detail label="Previous submissions" value={String(details.previousSubmissionCount)} /></dl></div>
+
+          {details.identity.faceComparison?.referenceImage && details.identity.faceComparison?.liveImage && (
+            <div className="figma-user-history-section">
+              <div className="figma-section-title">Face comparison (BVN/NIN vs Live capture)</div>
+              <div className="figma-evidence-grid">
+                <article className="figma-evidence-card">
+                  <img src={details.identity.faceComparison.referenceImage.startsWith("data:") ? details.identity.faceComparison.referenceImage : `data:image/jpeg;base64,${details.identity.faceComparison.referenceImage}`} alt="BVN/NIN profile reference" loading="lazy" />
+                  <div className="figma-evidence-copy"><strong>BVN/NIN Profile</strong><span>Reference image</span></div>
+                </article>
+                <article className="figma-evidence-card">
+                  {details.identity.faceComparison.liveImage.url ? <img src={details.identity.faceComparison.liveImage.url} alt="Live photo capture" loading="lazy" /> : <div className="figma-evidence-preview-empty"><FileDown size={28} /><span>Preview unavailable</span></div>}
+                  <div className="figma-evidence-copy"><strong>Live Photo</strong><span>{details.identity.faceComparison.liveImage.contentType}</span></div>
+                  {details.identity.faceComparison.liveImage.url ? <a className="button secondary" href={details.identity.faceComparison.liveImage.url} target="_blank" rel="noreferrer">Open original<ArrowUpRight size={15} /></a> : null}
+                </article>
+              </div>
+              <dl className="detail-grid"><Detail label="Automated face match" value={details.identity.faceComparison.matchStatus ? humanize(details.identity.faceComparison.matchStatus) : "Not checked"} /><Detail label="Similarity" value={details.identity.faceComparison.similarity == null ? "Unavailable" : `${Math.round(details.identity.faceComparison.similarity * 100)}%`} /><Detail label="Potential duplicate" value={details.identity.faceComparison.potentialDuplicate ? "Review required" : "None flagged"} /></dl>
+            </div>
+          )}
+
+          <div className="figma-user-history-section"><div className="figma-section-title">Claimed and documented address</div><dl className="detail-grid"><Detail label="Claimed address" value={details.claimedAddress.raw ?? "Not provided"} /><Detail label="Address on proof" value={details.proofAddress?.text ?? "Not provided"} /><Detail label="Proof type" value={details.proofAddress?.type ?? "Not provided"} /><Detail label="Address comparison" value={<span className={`figma-route-status ${decisionStatus(details.proofAddress?.match?.status ?? "unavailable")}`}>{details.proofAddress?.match?.status ? humanize(details.proofAddress.match.status) : "Unavailable"}</span>} /></dl></div>
+
+          {details.liveLocation && <div className="figma-user-history-section"><div className="figma-section-title">Live address check</div><dl className="detail-grid"><Detail label="Captured" value={fullDate(details.liveLocation.verifiedAt)} /><Detail label="GPS accuracy" value={`${Math.round(details.liveLocation.accuracyMeters)} m`} /><Detail label="Distance from claimed address" value={details.liveLocation.distanceMeters !== undefined ? `${Math.round(details.liveLocation.distanceMeters)} m` : "Unavailable"} /><Detail label="Coordinates (restricted)" value={`${details.liveLocation.latitude.toFixed(5)}, ${details.liveLocation.longitude.toFixed(5)}`} /></dl></div>}
+
+          {details.security ? <div className="figma-user-history-section"><div className="figma-section-title">Security Engine</div><div className="figma-evidence-meta"><span><strong>Overall score</strong>{details.security.score}/100</span><span><strong>Recommendation</strong><span className={`figma-route-status ${decisionStatus(details.security.decision)}`}>{humanize(details.security.decision)}</span></span><span><strong>Version</strong>{details.security.version}</span></div><dl className="detail-grid"><Detail label="Live location match" value={`${humanize(details.security.signals.geoMatch.status)} · ${details.security.signals.geoMatch.score} pts`} /><Detail label="Proof address match" value={`${humanize(details.security.signals.proofAddressMatch.status)} · ${details.security.signals.proofAddressMatch.score} pts`} /><Detail label="ID address support" value={details.security.signals.identityAddressMatch ? `${humanize(details.security.signals.identityAddressMatch.status)} · ${details.security.signals.identityAddressMatch.score} pts` : "Not available"} /><Detail label="Session & device integrity" value={`${details.security.signals.deviceIntegrity.score} pts`} /></dl>{details.security.flags.length ? <div className="notice">{details.security.flags.map(flag => <div key={flag.code}><strong>{humanize(flag.severity)}:</strong> {flag.message}</div>)}</div> : <div className="figma-evidence-state">No Security Engine flags were recorded.</div>}</div> : <div className="figma-evidence-state error">Security assessment is missing. Do not review this submission.</div>}
+
+          {evidenceGroups.map(([label, files]) => files.length ? <div className="figma-user-history-section" key={label}><div className="figma-section-title">{label}</div><div className="figma-evidence-grid">{files.map(file => !file.available ? <article className="figma-evidence-card unavailable" key={file.id}><div className="figma-evidence-state error">The submitted file is unavailable.</div></article> : <article className="figma-evidence-card" key={file.id}>{file.url && file.contentType.startsWith("image/") ? <img src={file.url} alt={file.filename} loading="lazy" /> : file.url && file.contentType === "application/pdf" ? <iframe src={file.url} title={file.filename} /> : <div className="figma-evidence-preview-empty"><FileDown size={28} /><span>Preview unavailable</span></div>}<div className="figma-evidence-copy"><strong>{file.filename}</strong><span>{file.contentType} · {formatFileSize(file.size)}</span></div>{file.url ? <a className="button secondary" href={file.url} target="_blank" rel="noreferrer">Open original<ArrowUpRight size={15} /></a> : null}</article>)}</div></div> : null)}
+
+          {!details.identity.evidence.length && !(details.proofAddress?.evidence.length) && <div className="figma-evidence-state">No evidence files are attached to this submission. Ask the member to upload and resubmit their evidence.</div>}
+
+          <div className="notice"><ShieldCheck size={18} />Identity files are private. Use them only for this review and do not copy document numbers into notes.</div>
+        </div>
+
+        <div className="figma-compliance-sidebar">
+          {details.submission.status === "pending" ? (
+            <form className="action-form form-stack" aria-busy={busy}>
+              <h3 className="detail-heading">Review decision</h3>
+              <div className="figma-decision-toggle">
+                <label>
+                  <input type="radio" name="decision" value="verified" checked={decision === "verified"} onChange={() => setDecision("verified")} disabled={busy} />
+                  <div className="figma-decision-card approve">Approve Tier 1</div>
+                </label>
+                <label>
+                  <input type="radio" name="decision" value="rejected" checked={decision === "rejected"} onChange={() => setDecision("rejected")} disabled={busy} />
+                  <div className="figma-decision-card reject">Reject</div>
+                </label>
+              </div>
+              <label>Review explanation <span className="required-field">Required</span>
+                <textarea required aria-required="true" minLength={5} maxLength={1000} rows={4} disabled={busy} value={note} onChange={event => setNote(event.target.value)} placeholder="Explain the evidence checked and any corrections required." />
+                <small>{note.trim().length}/1000 characters · at least 5 required</small>
+              </label>
+              <label className="confirmation-check">
+                <input type="checkbox" disabled={busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />
+                <span>I checked the identity, address, location and Security Engine evidence. This decision is audited.</span>
+              </label>
+              {error && <p role="alert" className="error-message">{error}</p>}
+              <button className={`button wide ${decision === "rejected" ? "danger" : "primary"}`} disabled={busy || !valid}>{busy ? "Recording review…" : "Confirm review decision"}</button>
+            </form>
+          ) : (
+            <div>
+              <h3 className="detail-heading">Review summary</h3>
+              <p className="detail-muted">This submission was already reviewed and closed.</p>
+              <dl className="detail-grid" style={{ marginTop: 16 }}>
+                <Detail label="Status" value={statusLabel} />
+                <Detail label="Reviewed by" value={details.submission.reviewedBy ? "Admin" : "System"} />
+                <Detail label="Date" value={details.submission.reviewedAt ? fullDate(details.submission.reviewedAt) : "Unknown"} />
+              </dl>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>;
+  }
+  return <section className="figma-users-page"><div className="figma-users-header"><h1>Compliance</h1></div>
+    <div className="figma-routes-kpis">
+      <FigmaMetricCard title="Pending reviews" value={metrics ? String(metrics.submissions.pending) : "—"} compact />
+      <FigmaMetricCard title="Oldest pending" value={metrics ? compactDuration(metrics.submissions.oldestPendingAgeMs) : "—"} compact />
+      <FigmaMetricCard title="GPS failures · 24h" value={metrics ? String(metrics.location.failedAttemptsLast24Hours) : "—"} compact />
+      <FigmaMetricCard title="High-risk assessments" value={metrics ? String(metrics.security.highRisk) : "—"} compact />
+    </div>
+    <div className="figma-settings-table-card"><table className="figma-settings-table"><thead><tr><th>Member</th><th>Version</th><th>Status</th><th>Submitted</th><th>Reviewed</th><th>Action</th></tr></thead><tbody>{queue?.map(item => <tr key={item.id}><td><div>{item.userName ?? "Deleted user"}</div><div className="figma-user-field">{item.email ?? item.phone ?? ""}</div></td><td>{item.version}</td><td><span className={`figma-user-status ${item.status === "pending" ? "pending" : item.status === "verified" ? "active" : "suspended"}`}>{item.status === "pending" ? "Pending" : humanize(item.reviewDecision ?? item.status)}</span></td><td>{item.submittedAt ? fullDate(item.submittedAt) : "Not recorded"}</td><td>{item.reviewedAt ? `${fullDate(item.reviewedAt)}${item.reviewerName ? ` · ${item.reviewerName}` : ""}` : "—"}</td><td><button className="button secondary" onClick={() => setSelectedId(item.id)}>{item.status === "pending" ? "Review evidence" : "View record"}</button></td></tr>)}{queue && !queue.length ? <tr><td colSpan={6} className="figma-empty-row">No verification submissions yet.</td></tr> : null}{queue === undefined ? <tr><td colSpan={6} className="figma-empty-row">Loading verification history…</td></tr> : null}</tbody></table></div></section>;
+}
+
+function compactDuration(milliseconds: number | null) {
+  if (milliseconds === null) return "None";
+  const hours = Math.max(0, Math.floor(milliseconds / 3_600_000));
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function IdentityEvidenceReview({ userId }: { userId: string }) {
+  const submission = useQuery(api.verificationReview.getVerificationSubmissionForUser, { userId: userId as Id<"users"> });
+
+  return <div className="figma-user-history-section">
+    <div className="figma-section-title">Identity evidence</div>
+    {submission === undefined ? <div className="figma-evidence-state" role="status">Loading the submitted evidence…</div>
+      : submission === null ? <div className="figma-evidence-state" role="alert">No verification submission has been recorded for this member yet.</div>
+      : <>
+        <div className="figma-evidence-meta">
+          <span><strong>Document</strong>{submission.identity.documentType ? humanize(submission.identity.documentType) : "Not recorded"}</span>
+          <span><strong>Submitted</strong>{submission.submission.submittedAt ? fullDate(submission.submission.submittedAt) : "Not recorded"}</span>
+          <span><strong>Status</strong>{humanize(submission.submission.status)}</span>
+          <span><strong>Files</strong>{submission.identity.evidence.length + (submission.proofAddress?.evidence.length ?? 0)}</span>
+        </div>
+        {submission.submission.reviewDecision ? <div className="figma-evidence-state"><ShieldCheck size={18} />Review closed · {humanize(submission.submission.reviewDecision)}{submission.submission.reviewedAt ? ` · ${fullDate(submission.submission.reviewedAt)}` : ""}{submission.submission.reviewNote ? ` · ${submission.submission.reviewNote}` : ""}</div> : null}
+        <dl className="detail-grid">
+          <Detail label="Legal name" value={submission.identity.legalName ? [submission.identity.legalName.firstName, submission.identity.legalName.middleName, submission.identity.legalName.lastName].filter(Boolean).join(" ") : "Not provided"} />
+          <Detail label="Document number" value={submission.identity.documentNumber ?? "Not provided"} />
+          <Detail label="Document address" value={submission.identity.documentAddressText ?? "Not provided"} />
+          <Detail label="Previous submissions" value={String(submission.previousSubmissionCount)} />
+        </dl>
+        {submission.proofAddress ? <div className="figma-section-title">Claimed and documented address</div> : null}
+        {submission.proofAddress ? <dl className="detail-grid"><Detail label="Claimed address" value={submission.claimedAddress.raw ?? "Not provided"} /><Detail label="Address on proof" value={submission.proofAddress.text ?? "Not provided"} /><Detail label="Proof type" value={submission.proofAddress.type ?? "Not provided"} /><Detail label="Address comparison" value={submission.proofAddress.match.status ? humanize(submission.proofAddress.match.status) : "Unavailable"} /></dl> : null}
+        {submission.liveLocation ? <div className="figma-section-title">Live address check</div> : null}
+        {submission.liveLocation ? <dl className="detail-grid"><Detail label="Captured" value={fullDate(submission.liveLocation.verifiedAt)} /><Detail label="GPS accuracy" value={`${Math.round(submission.liveLocation.accuracyMeters)} m`} /><Detail label="Distance from claimed address" value={submission.liveLocation.distanceMeters !== undefined ? `${Math.round(submission.liveLocation.distanceMeters)} m` : "Unavailable"} /><Detail label="Coordinates (restricted)" value={`${submission.liveLocation.latitude.toFixed(5)}, ${submission.liveLocation.longitude.toFixed(5)}`} /></dl> : null}
+        {submission.security ? <div className="figma-section-title">Security Engine</div> : null}
+        {submission.security ? <div className="figma-evidence-meta"><span><strong>Overall score</strong>{submission.security.score}/100</span><span><strong>Recommendation</strong>{humanize(submission.security.decision)}</span><span><strong>Version</strong>{submission.security.version}</span></div> : null}
+        {([["Identity evidence", submission.identity.evidence], ["Proof-of-address evidence", submission.proofAddress?.evidence ?? []]] as const).map(([label, files]) => files.length ? <div className="figma-user-history-section" key={String(label)}><div className="figma-section-title">{String(label)}</div><div className="figma-evidence-grid">{files.map(file => !file.available ? <article className="figma-evidence-card unavailable" key={file.id}><div className="figma-evidence-state error" role="alert">A submitted file is unavailable. Do not complete the review until the member resubmits it.</div></article> : <article className="figma-evidence-card" key={file.id}>{file.url && file.contentType.startsWith("image/") ? <img src={file.url} alt={`Identity evidence: ${file.filename}`} /> : file.url && file.contentType === "application/pdf" ? <iframe src={file.url} title={`Identity evidence: ${file.filename}`} /> : <div className="figma-evidence-preview-empty"><FileDown size={28} /><span>Preview unavailable</span></div>}<div className="figma-evidence-copy"><strong>{file.filename}</strong><span>{file.contentType || "Unknown file type"} · {formatFileSize(file.size)}</span><span>Uploaded {fullDate(file.createdAt)}</span></div>{file.url ? <a className="button secondary" href={file.url} target="_blank" rel="noreferrer">Open original<ArrowUpRight size={15} /></a> : <div className="figma-evidence-state error" role="alert">The stored file cannot be opened.</div>}</article>)}</div></div> : null)}
+        {!submission.identity.evidence.length && !(submission.proofAddress?.evidence.length) ? <div className="figma-evidence-state">No evidence files are attached to this submission. Ask the member to upload and resubmit their evidence.</div> : null}
+        <div className="notice"><ShieldCheck size={18} />Identity files are private. Use them only for this review and do not copy document numbers into notes.</div>
+      </>}
+  </div>;
+}
+
 function FigmaUserDetailPage({ user, shipments, walletTransactions, reviews, onAction, onUpdateTier, viewerIsCompliance, onBack }: { user: Person | undefined; shipments: Shipment[]; walletTransactions: DashboardSnapshot["walletTransactions"]; reviews: DashboardSnapshot["reviews"]; onAction: ActionHandler; onUpdateTier?: (args: { userId: Id<"users">; tier: "Tier 1" | "Tier 2" | "Tier 3" }) => Promise<unknown>; viewerIsCompliance: boolean; onBack: () => void }) {
   if (!user) return <section className="figma-user-detail-page"><div className="figma-user-detail-header"><button className="figma-user-detail-back" onClick={onBack}><ChevronLeft size={20} /></button><div><h1>User details</h1></div></div><div className="figma-empty-row">User not found</div></section>;
   const deliveryHistory = shipments.filter(shipment => shipment.travellerId === user.id).slice(0, 3);
   const parcelSendingHistory = shipments.filter(shipment => shipment.senderId === user.id).slice(0, 3);
   const transactions = (walletTransactions ?? []).filter(transaction => transaction.userId === user.id).slice(0, 4);
   const userReviews = (reviews ?? []).filter(review => review.targetId === user.id);
-  return <section className="figma-user-detail-page"><div className="figma-user-detail-header"><button className="figma-user-detail-back" onClick={onBack}><ChevronLeft size={20} /></button><div className="figma-user-detail-title-wrap"><h1>User details</h1></div></div><div className="figma-user-summary"><div className="figma-user-summary-left"><div className="figma-user-avatar">{user.name.split(" ").map(part => part[0]).slice(0, 2).join("")}</div><div className="figma-user-summary-copy"><div className="figma-user-name-row"><h2>{user.name}</h2><span className="figma-user-tier">{user.tier ?? (user.verification === "verified" ? "Tier 2" : "Tier 1")}</span></div><div className="figma-user-field">{user.email ?? "No email"}</div><div className="figma-user-field">{user.phone}</div>{user.bvn ? <div className="figma-user-field">BVN: {user.bvn}</div> : null}{user.residenceState ? <div className="figma-user-field">State of residence: {user.residenceState}</div> : null}{user.residenceLga ? <div className="figma-user-field">Local govt of residence: {user.residenceLga}</div> : null}{user.residenceAddress ? <div className="figma-user-field">House address: {user.residenceAddress}</div> : null}{user.streetPhotoUrl ? <div className="figma-user-field">Street picture: {user.streetPhotoUrl.split("/").pop()}</div> : null}{user.housePhotoUrl ? <div className="figma-user-field">House picture: {user.housePhotoUrl.split("/").pop()}</div> : null}</div></div><button className="figma-user-menu-trigger figma-user-detail-menu" aria-label="User actions"><EllipsisVertical size={18} /></button></div>{user.verification === "verified" && viewerIsCompliance && onUpdateTier && <TierControl user={user} onUpdate={onUpdateTier} />}<div className="figma-user-history-section"><div className="figma-section-title">Delivery History</div><div className="figma-user-history-row">{deliveryHistory.length ? deliveryHistory.map(shipment => <FigmaHistoryCard key={shipment.id} shipment={shipment} />) : <div className="figma-history-empty">No delivery history</div>}</div></div><div className="figma-user-history-section"><div className="figma-section-title">Parcel Sending History</div><div className="figma-user-history-row">{parcelSendingHistory.length ? parcelSendingHistory.map(shipment => <FigmaHistoryCard key={shipment.id} shipment={shipment} senderless />) : <div className="figma-history-empty">No parcel sending history</div>}</div></div><div className="figma-user-history-section"><div className="figma-section-title">Transaction History</div><div className="figma-transaction-card">{transactions.length ? transactions.map(transaction => <div key={transaction.id} className="figma-transaction-row"><div className="figma-transaction-main"><div className="figma-transaction-icon"><CreditCard size={16} /></div><div className="figma-transaction-copy"><strong>{money(transaction.amountNaira)}</strong><span>{transaction.note}</span></div></div><div className="figma-transaction-date">{new Date(transaction.createdAt).toLocaleDateString("en-GB")}</div></div>) : <div className="figma-history-empty compact">No transaction history</div>}</div></div><div className="figma-user-history-section"><div className="figma-section-title">Reviews</div>{user.verification === "pending" && !viewerIsCompliance ? <div className="figma-review-note">Identity review is restricted to compliance officers. Contact a compliance admin to act on this submission.</div> : user.verification === "pending" ? <ReviewForm type="user" id={user.id} onAction={onAction} /> : user.verification === "required" ? <div className="figma-review-note">Identity evidence is required before review.</div> : user.verification === "rejected" ? <div className="figma-review-note">Waiting for the member to correct and resubmit their identity evidence.</div> : null}<div className="figma-review-card">{userReviews.length ? userReviews.map(review => <div key={review.id} className="figma-review-row"><strong>{review.rating}/5</strong><span>{review.comment}</span><small>{new Date(review.createdAt).toLocaleDateString("en-GB")}</small></div>) : <div className="figma-history-empty compact">No reviews yet</div>}</div>{user.identityNote ? <div className="figma-review-note">{user.identityNote}</div> : null}</div></section>;
+  return <section className="figma-user-detail-page"><div className="figma-user-detail-header"><button className="figma-user-detail-back" onClick={onBack}><ChevronLeft size={20} /></button><div className="figma-user-detail-title-wrap"><h1>User details</h1></div></div><div className="figma-user-summary"><div className="figma-user-summary-left"><div className="figma-user-avatar">{user.name.split(" ").map(part => part[0]).slice(0, 2).join("")}</div><div className="figma-user-summary-copy"><div className="figma-user-name-row"><h2>{user.name}</h2><span className="figma-user-tier">{user.tier ?? (user.verification === "verified" ? "Tier 2" : "Tier 1")}</span></div><div className="figma-user-field">{user.email ?? "No email"}</div><div className="figma-user-field">{user.phone}</div>{user.bvn ? <div className="figma-user-field">BVN: {user.bvn}</div> : null}{user.residenceState ? <div className="figma-user-field">State of residence: {user.residenceState}</div> : null}{user.residenceLga ? <div className="figma-user-field">Local govt of residence: {user.residenceLga}</div> : null}{user.residenceAddress ? <div className="figma-user-field">House address: {user.residenceAddress}</div> : null}{user.streetPhotoUrl ? <div className="figma-user-field">Street picture: {user.streetPhotoUrl.split("/").pop()}</div> : null}{user.housePhotoUrl ? <div className="figma-user-field">House picture: {user.housePhotoUrl.split("/").pop()}</div> : null}</div></div><button className="figma-user-menu-trigger figma-user-detail-menu" aria-label="User actions"><EllipsisVertical size={18} /></button></div>{viewerIsCompliance && <IdentityEvidenceReview userId={user.id} />}{user.verification === "verified" && viewerIsCompliance && onUpdateTier && <TierControl user={user} onUpdate={onUpdateTier} />}<div className="figma-user-history-section"><div className="figma-section-title">Delivery History</div><div className="figma-user-history-row">{deliveryHistory.length ? deliveryHistory.map(shipment => <FigmaHistoryCard key={shipment.id} shipment={shipment} />) : <div className="figma-history-empty">No delivery history</div>}</div></div><div className="figma-user-history-section"><div className="figma-section-title">Parcel Sending History</div><div className="figma-user-history-row">{parcelSendingHistory.length ? parcelSendingHistory.map(shipment => <FigmaHistoryCard key={shipment.id} shipment={shipment} senderless />) : <div className="figma-history-empty">No parcel sending history</div>}</div></div><div className="figma-user-history-section"><div className="figma-section-title">Transaction History</div><div className="figma-transaction-card">{transactions.length ? transactions.map(transaction => <div key={transaction.id} className="figma-transaction-row"><div className="figma-transaction-main"><div className="figma-transaction-icon"><CreditCard size={16} /></div><div className="figma-transaction-copy"><strong>{money(transaction.amountNaira)}</strong><span>{transaction.note}</span></div></div><div className="figma-transaction-date">{new Date(transaction.createdAt).toLocaleDateString("en-GB")}</div></div>) : <div className="figma-history-empty compact">No transaction history</div>}</div></div><div className="figma-user-history-section"><div className="figma-section-title">Reviews</div>{user.verification === "pending" && !viewerIsCompliance ? <div className="figma-review-note">Identity review is restricted to compliance officers. Contact a compliance admin to act on this submission.</div> : user.verification === "pending" ? <ReviewForm type="user" id={user.id} onAction={onAction} /> : user.verification === "required" ? <div className="figma-review-note">Identity evidence is required before review.</div> : user.verification === "rejected" ? <div className="figma-review-note">Waiting for the member to correct and resubmit their identity evidence.</div> : null}<div className="figma-review-card">{userReviews.length ? userReviews.map(review => <div key={review.id} className="figma-review-row"><strong>{review.rating}/5</strong><span>{review.comment}</span><small>{new Date(review.createdAt).toLocaleDateString("en-GB")}</small></div>) : <div className="figma-history-empty compact">No reviews yet</div>}</div>{user.identityNote ? <div className="figma-review-note">{user.identityNote}</div> : null}</div></section>;
 }
 function FigmaHistoryCard({ shipment, senderless = false }: { shipment: Shipment; senderless?: boolean }) {
   return <article className="figma-history-card"><div className="figma-history-status-row"><span className="figma-history-status-label">Status:</span><span className={`figma-history-status ${shipment.status === "delivered" ? "completed" : shipment.status}`}>{shipment.status === "delivered" ? "Completed" : humanize(shipment.status)}</span></div><div className="figma-history-sender">{senderless ? (shipment.travellerName ?? "Traveller") : shipment.senderName}</div><div className="figma-history-route">{shipment.origin}<ArrowRight size={18} />{shipment.destination}</div><div className="figma-history-size">Parcel size: {shipment.weightKg <= 1 ? "Small" : shipment.weightKg <= 5 ? "Medium" : "Large"}</div><div className="figma-history-footer"><span>Date: {new Date(shipment.createdAt).toLocaleDateString("en-GB")}</span><span>{new Date(shipment.createdAt).toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit" }).toLowerCase()}</span></div></article>;
@@ -507,7 +715,55 @@ function ParcelDetail({ shipment: s, snapshot, onSelect, onAction, viewerPermiss
 }
 function TripDetail({ trip: t, snapshot, onSelect }: { trip: Trip; snapshot: DashboardSnapshot; onSelect: (s: Selection) => void }) { const route = tripRoute(t); const related = snapshot.shipments.filter(s => s.tripId === t.id); return <><Status status={t.status ?? "active"} /><h3 className="detail-heading">Ordered journey stops</h3><ol className="journey-stops">{route.map((stop, i) => <li key={`${stop}-${i}`}><MapPin size={17} /><strong>{stop}</strong><small>{i === 0 ? "Origin" : i === route.length - 1 ? "Destination" : `Stop ${i}`}</small>{i < route.length - 1 && <span>{t.legReservedKg?.[i] ?? t.reservedKg ?? 0} / {t.capacityKg} kg reserved on next leg</span>}</li>)}</ol><dl className="detail-grid"><Detail label="Departure" value={fullDate(t.departureAt)} /><Detail label="Estimated arrival" value={fullDate(t.arrivalAt)} /><Detail label="Total capacity" value={`${t.capacityKg} kg`} /><Detail label="Max parcel weight" value={`${t.maxParcelWeightKg ?? t.capacityKg} kg`} /><Detail label="Traveller verification" value={t.verified ? "Verified" : "Not verified"} /></dl><button className="person-detail-button" onClick={() => onSelect({ type: "user", id: t.travellerId })}><Avatar name={t.travellerName} /><strong>{t.travellerName}</strong><ArrowUpRight size={16} /></button><div className="notice">Capacity is reused on non-overlapping legs. Committed journey route and capacity cannot be edited. Cancellation must reconcile every linked booking on the server.</div><h3 className="detail-heading">Linked bookings</h3>{related.map(s => <RelatedParcel key={s.id} shipment={s} onClick={() => onSelect({ type: "parcel", id: s.id })} />)}{!related.length && <Empty title="No linked bookings" />}</>; }
 function DisputeDetail({ dispute: d, snapshot, onSelect }: { dispute: Dispute; snapshot: DashboardSnapshot; onSelect: (s: Selection) => void }) { const shipment = snapshot.shipments.find(s => s.id === d.shipmentId); return <><div className="dispute-detail-heading"><Flag size={22} /><h3>{shipment?.reference ?? "Delivery dispute"}</h3><Status status={d.status} /></div><h3 className="detail-heading">Reported issue</h3><p className="description-box">{d.reason}</p><dl className="detail-grid"><Detail label="Opened" value={fullDate(d.createdAt)} /><Detail label="Previous delivery state" value={d.previousStatus ? STATUS_LABELS[d.previousStatus] : "Not recorded"} /><Detail label="Resolution" value={d.resolution ? humanize(d.resolution) : "Not resolved"} /><Detail label="Resolved at" value={fullDate(d.resolvedAt)} /></dl>{d.informationRequest && <><h3 className="detail-heading">Information requested</h3><p className="description-box">{d.informationRequest}</p></>}{d.note && <p className="description-box">{d.note}</p>}{shipment && <RelatedParcel shipment={shipment} onClick={() => onSelect({ type: "parcel", id: shipment.id })} />}<div className="notice">{d.status === "open" ? "The open dispute freezes payout/refund operations. Review participant messages, request information, and record an eligible resolution." : "Resolution is recorded separately from proof and money movement. Check the financial case for provider status."}</div></>; }
-export function ReviewForm({ type, id, onAction }: { type: "user" | "review"; id: string; onAction: ActionHandler }) { const [decision, setDecision] = useState("approve"); const [tier, setTier] = useState<"Tier 1" | "Tier 2" | "Tier 3">("Tier 1"); const [note, setNote] = useState(""); const [confirmed, setConfirmed] = useState(false); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [success, setSuccess] = useState(""); return <form className="action-form form-stack" aria-busy={busy} onSubmit={async e => { e.preventDefault(); if (!confirmed || note.trim().length < 5 || busy) return; setBusy(true); setError(""); setSuccess(""); try { await onAction(type === "user" ? { type, id, decision: decision === "approve" ? "verified" : "rejected", tier: decision === "approve" ? tier : undefined, note: note.trim() } : { type, id, decision: decision === "approve" ? "approve" : "reject", note: note.trim() }); setSuccess("Review recorded by the server."); setConfirmed(false); } catch (e) { setError(formatErrorMessage(e, "Review failed. Nothing has been confirmed.")); } finally { setBusy(false); } }}><h3 className="detail-heading">Review submission</h3><label>Decision<select value={decision} onChange={e => { setDecision(e.target.value); setConfirmed(false); }} disabled={busy}><option value="approve">{type === "user" ? "Verify identity" : "Approve parcel"}</option><option value="reject">Request corrections / reject</option></select></label>{type === "user" && <label>Tier to assign<select value={tier} onChange={e => { setTier(e.target.value as "Tier 1" | "Tier 2" | "Tier 3"); setConfirmed(false); }} disabled={busy || decision !== "approve"}><option value="Tier 1">Tier 1</option><option value="Tier 2">Tier 2</option><option value="Tier 3">Tier 3</option></select></label>}<label>Review explanation<textarea required minLength={5} maxLength={1000} rows={4} disabled={busy} value={note} onChange={e => setNote(e.target.value)} placeholder="Explain evidence checked and any required corrections. Do not include private document numbers." /></label><label className="confirmation-check"><input type="checkbox" required disabled={busy} checked={confirmed} onChange={e => setConfirmed(e.target.checked)} /><span>I checked the submission and evidence. I understand this decision is audited.</span></label>{error && <p role="alert" className="error-message">{error}</p>}{success && <p role="status" className="notice">{success}</p>}<button className={`button wide ${decision === "reject" ? "danger" : "primary"}`} disabled={busy || !confirmed || note.trim().length < 5}>{busy ? "Recording review…" : "Confirm review decision"}</button></form>; }
+export function ReviewForm({ type, id, onAction }: { type: "user" | "review"; id: string; onAction: ActionHandler }) {
+  const [decision, setDecision] = useState("approve");
+  const [tier, setTier] = useState<"Tier 1" | "Tier 2" | "Tier 3">("Tier 1");
+  const [note, setNote] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const noteIsValid = note.trim().length >= 5;
+  const readyToSubmit = noteIsValid && confirmed;
+
+  return <form className="action-form form-stack" aria-busy={busy} noValidate onSubmit={async event => {
+    event.preventDefault();
+    if (busy) return;
+    setSuccess("");
+    if (!noteIsValid) {
+      setError("Add a review explanation of at least 5 characters.");
+      return;
+    }
+    if (!confirmed) {
+      setError("Confirm that you checked the submission and evidence before recording the decision.");
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    try {
+      await onAction(type === "user"
+        ? { type, id, decision: decision === "approve" ? "verified" : "rejected", tier: decision === "approve" ? tier : undefined, note: note.trim() }
+        : { type, id, decision: decision === "approve" ? "approve" : "reject", note: note.trim() });
+      setSuccess("Review recorded by the server.");
+      setConfirmed(false);
+    } catch (caught) {
+      setError(formatErrorMessage(caught, "Review failed. Nothing has been confirmed."));
+    } finally {
+      setBusy(false);
+    }
+  }}>
+    <h3 className="detail-heading">Review submission</h3>
+    <label>Decision<select value={decision} onChange={event => { setDecision(event.target.value); setError(""); }} disabled={busy}><option value="approve">{type === "user" ? "Verify identity" : "Approve parcel"}</option><option value="reject">Request corrections / reject</option></select></label>
+    {type === "user" && <label>Tier to assign<select value={tier} onChange={event => { setTier(event.target.value as "Tier 1" | "Tier 2" | "Tier 3"); setError(""); }} disabled={busy || decision !== "approve"}><option value="Tier 1">Tier 1</option><option value="Tier 2">Tier 2</option><option value="Tier 3">Tier 3</option></select></label>}
+    <label>Review explanation <span className="required-field">Required</span><textarea required aria-required="true" minLength={5} maxLength={1000} rows={4} disabled={busy} value={note} onChange={event => { setNote(event.target.value); setError(""); }} placeholder="Explain evidence checked and any required corrections. Do not include private document numbers." /><small>{note.trim().length}/1000 characters · at least 5 required</small></label>
+    <label className="confirmation-check"><input type="checkbox" disabled={busy} checked={confirmed} onChange={event => { setConfirmed(event.target.checked); setError(""); }} /><span>I checked the submission and evidence. I understand this decision is audited.</span></label>
+    {!readyToSubmit && !error ? <p className="review-readiness" role="status">{!noteIsValid ? "Add a short review explanation to continue." : "Confirm the evidence check to continue."}</p> : null}
+    {error && <p role="alert" className="error-message">{error}</p>}
+    {success && <p role="status" className="notice">{success}</p>}
+    <button type="submit" className={`button wide ${decision === "reject" ? "danger" : "primary"}`} disabled={busy}>{busy ? "Recording review…" : "Confirm review decision"}</button>
+  </form>;
+}
 
 function ConSection({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
   return <section className="figma-user-context-section"><h3>{title}{count !== undefined ? <span>{count}</span> : null}</h3>{children}</section>;

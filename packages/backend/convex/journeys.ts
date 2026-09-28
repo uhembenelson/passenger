@@ -10,6 +10,7 @@ import {
   notify,
   notifyParticipants,
   releaseCapacity,
+  requireTransactionalVerification,
   requireUser,
   requireVerified,
   safeValidateTrip,
@@ -29,11 +30,26 @@ export const tripArgs = {
   handlingNotes: v.optional(v.string()),
 };
 
+export const createTripArgs = {
+  ...tripArgs,
+  clientRequestId: v.optional(v.string()),
+};
+
 export const createDefinition = {
-  args: tripArgs,
+  args: createTripArgs,
   handler: async (ctx: MutationCtx, args: any) => {
     const user = await requireUser(ctx);
-    requireVerified(user);
+    await requireTransactionalVerification(ctx, user._id);
+
+    const clientRequestId = args.clientRequestId?.trim();
+    if (clientRequestId) {
+      if (!/^[A-Za-z0-9:_-]{8,120}$/.test(clientRequestId)) fail("Trip submission identifier is invalid. Reopen the form and try again.");
+      const existing = await ctx.db
+        .query("trips")
+        .withIndex("by_traveller_request", q => q.eq("travellerId", user._id).eq("clientRequestId", clientRequestId))
+        .unique();
+      if (existing) return existing._id;
+    }
 
     await assertSupportedRoute(ctx, args.origin, args.destination);
     safeValidateTrip(args);
@@ -50,6 +66,7 @@ export const createDefinition = {
       stops: args.stops.map((s: string) => s.trim()),
       acceptedCategories: args.acceptedCategories ?? [],
       handlingNotes: args.handlingNotes?.trim(),
+      clientRequestId,
       travellerId: user._id,
       reservedKg: 0,
       status: "active",
@@ -69,7 +86,7 @@ export const update = mutation({
   },
   handler: async (ctx, { tripId, ...args }) => {
     const user = await requireUser(ctx);
-    requireVerified(user);
+    await requireTransactionalVerification(ctx, user._id);
 
     const existingTrip = await ctx.db.get(tripId);
     if (!existingTrip || existingTrip.travellerId !== user._id) {

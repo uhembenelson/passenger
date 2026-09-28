@@ -24,7 +24,7 @@ async function setup() {
 function deliveredCode() { return JSON.parse(fetchMock.mock.calls.at(-1)![1].body).sms.match(/\b(\d{6})\b/)[1] as string; }
 
 it("sends real OTP requests to Termii without exposing the code in the response", async () => {
-  const { member } = await setup();
+  const { t, member } = await setup();
   const result = await member.action(api.accounts.requestPhoneVerification, { phone: "08012345679" });
   expect(result).not.toHaveProperty("previewCode");
   const [url, init] = fetchMock.mock.calls[0];
@@ -32,6 +32,9 @@ it("sends real OTP requests to Termii without exposing the code in the response"
   expect(JSON.parse(init.body)).toMatchObject({ api_key: "test-key", from: "Passenger", to: "2348012345679", channel: "dnd", type: "plain" });
   const code = deliveredCode();
   await expect(member.action(api.accounts.confirmPhoneVerification, { code })).resolves.toHaveProperty("verifiedAt");
+  const verified = await t.run(ctx => ctx.db.query("users").first());
+  expect(verified?.kycTier).toBe(0);
+  expect(verified?.phoneVerifiedAt).toBeTypeOf("number");
   await expect(member.action(api.accounts.confirmPhoneVerification, { code })).rejects.toThrow("expired");
 });
 it("enforces resend cooldown, persistent attempt limits and expiry", async () => {
@@ -49,18 +52,23 @@ it("enforces resend cooldown, persistent attempt limits and expiry", async () =>
   vi.advanceTimersByTime(600_001);
   await expect(member.action(api.accounts.confirmPhoneVerification, { code: next })).rejects.toThrow("expired");
 });
-it("skips OTP without credentials, saves an unverified phone, and restores verification when configured", async () => {
+it("issues and logs a one-time code without SMS credentials instead of skipping verification", async () => {
   const { t, member } = await setup();
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
   vi.stubEnv("TERMII_API_KEY", "");
-  await expect(member.action(api.accounts.requestPhoneVerification, { phone: "+2348012345679" })).resolves.toMatchObject({ skipped: true, phone: "+2348012345679" });
+  vi.stubEnv("TERMII_SENDER_ID", "");
+  const result = await member.action(api.accounts.requestPhoneVerification, { phone: "+2348012345679" });
+  expect(result).not.toHaveProperty("skipped");
+  expect(result).toMatchObject({ phone: "+2348012345679" });
+  const code = log.mock.calls.flat().join("\n").match(/\b(\d{6})\b/)?.[1] ?? "";
+  expect(code).toBeDefined();
+  await expect(member.action(api.accounts.confirmPhoneVerification, { code })).resolves.toHaveProperty("verifiedAt");
   const user = await t.run(ctx => ctx.db.query("users").first());
   expect(user?.phone).toBe("+2348012345679");
-  expect(user?.phoneVerificationTime).toBeUndefined();
-  expect((await member.query(api.accounts.me, {}))?.phoneVerificationEnabled).toBe(false);
-  vi.stubEnv("TERMII_API_KEY", "test-key");
+  expect(user?.phoneVerificationTime).toBeTypeOf("number");
   expect((await member.query(api.accounts.me, {}))?.phoneVerificationEnabled).toBe(true);
-  await expect(member.mutation(internal.accounts.savePhoneWithoutOtp, { phone: "+2348012345679" })).rejects.toThrow("required");
   expect(fetchMock).not.toHaveBeenCalled();
+  log.mockRestore();
 });
 it.each([
   [422, { code: "failed", message: "private provider detail" }],

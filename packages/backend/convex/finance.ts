@@ -3,7 +3,7 @@ import { action, internalAction, query } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
-import { fail, requireUser, subject } from "./lib";
+import { fail, requireTransactionalVerification, requireUser, requireVerified, subject } from "./lib";
 import { feeQuote } from "./financeSchema";
 import { financeAccess, operationDto, operationKind } from "./financeState";
 

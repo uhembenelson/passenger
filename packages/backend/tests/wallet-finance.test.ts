@@ -16,8 +16,9 @@ async function fixture() {
   await t.mutation(internal.wallet.reserveTopUp, { userId, reference: "wallet-funding", amountKobo: 1000000 });
   await t.mutation(internal.wallet.recordTopUp, { userId, reference: "wallet-funding", amountNaira: 10000, providerTransactionId: "100" });
   const shipmentId = await t.run(async ctx => {
-    await ctx.db.patch(userId, { verification: "verified" });
-    await ctx.db.patch(travellerId, { verification: "verified" });
+    const verifiedAt = Date.now();
+    await ctx.db.patch(userId, { verification: "verified", identityVerificationStatus: "verified", kycTier: 1, phoneVerifiedAt: verifiedAt, phoneVerificationTime: verifiedAt });
+    await ctx.db.patch(travellerId, { verification: "verified", identityVerificationStatus: "verified", kycTier: 1, phoneVerifiedAt: verifiedAt, phoneVerificationTime: verifiedAt });
     await ctx.db.insert("bankAccounts", { userId: travellerId, bankCode: "001", accountName: "Traveller", last4: "1234", recipientCode: "RCP_test", currency: "NGN", verifiedAt: Date.now(), updatedAt: Date.now() });
     const id = await ctx.db.insert("shipments", { senderId: userId, travellerId, reference: "WALLET-PARCEL", origin: "Jos", destination: "Abuja", description: "Books", category: "Books", weightKg: 1, valueNaira: 1000, feeNaira: 5000, receiverName: "Receiver", receiverPhone: "+2348000000099", status: "delivered", paymentStatus: "held", approved: true, reservationActive: false, deliveredAt: Date.now() - 86400001, createdAt: Date.now(), updatedAt: Date.now() });
     await deductForShipment(ctx, (await ctx.db.get(userId))!, id, 5000);

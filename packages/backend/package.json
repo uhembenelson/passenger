@@ -3,8 +3,34 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { "./convex/_generated/api": "./convex/_generated/api.ts", "./convex/_generated/dataModel": "./convex/_generated/dataModel.ts" },
-  "scripts": { "dev": "convex dev", "deploy": "convex deploy", "typecheck": "tsc --noEmit", "test": "vitest run" },
-  "dependencies": { "@auth/core": "0.41.1", "@convex-dev/auth": "^0.0.90", "@passenger/core": "workspace:*", "convex": "1.45.0" },
-  "devDependencies": { "@edge-runtime/vm": "^5.0.0", "@types/node": "^22.0.0", "convex-test": "^0.0.41", "typescript": "~6.0.3", "vitest": "^3.2.4" }
+  "exports": {
+    "./convex/_generated/api": "./convex/_generated/api.ts",
+    "./convex/_generated/dataModel": "./convex/_generated/dataModel.ts"
+  },
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@auth/core": "0.41.1",
+    "@convex-dev/auth": "^0.0.90",
+    "@passenger/core": "workspace:*",
+    "@tensorflow/tfjs": "4.22.0",
+    "@tensorflow/tfjs-backend-wasm": "4.22.0",
+    "@types/jpeg-js": "0.3.7",
+    "@types/pngjs": "6.0.5",
+    "@vladmandic/face-api": "1.7.15",
+    "convex": "1.45.0",
+    "jpeg-js": "0.4.4",
+    "pngjs": "7.0.0"
+  },
+  "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "convex-test": "^0.0.41",
+    "typescript": "~6.0.3",
+    "vitest": "^3.2.4"
+  }
 }

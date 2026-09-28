@@ -8,9 +8,9 @@ import type { Message, Notification, Shipment } from "@passenger/core";
 import { shipmentId, usePassengerState } from "./data";
 import { Button, colors, ContentSkeleton, Empty, errorMessage, Field, Notice, OfflineBadge, s, SectionTitle, timeDate, Txt } from "./ui";
 
-export function Inbox({ onDetail, showHeading = true }: { onDetail: (id: string) => void; showHeading?: boolean }) {
+export function Inbox({ onDetail, showHeading = true, unreadOnly = false }: { onDetail: (id: string) => void; showHeading?: boolean; unreadOnly?: boolean }) {
   const { offline } = usePassengerState();
-  const { results: items, status, loadMore } = usePaginatedQuery(api.notifications.listPage, {}, { initialNumItems: 20 });
+  const { results: items, status, loadMore } = usePaginatedQuery(api.notifications.listPage, unreadOnly ? { unreadOnly: true } : {}, { initialNumItems: 20 });
   const unreadCount = useQuery(api.notifications.unreadCount, {});
   const markRead = useMutation(api.notifications.markRead);
   const [busy, setBusy] = useState("");
@@ -28,7 +28,7 @@ export function Inbox({ onDetail, showHeading = true }: { onDetail: (id: string)
     {offline && <Notice tone="warning">You're offline. Reconnect to mark notifications as read.</Notice>}
     {error !== "" && <Notice tone="error">{error}</Notice>}
     {status === "LoadingFirstPage" ? <ContentSkeleton rows={3} /> : !items.length
-      ? <Empty title="No notifications yet" detail="Your account and delivery updates will appear here." />
+      ? <Empty title={unreadOnly ? "No unread notifications" : "No notifications yet"} detail={unreadOnly ? "You have read every account and delivery update." : "Your account and delivery updates will appear here."} />
       : <>
         <View style={[s.row, { justifyContent: "space-between", flexWrap: "wrap" }]}>
           <Txt style={s.muted}>{unreadCount === undefined ? "Your updates" : unreadCount ? `${unreadCount} unread` : "You're all caught up"}</Txt>

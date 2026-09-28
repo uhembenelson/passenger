@@ -38,7 +38,7 @@ export function ParcelHistory({ onBack }: { onBack: () => void }) {
       ListFooterComponent={status === "LoadingMore" ? <ActivityIndicator color={colors.forest} /> : status === "CanLoadMore" ? <Button title="Load older parcels" variant="secondary" disabled={offline} onPress={() => loadMore(30)} /> : null}
     />
     {selected && <DeliveryDetail key={selected.id} shipment={selected} onClose={() => setSelectedId(undefined)} onEdit={snapshot?.viewer && shipmentActions(selected, snapshot.viewer).edit ? () => { setEditing(selected); setSelectedId(undefined); } : undefined} />}
-    {editing && <ShipmentForm shipment={editing} onClose={() => setEditing(undefined)} onSuccess={() => { setSelectedId(editing.id); setEditing(undefined); }} />}
+    {editing && <ShipmentForm shipment={editing} onClose={() => { setSelectedId(editing.id); setEditing(undefined); }} onSuccess={() => { setSelectedId(editing.id); setEditing(undefined); }} />}
   </View>;
 }
 

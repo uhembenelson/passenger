@@ -12,9 +12,8 @@ import {
   requireParticipant,
   requireSender,
   requireTraveller,
-  requireUser,
-  requireVerified,
-  shipment,
+  requireUser,  requireVerified,
+  requireTransactionalVerification,  shipment,
   transition,
   userBySubject,
 } from "./lib";
@@ -97,6 +96,11 @@ export const consumeCode = internalMutation({
     const user = await userBySubject(ctx, args.subject);
     const s = await shipment(ctx, args.shipmentId);
     requireTraveller(s, user);
+
+    const senderParty = await ctx.db.get(s.senderId);
+    if (!senderParty) fail("Sender party not found.");
+    await requireTransactionalVerification(ctx, senderParty._id);
+    await requireTransactionalVerification(ctx, user._id);
     requireVerified(user);
     await noOpenDispute(ctx, s._id);
 
