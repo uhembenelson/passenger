@@ -17,3 +17,9 @@ bun run dev:website
 ```
 
 Runs on `http://localhost:3001`.
+
+## Deploy
+
+Create a Vercel project with `apps/website` as its Root Directory and enable access to source files outside that directory for the shared workspace packages. The checked-in `vercel.json` selects the Next.js framework preset. No environment variables are currently required by the website.
+
+See [`../../docs/vercel-deployment.md`](../../docs/vercel-deployment.md) for domains and the complete monorepo setup.

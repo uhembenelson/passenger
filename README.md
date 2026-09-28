@@ -168,6 +168,18 @@ PASSENGER_MOBILE_URL=http://127.0.0.1:8081 bun run test:e2e
 
 These browser tests include sender/traveller switching, parcel/trip creation, both one-time-code milestones across separate demo personas, admin reviews, disputes and external payout reconciliation.
 
+## Deploy the web apps to Vercel
+
+The Expo web app, public website, and admin dashboard are configured as three independent Vercel projects from this monorepo:
+
+- use `apps/mobile` as the Root Directory for the mobile web experience;
+- use `apps/website` as the Root Directory for the public Next.js website;
+- use `apps/admin` as the Root Directory for the operations dashboard.
+
+All three projects must have **Include source files outside of the Root Directory** enabled so Vercel can install the shared workspace packages. The mobile project needs `EXPO_PUBLIC_CONVEX_URL`, and the admin project needs `NEXT_PUBLIC_CONVEX_URL`, both set to the same production Convex client URL.
+
+See [`docs/vercel-deployment.md`](docs/vercel-deployment.md) for the complete project settings, environment variables, domains, and local production checks.
+
 CI installs the frozen lockfile, typechecks, tests, builds Next.js, and exports Expo web. Local in-memory backend tests do not replace staging tests against Clerk, Convex, Paystack, and physical phones.
 
 ## Status and boundaries

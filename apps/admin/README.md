@@ -4,7 +4,7 @@ Live-only Next.js operations console. This app owns only `apps/admin` and consum
 
 ## Configuration
 
-Copy `.env.example` to `.env.local` and supply the real public Convex URL and Clerk publishable key. Missing or invalid configuration displays a setup screen with no records. Configure Clerk's `convex` JWT template and the backend issuer. Rebuild after changing public environment values.
+Copy `.env.example` to `.env.local` and supply the real public Convex URL. Missing or invalid configuration displays a setup screen with no records. Authentication is provided by Convex Auth. Rebuild after changing public environment values.
 
 Authentication, profile onboarding, and server-allowlisted administrator authorization are required. Creating a profile never grants admin access. Never put Paystack, SMS, Clerk secret keys or private identity evidence into public environment variables.
 
@@ -20,6 +20,12 @@ bun run start
 ```
 
 Node 22 is supported. Development and production commands use port 3000. No external fonts or map service are required.
+
+## Deploy
+
+Create a Vercel project with `apps/admin` as its Root Directory and enable access to source files outside that directory for the shared workspace packages. Set `NEXT_PUBLIC_CONVEX_URL` to the same Convex client URL used by the mobile app. The checked-in `vercel.json` selects the Next.js framework preset.
+
+Keep `ADMIN_USER_EMAILS`, payment credentials, SMS credentials, and all other secrets in the Convex deployment environment. See [`../../docs/vercel-deployment.md`](../../docs/vercel-deployment.md) for the complete setup.
 
 ## Operational safety
 
