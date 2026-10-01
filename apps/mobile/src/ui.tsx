@@ -1,7 +1,7 @@
 import React from "react";
 import { ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type { StyleProp, TextInputProps, TextStyle, ViewStyle } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChevronLeft, ArrowRight, ArrowUpRight, Check as CheckIcon, X } from "lucide-react-native";
 import { formatErrorMessage, STATUS_LABELS } from "@passenger/core";
 import type { ShipmentStatus } from "@passenger/core";
@@ -319,7 +319,8 @@ export function AuthCheckbox({ checked, onChange, children }: React.PropsWithChi
 }
 
 function BottomSheetFrame({ title, onClose, onBack, backDisabled, children, footer, titleStyle, bodyStyle, containerStyle }: React.PropsWithChildren<{ title: string; onClose: () => void; onBack?: () => void; backDisabled?: boolean; footer?: React.ReactNode; titleStyle: StyleProp<TextStyle>; bodyStyle: StyleProp<ViewStyle>; containerStyle?: StyleProp<ViewStyle> }>) {
-  return <Modal transparent visible animationType="slide" onRequestClose={onClose}><KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={s.presentationOverlay}><Pressable accessibilityRole="button" accessibilityLabel="Close sheet" onPress={onClose} style={StyleSheet.absoluteFill} /><SafeAreaView edges={["bottom"]} style={[s.presentationSheet, containerStyle]}><View style={s.presentationHandle} /><View style={s.sheetHeader}>{onBack && <BackButton disabled={backDisabled} onPress={onBack} />}<View style={{ flex: 1 }}><Txt style={titleStyle}>{title}</Txt></View><Pressable accessibilityRole="button" accessibilityLabel="Close sheet" onPress={onClose} style={s.close}><X size={20} color={semantic.color.text.tertiary} /></Pressable></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[bodyStyle, footer ? s.sheetBodyWithFooter : undefined]}>{children}</ScrollView>{footer ? <View style={s.sheetFooter}>{footer}</View> : null}</SafeAreaView></KeyboardAvoidingView></Modal>;
+  const insets = useSafeAreaInsets();
+  return <Modal transparent visible animationType="slide" onRequestClose={onClose}><KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[s.presentationOverlay, { paddingTop: insets.top }]}><Pressable accessibilityRole="button" accessibilityLabel="Close sheet" onPress={onClose} style={StyleSheet.absoluteFill} /><SafeAreaView edges={["right", "bottom", "left"]} style={[s.presentationSheet, containerStyle]}><View style={s.presentationHandle} /><View style={s.sheetHeader}>{onBack && <BackButton disabled={backDisabled} onPress={onBack} />}<View style={{ flex: 1 }}><Txt style={titleStyle}>{title}</Txt></View><Pressable accessibilityRole="button" accessibilityLabel="Close sheet" onPress={onClose} style={s.close}><X size={20} color={semantic.color.text.tertiary} /></Pressable></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[bodyStyle, footer ? s.sheetBodyWithFooter : undefined]}>{children}</ScrollView>{footer ? <View style={s.sheetFooter}>{footer}</View> : null}</SafeAreaView></KeyboardAvoidingView></Modal>;
 }
 
 export function Sheet({ title, onClose, onBack, backDisabled, children, wide = false }: React.PropsWithChildren<{ title: string; onClose: () => void; onBack?: () => void; backDisabled?: boolean; wide?: boolean }>) {

@@ -24,14 +24,14 @@ export function ParcelTracking({ shipment, onBack, onProblem }: { shipment: Ship
       setSize(previous => previous.width === Math.round(width) && previous.height === Math.round(height) ? previous : { width: Math.round(width), height: Math.round(height) });
     }}>
       <ParcelMap shipment={shipment} width={size.width} height={size.height} onRouteKind={setRoadRoute} />
-      <View pointerEvents="box-none" style={[p.top, { top: insets.top + 12 }]}>
+      <View pointerEvents="box-none" style={[p.top, { top: insets.top + 12, left: insets.left + 16, right: insets.right + 16 }]}>
         <View style={p.back}><BackButton accessibilityLabel="Close parcel map" onPress={onBack} /></View>
         <View style={p.routeCard}>
           <View style={p.routeRow}><View style={[p.dot, p.pickupDot]} /><Txt style={p.label}>Pickup</Txt><Txt numberOfLines={1} style={p.city}>{shipment.origin}</Txt></View>
           <View style={p.routeRow}><View style={[p.dot, p.destinationDot]} /><Txt style={p.label}>Destination</Txt><Txt numberOfLines={1} style={p.city}>{shipment.destination}</Txt></View>
         </View>
       </View>
-      <View style={[p.panel, { bottom: insets.bottom + 36, maxHeight: expanded ? '58%' : '34%' }]}>
+      <View style={[p.panel, { bottom: insets.bottom + 36, left: insets.left + 16, right: insets.right + 16, maxHeight: expanded ? '58%' : '34%' }]}>
         <Pressable accessibilityRole="button" accessibilityLabel={expanded ? "Collapse parcel details" : "Expand parcel details"} accessibilityState={{ expanded }} onPress={() => setExpanded(value => !value)} style={p.panelHeader}>
           <View style={p.flex}><Txt style={p.title}>{status}</Txt></View>
           {expanded ? <ChevronDown size={22} color={semantic.color.text.primary} /> : <ChevronUp size={22} color={semantic.color.text.primary} />}
@@ -63,6 +63,15 @@ export function LocationReportingStatus({ shipment, viewerRole, compact = false 
   const missed = shipment.missedLocationCheckIns ?? 0;
   const remaining = shipment.locationCheckInRemaining ?? Math.max(0, shipment.locationCheckInTarget - (shipment.locationCheckInCount ?? 0));
   const state = shipment.locationCheckInState ?? (remaining === 0 ? "complete" : "up_to_date");
+  if (compact) {
+    const status = state === "overdue" ? "Update overdue"
+      : state === "due_soon" ? "Update due soon"
+      : state === "complete" ? "Location updates complete"
+      : "Location updates on track";
+    return <View style={[p.reportingSummary, p.reportingSummaryCompact]}>
+      <Txt style={p.reportingCopy}>{status}{state !== "complete" && shipment.nextLocationCheckInAt ? ` · next ${viewerRole === "traveller" ? "due" : "expected"} ${clockTime(shipment.nextLocationCheckInAt).toLowerCase()}` : ""}</Txt>
+    </View>;
+  }
   const badge = state === "overdue"
     ? viewerRole === "traveller" ? `${missed} missed` : "Update overdue"
     : state === "due_soon"

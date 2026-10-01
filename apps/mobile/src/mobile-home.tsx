@@ -73,7 +73,6 @@ export function MobileHome({
     return counts;
   }, [snapshot?.offers]);
   const shipmentsById = useMemo(() => new Map((snapshot?.shipments ?? []).map(shipment => [shipment.id, shipment])), [snapshot?.shipments]);
-  const shipmentIds = useMemo(() => new Set(shipmentsById.keys()), [shipmentsById]);
   const tripsById = useMemo(() => new Map((snapshot?.trips ?? []).map(trip => [trip.id, trip])), [snapshot?.trips]);
 
   // Do Now / Needs attention items
@@ -92,7 +91,7 @@ export function MobileHome({
         );
       })
       .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, 3);
+      .slice(0, 1);
   }, [pendingOffersByShipment, snapshot?.shipments, viewer.id]);
 
   const ongoing = useMemo(
@@ -103,7 +102,8 @@ export function MobileHome({
             (shipment.senderId === viewer.id || shipment.travellerId === viewer.id) &&
             shipment.status === "in_transit",
         )
-        .sort((a, b) => b.updatedAt - a.updatedAt),
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, 1),
     [snapshot?.shipments, viewer.id],
   );
 
@@ -125,14 +125,6 @@ export function MobileHome({
   const trackedShipment = trackingId
     ? shipmentsById.get(trackingId)
     : undefined;
-
-  const recentEvents = (snapshot?.events ?? [])
-    .filter(
-      event =>
-        !event.shipmentId ||
-        shipmentIds.has(event.shipmentId),
-    )
-    .slice(0, 3);
 
   const helpModal = helpId && shipmentsById.get(helpId) ? <TripHelp shipment={shipmentsById.get(helpId)!} onClose={() => setHelpId(undefined)} onProblem={category => { setReportContext({ kind: "delivery", id: helpId, category }); }} /> : null;
   if (reportContext) {
@@ -235,6 +227,27 @@ export function MobileHome({
           </Notice>
         ) : null}
 
+        {attentionDeliveries.map(shipment => {
+          const label = actionSummary(shipment, shipment.senderId === viewer.id, pendingOffersByShipment.get(shipment.id) ?? 0);
+          return (
+            <Pressable
+              key={shipment.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Needs your attention. ${shipment.origin} to ${shipment.destination}. ${label.detail} ${label.action}`}
+              onPress={() => onOpenDelivery ? onOpenDelivery(shipment.id) : onOpenNotifications()}
+              style={[h.attentionBar, offline && { marginTop: primitives.space[3] }]}
+            >
+              <AlertCircle size={20} color={semantic.color.text.onPrimary} />
+              <View style={h.attentionCopy}>
+                <Txt style={h.attentionSectionTitle}>Needs your attention</Txt>
+                <Txt style={h.attentionDetail}>{shipment.origin} → {shipment.destination} · {label.detail}</Txt>
+                <Txt style={h.attentionActionText}>{label.action}</Txt>
+              </View>
+              <ChevronRight size={20} color={semantic.color.text.onPrimary} />
+            </Pressable>
+          );
+        })}
+
         {/* Primary Action Paths: Send a parcel & I'm travelling */}
         <View style={h.primaryPathsRow}>
           <Pressable
@@ -286,46 +299,11 @@ export function MobileHome({
           </View>
         ) : null}
 
-        {/* Do Now / Needs Attention Section */}
-        {attentionDeliveries.length > 0 ? (
-          <View style={h.attentionSection}>
-            <View style={h.attentionHeaderRow}>
-              <AlertCircle size={18} color="#D97706" />
-              <Txt style={h.attentionSectionTitle}>Needs your attention</Txt>
-            </View>
-            {attentionDeliveries.map(s => {
-              const sender = s.senderId === viewer.id;
-              const pendingOffers = pendingOffersByShipment.get(s.id) ?? 0;
-              const label = actionSummary(s, sender, pendingOffers);
-              return (
-                <Pressable
-                  key={s.id}
-                  accessibilityRole="button"
-                  onPress={() => {
-                    if (onOpenDelivery) onOpenDelivery(s.id);
-                    else onOpenNotifications();
-                  }}
-                  style={h.attentionCard}
-                >
-                  <View style={{ flex: 1, gap: 3 }}>
-                    <Txt style={h.attentionRoute}>{s.origin} → {s.destination}</Txt>
-                    <Txt style={h.attentionDetail}>{label.detail}</Txt>
-                  </View>
-                  <View style={h.attentionAction}>
-                    <Txt style={h.attentionActionText}>{label.action}</Txt>
-                    <ChevronRight size={16} color={semantic.color.brand.primary} />
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
-
         {/* Ongoing in-transit deliveries */}
         {ongoing.length ? (
           <>
             <Txt style={h.sectionTitle}>
-              {ongoing.length === 1 ? "Active delivery" : "Active deliveries"}
+              Active delivery
             </Txt>
             <JourneyCardStack>
               {ongoing.map(shipment => {
@@ -372,11 +350,19 @@ export function MobileHome({
         {upcoming.length ? (
           <>
             <Txt style={h.sectionTitle}>
-              {upcoming.length === 1 ? "Upcoming Trip" : "Upcoming Trips"}
+              {upcoming.length === 1 ? "Upcoming trip" : "Upcoming trips"}
             </Txt>
             <JourneyCardStack>
               {upcoming.map(trip => (
-                <JourneyCard key={trip.id} trip={trip} onReport={() => setReportContext({ kind: "trip", id: trip.id })} />
+                <View key={trip.id} style={h.upcomingCard}>
+                  <View style={h.upcomingCopy}>
+                    <Txt style={h.upcomingRoute}>{trip.origin} → {trip.destination}</Txt>
+                    <Txt style={h.upcomingSchedule}>{longDate(trip.departureAt)} · {clockTime(trip.departureAt)}</Txt>
+                  </View>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Get help with your trip from ${trip.origin} to ${trip.destination}`} onPress={() => setReportContext({ kind: "trip", id: trip.id })} style={h.upcomingHelp}>
+                    <Headset size={20} color={semantic.color.brand.primary} />
+                  </Pressable>
+                </View>
               ))}
             </JourneyCardStack>
           </>
@@ -413,42 +399,6 @@ export function MobileHome({
           </View>
         ) : null}
 
-        {/* Recent activity */}
-        <Txt style={h.sectionTitle}>Recent activity</Txt>
-        {recentEvents.length ? (
-          <View style={h.activityList}>
-            {recentEvents.map(event => (
-              <Pressable
-                key={event.id}
-                accessibilityRole="button"
-                onPress={onOpenNotifications}
-                style={h.activityItem}
-              >
-                <Txt numberOfLines={1} style={h.activityTitle}>
-                  {event.detail}
-                </Txt>
-                <Txt style={h.activityTime}>
-                  {new Date(event.createdAt).toLocaleString("en-GB", {
-                    day: "numeric",
-                    month: "short",
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </Txt>
-              </Pressable>
-            ))}
-          </View>
-        ) : (
-          <View style={h.activityEmpty}>
-            <BrandIllustration name="routesEmpty" size={76} />
-            <View style={h.activityEmptyCopy}>
-              <Txt style={h.activityEmptyTitle}>No updates yet</Txt>
-              <Txt style={h.activityEmptyDetail}>
-                Your parcel and trip updates will appear here.
-              </Txt>
-            </View>
-          </View>
-        )}
         {!viewer.identityNumberVerifiedAt ? <VerificationSummaryCard title="Identity verification required" body="Verify with your BVN or NIN." accessibilityLabel="Verify with BVN or NIN" onPress={() => setPhoneCardOpen(true)} /> : ((viewer.identityVerificationStatus ?? (viewer.verification === "required" ? "unverified" : viewer.verification)) !== "verified" || (viewer.kycTier ?? -1) < 1) ? <IdentityVerificationCard viewer={viewer} /> : null}
       </ScrollView>
       {navigation}
@@ -654,59 +604,41 @@ const h = StyleSheet.create({
     fontFamily: fontFamily.regular,
   },
   locationMessage: { marginTop: primitives.space[4] },
-  attentionSection: {
-    marginTop: primitives.space[6],
-    padding: primitives.space[4],
-    borderRadius: primitives.radius.lg,
-    backgroundColor: "#FFFBEB",
-    borderWidth: 1,
-    borderColor: "#FDE68A",
-    gap: primitives.space[3],
-  },
-  attentionHeaderRow: {
+  attentionBar: {
+    marginHorizontal: -primitives.space[4],
+    marginTop: -primitives.space[5],
+    marginBottom: primitives.space[4],
+    paddingHorizontal: primitives.space[4],
+    paddingVertical: primitives.space[3],
+    backgroundColor: semantic.color.brand.primary,
     flexDirection: "row",
     alignItems: "center",
-    gap: primitives.space[2],
+    gap: primitives.space[3],
   },
+  attentionCopy: { flex: 1, gap: primitives.space[1] },
   attentionSectionTitle: {
     fontSize: primitives.typography.size.bodySm,
     lineHeight: primitives.typography.lineHeight.bodySm,
     fontFamily: fontFamily.semibold,
-    color: "#92400E",
-  },
-  attentionCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: primitives.space[3],
-    backgroundColor: "white",
-    borderRadius: primitives.radius.md,
-    borderWidth: 1,
-    borderColor: "#FEF3C7",
-  },
-  attentionRoute: {
-    fontSize: primitives.typography.size.bodySm,
-    lineHeight: primitives.typography.lineHeight.bodySm,
-    fontFamily: fontFamily.semibold,
-    color: semantic.color.text.primary,
+    color: semantic.color.text.onPrimary,
   },
   attentionDetail: {
     fontSize: primitives.typography.size.bodyXs,
     lineHeight: primitives.typography.lineHeight.bodyXs,
     fontFamily: fontFamily.regular,
-    color: semantic.color.text.secondary,
-  },
-  attentionAction: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: primitives.space[1],
+    color: semantic.color.text.onPrimary,
   },
   attentionActionText: {
     fontSize: primitives.typography.size.bodyXs,
     lineHeight: primitives.typography.lineHeight.bodyXs,
     fontFamily: fontFamily.semibold,
-    color: semantic.color.brand.primary,
+    color: semantic.color.text.onPrimary,
   },
+  upcomingCard: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: primitives.radius.lg, backgroundColor: semantic.color.background.surface, borderWidth: 1, borderColor: semantic.color.border.subtle },
+  upcomingCopy: { flex: 1, gap: 4 },
+  upcomingRoute: { fontSize: 15, lineHeight: 21, fontFamily: fontFamily.semibold, color: semantic.color.text.primary },
+  upcomingSchedule: { fontSize: 12, lineHeight: 18, color: semantic.color.text.tertiary },
+  upcomingHelp: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
   promotions: { marginTop: primitives.space[6], gap: 12 },
   promotionHeading: { fontFamily: fontFamily.semibold, fontSize: 18, color: semantic.color.text.primary },
   promotionList: { gap: 12 },
@@ -722,47 +654,5 @@ const h = StyleSheet.create({
     lineHeight: primitives.typography.lineHeight.headingH3,
     color: semantic.color.text.primary,
     fontFamily: fontFamily.semibold,
-  },
-  activityList: { gap: primitives.space[2] },
-  activityEmpty: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: primitives.space[4],
-    padding: primitives.space[5],
-    borderRadius: primitives.radius.lg,
-    borderWidth: 1,
-    borderColor: semantic.color.border.subtle,
-    backgroundColor: semantic.color.background.surface,
-  },
-  activityEmptyCopy: { flex: 1, gap: primitives.space[1] },
-  activityEmptyTitle: {
-    color: semantic.color.text.primary,
-    fontSize: primitives.typography.size.bodyMd,
-    lineHeight: primitives.typography.lineHeight.bodyMd,
-    fontFamily: fontFamily.semibold,
-  },
-  activityEmptyDetail: {
-    color: semantic.color.text.tertiary,
-    fontSize: primitives.typography.size.bodySm,
-    lineHeight: primitives.typography.lineHeight.bodySm,
-    fontFamily: fontFamily.regular,
-  },
-  activityItem: {
-    padding: primitives.space[4],
-    borderRadius: primitives.radius.lg,
-    backgroundColor: semantic.color.background.surface,
-    gap: primitives.space[1],
-  },
-  activityTitle: {
-    color: semantic.color.text.primary,
-    fontSize: primitives.typography.size.bodySm,
-    lineHeight: primitives.typography.lineHeight.bodySm,
-    fontFamily: fontFamily.medium,
-  },
-  activityTime: {
-    color: semantic.color.text.tertiary,
-    fontSize: primitives.typography.size.bodyXs,
-    lineHeight: primitives.typography.lineHeight.bodyXs,
-    fontFamily: fontFamily.regular,
   },
 });

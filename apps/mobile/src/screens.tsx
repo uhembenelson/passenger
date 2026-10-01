@@ -75,7 +75,7 @@ export function PassengerShell() {
   };
   const mobileNavigation = <MobileNavigation page={page} onSelect={setPage} />;
   const selectedShipment = snapshot.shipments.find(item => item.id === selected);
-  if (page === "notifications") return <SafeAreaView style={x.safe} edges={["top", "bottom"]}>
+  if (page === "notifications") return <SafeAreaView style={x.safe} edges={["top", "right", "bottom", "left"]}>
     <NotificationsScreen navigation={desktop ? <BackButton accessibilityLabel="Back to home" onPress={() => setPage("home")} /> : mobileNavigation} notice={toast} onNoticeDismiss={() => setToast("")} />
   </SafeAreaView>;
   if (!desktop) {
@@ -94,7 +94,7 @@ export function PassengerShell() {
           ? <MobileTripsScreen notice={toast} navigation={mobileNavigation} onTripScheduled={() => { setMode("traveller"); setToast("Your trip is published. You can find it under upcoming trips."); }} />
           : <Profile viewer={viewer} navigation={mobileNavigation} onToast={setToast} onSafety={() => setSafety(true)} onOpenDelivery={setSelected} onStartEarning={openTripCreation} />;
 
-    return <SafeAreaView style={x.safe} edges={["top", "bottom"]}>
+    return <SafeAreaView style={x.safe} edges={["top", "right", "bottom", "left"]}>
       {page === "home" && toast ? <Pressable accessibilityRole="button" accessibilityLabel="Dismiss confirmation" onPress={() => setToast("")} style={{ padding: HORIZONTAL_PADDING }}><Notice tone="success">{toast}</Notice></Pressable> : null}
       {mobileContent}
       {selectedShipment && <DeliveryDetail key={`${viewer.id}:${selectedShipment.id}`} shipment={selectedShipment} onClose={() => setSelected(null)} onEdit={shipmentActions(selectedShipment, viewer).edit ? () => openShipmentEdit(selectedShipment) : undefined} />}
@@ -107,7 +107,7 @@ export function PassengerShell() {
   const active = mine.filter(item => !["delivered", "cancelled"].includes(item.status));
   const myTrips = snapshot.trips.filter(t => t.travellerId === viewer.id && t.departureAt > Date.now());
   const contentProps = { mode, openForm, onDetail: setSelected };
-  return <SafeAreaView style={x.safe} edges={["top", "bottom"]}>
+  return <SafeAreaView style={x.safe} edges={["top", "right", "bottom", "left"]}>
     {data.offline && <Notice tone="warning">You're offline. These are the last received records; reconnect before making changes.</Notice>}
     <View style={{ flex: 1, flexDirection: "row" }}>
       {desktop && <View style={x.sidebar}><Logo /><View style={{ marginTop: 43, gap: 8 }}>{nav.map(item => <NavItem key={item.id} item={item} active={page === item.id} onPress={() => setPage(item.id)} />)}</View><View style={{ flex: 1 }} /><View style={x.sideTip}><View style={x.tipCircle}><Sparkles size={22} color={colors.forest} /></View><Txt style={{ fontWeight: "600", fontSize: 13, marginTop: 12 }}>A little space. A big help.</Txt><Txt style={[s.muted, { fontSize: 11, marginTop: 7, lineHeight: 18 }]}>Your next trip could make someone's day.</Txt><Button title="Share your route" icon={<ArrowUpRight size={15} color={colors.forest} />} variant="ghost" small onPress={() => { setMode("traveller"); openForm("trip"); }} style={{ paddingHorizontal: 0, alignItems: "flex-start", marginTop: 6 }} /></View><Pressable accessibilityRole="button" onPress={() => setSafety(true)} style={[s.row, { marginTop: 27, padding: 8 }]}><ShieldCheck size={17} color={colors.muted} /><Txt style={{ fontSize: 12, color: colors.muted }}>Trust & safety</Txt></Pressable><View style={x.sidebarProfile}><Avatar name={viewer.name} size={35} /><View style={{ flex: 1 }}><Txt numberOfLines={1} style={{ fontSize: 12, fontWeight: "600" }}>{viewer.name}</Txt><Txt style={{ fontSize: 10, color: colors.muted, marginTop: 3 }}>Passenger member</Txt></View><Pressable accessibilityRole="button" accessibilityLabel="Open my profile" onPress={() => setPage("profile")}><ArrowUpRight size={16} color={colors.text} /></Pressable></View></View>}

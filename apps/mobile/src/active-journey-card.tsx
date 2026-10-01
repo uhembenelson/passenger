@@ -82,7 +82,7 @@ export function ActiveJourneyCard({ origin, destination, date, time, ongoing, ac
       </View>
       {children}
       {action ? <Button title={action.title} busy={action.busy} onPress={action.onPress} variant="lime" style={styles.action} /> : null}
-      <Button title="Something went wrong" variant="ghost" small onPress={onReport} />
+      <Button title="Report an Issue" variant="ghost" small onPress={onReport} />
     </View>
   </View>;
 }

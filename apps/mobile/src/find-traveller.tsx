@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ListRenderItem } from "react-native";
 import { ArrowRight, ChevronDown, MapPin, Star } from "lucide-react-native";
 import { usePaginatedQuery, useQuery } from "convex/react";
@@ -23,6 +24,8 @@ const fallbackParcelTypes = [
 const fallbackServiceArea = { baseLocation: "Jos", destinations: ["Abuja", "Kaduna", "Lagos"] };
 
 export function FindTravellerFlow({ onClose, onBookTrip, initialDraft }: Props) {
+  const insets = useSafeAreaInsets();
+  const modalSafeArea = { paddingTop: insets.top + 17, paddingBottom: insets.bottom + 17, paddingLeft: insets.left + 17, paddingRight: insets.right + 17 };
   const data = usePassenger();
   const snapshot = data.snapshot;
   const serviceArea = snapshot?.serviceArea ?? fallbackServiceArea;
@@ -143,8 +146,8 @@ export function FindTravellerFlow({ onClose, onBookTrip, initialDraft }: Props) 
       {error ? <Notice tone="error">{error}</Notice> : null}
     </ScrollView>
     <View style={f.fixedAction}><Button title="Find Travellers" variant="lime" onPress={submitSearch} style={f.primaryButton} /></View>
-    <Modal transparent visible={locationOpen !== null} animationType="fade" onRequestClose={() => setLocationOpen(null)}><Pressable style={f.modalBackdrop} onPress={() => setLocationOpen(null)}><View style={f.typeSheet}><Txt style={f.sheetTitle}>{locationOpen === "origin" ? "Select pickup location" : "Select destination"}</Txt>{locations.map(location => <Pressable key={location} accessibilityRole="radio" accessibilityState={{ checked: location === (locationOpen === "origin" ? origin : destination) }} onPress={() => selectLocation(locationOpen!, location)} style={f.typeOption}><CityIllustration city={location} size={38} /><View style={{ flex: 1 }}><Txt style={f.inputText}>{location}</Txt>{location === serviceArea.baseLocation ? <Txt style={f.subdued}>Base location</Txt> : null}</View></Pressable>)}</View></Pressable></Modal>
-    <Modal transparent visible={typeOpen} animationType="fade" onRequestClose={() => setTypeOpen(false)}><Pressable style={f.modalBackdrop} onPress={() => setTypeOpen(false)}><View style={f.typeSheet}>{parcelTypes.map(type => <Pressable key={type.label} accessibilityRole="radio" accessibilityState={{ checked: type.label === parcelType.label }} onPress={() => { setParcelType(type); setTypeOpen(false); }} style={f.typeOption}><Txt style={f.inputText}>{type.label}</Txt><Txt style={f.subdued}>Up to {type.weightKg} kg</Txt></Pressable>)}</View></Pressable></Modal>
+    <Modal transparent visible={locationOpen !== null} animationType="fade" onRequestClose={() => setLocationOpen(null)}><Pressable style={[f.modalBackdrop, modalSafeArea]} onPress={() => setLocationOpen(null)}><View style={f.typeSheet}><Txt style={f.sheetTitle}>{locationOpen === "origin" ? "Select pickup location" : "Select destination"}</Txt>{locations.map(location => <Pressable key={location} accessibilityRole="radio" accessibilityState={{ checked: location === (locationOpen === "origin" ? origin : destination) }} onPress={() => selectLocation(locationOpen!, location)} style={f.typeOption}><CityIllustration city={location} size={38} /><View style={{ flex: 1 }}><Txt style={f.inputText}>{location}</Txt>{location === serviceArea.baseLocation ? <Txt style={f.subdued}>Base location</Txt> : null}</View></Pressable>)}</View></Pressable></Modal>
+    <Modal transparent visible={typeOpen} animationType="fade" onRequestClose={() => setTypeOpen(false)}><Pressable style={[f.modalBackdrop, modalSafeArea]} onPress={() => setTypeOpen(false)}><View style={f.typeSheet}>{parcelTypes.map(type => <Pressable key={type.label} accessibilityRole="radio" accessibilityState={{ checked: type.label === parcelType.label }} onPress={() => { setParcelType(type); setTypeOpen(false); }} style={f.typeOption}><Txt style={f.inputText}>{type.label}</Txt><Txt style={f.subdued}>Up to {type.weightKg} kg</Txt></Pressable>)}</View></Pressable></Modal>
   </View>;
 }
 
