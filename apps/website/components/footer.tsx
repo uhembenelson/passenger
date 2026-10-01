@@ -12,8 +12,6 @@ const PRODUCT_LINKS = [
 const COMPANY_LINKS = [
   { label: "About", href: "#about" },
   { label: "Contact", href: "mailto:support@passenger.ng" },
-  { label: "Terms", href: "#faq" },
-  { label: "Privacy", href: "#safety" },
 ];
 
 export function Footer() {
@@ -29,7 +27,7 @@ export function Footer() {
               </span>
             </Link>
             <p className="mt-4 max-w-xs text-sm text-[#7A7F87] leading-relaxed">
-              Your package rides along on trips people were already taking.
+              Good things, going places.
             </p>
           </div>
 
@@ -74,23 +72,23 @@ export function Footer() {
           {/* App */}
           <div className="md:col-span-2">
             <h4 className="text-xs font-semibold uppercase tracking-wider text-[#7A7F87]">
-              Get the app
+              Passenger
             </h4>
             <ul className="mt-4 space-y-2.5">
               <li>
                 <Link
-                  href="#download"
+                  href="https://app.usepassenger.com/"
                   className="text-sm text-[#4B5563] hover:text-[#1F2937] transition-colors"
                 >
-                  App Store
+                  Open Passenger
                 </Link>
               </li>
               <li>
                 <Link
-                  href="#download"
+                  href="#app-preview"
                   className="text-sm text-[#4B5563] hover:text-[#1F2937] transition-colors"
                 >
-                  Google Play
+                  See the app
                 </Link>
               </li>
             </ul>
@@ -99,7 +97,6 @@ export function Footer() {
 
         <div className="mt-12 pt-6 border-t border-[#E5E7EB] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[#7A7F87]">
           <p>© 2026 Passenger</p>
-          <p>Delivered on trips that were happening anyway.</p>
         </div>
       </div>
     </footer>

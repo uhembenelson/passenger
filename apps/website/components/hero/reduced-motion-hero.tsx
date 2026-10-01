@@ -22,7 +22,7 @@ export function ReducedMotionHero() {
             asChild
             className="h-12 px-7 rounded-full bg-[#1F2937] hover:bg-[#111827] text-white font-medium text-base shadow-sm"
           >
-            <a href="#senders-travellers">Send something</a>
+            <a href="https://app.usepassenger.com/">Send something</a>
           </Button>
 
           <Button
@@ -30,7 +30,7 @@ export function ReducedMotionHero() {
             variant="outline"
             className="h-12 px-7 rounded-full border-[#D1D5DB] hover:bg-[#F7F7F8] text-[#1F2937] font-medium text-base bg-white"
           >
-            <a href="#how-it-works">I&apos;m travelling</a>
+            <a href="#senders-travellers">I&apos;m travelling</a>
           </Button>
         </div>
 
@@ -41,9 +41,6 @@ export function ReducedMotionHero() {
               <Package className="w-5 h-5 text-[#248A56]" />
             </div>
             <div>
-              <span className="text-xs font-semibold text-[#7A7F87] uppercase tracking-wider">
-                Package
-              </span>
               <h3 className="text-base font-semibold text-[#1F2937] mt-0.5">
                 Something needs to go
               </h3>
@@ -58,9 +55,6 @@ export function ReducedMotionHero() {
               <UserCheck className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-xs font-semibold text-[#27AB6B] uppercase tracking-wider">
-                Traveller
-              </span>
               <h3 className="text-base font-semibold text-[#1F2937] mt-0.5">
                 Already going your way
               </h3>
@@ -75,9 +69,6 @@ export function ReducedMotionHero() {
               <CheckCircle2 className="w-5 h-5" />
             </div>
             <div>
-              <span className="text-xs font-semibold text-[#248A56] uppercase tracking-wider">
-                Delivered
-              </span>
               <h3 className="text-base font-semibold text-[#1F2937] mt-0.5">
                 Arrives safely
               </h3>

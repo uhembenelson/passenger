@@ -6,7 +6,7 @@ import { ArrowRight } from "lucide-react";
 const TRUTHS = [
   {
     label: "Who's carrying it",
-    body: "Accounts are ID-checked. Your package travels with a real, verified person — never a random driver or a seller you&apos;ve never heard of.",
+    body: "Travellers complete identity checks before carrying parcels. Review who is carrying yours before agreeing to a handover.",
   },
   {
     label: "Your money",
@@ -52,9 +52,6 @@ export function TrustAndSafety() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-20 gap-y-14">
           {/* Left: the promise */}
           <div className="lg:pr-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#248A56]">
-              Trust &amp; safety
-            </p>
             <h2
               className="mt-6 font-bold text-[#1F2937] leading-[1.05]"
               style={{
@@ -65,8 +62,8 @@ export function TrustAndSafety() {
               You always know who&apos;s carrying it.
             </h2>
             <p className="mt-7 text-[#4B5563] text-lg leading-relaxed max-w-md">
-              A package is only ever in the hands of a person you can identify.
-              That&apos;s the whole safety model — and it works.
+              Identity checks, declared parcels and confirmation codes help
+              both sides know what they are agreeing to.
             </p>
           </div>
 

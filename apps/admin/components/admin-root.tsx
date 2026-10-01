@@ -15,7 +15,7 @@ const configured = validUrl(convexUrl);
 const convex = configured ? new ConvexReactClient(convexUrl) : null;
 
 export function Brand() { return <div className="brand"><span className="brand-mark"><Waypoints size={23} strokeWidth={2.5} /></span><span>passenger<span className="brand-dot">.</span></span></div>; }
-export function Gate({ title, children, loading = false }: { title: string; children: ReactNode; loading?: boolean }) { return <main className="gate" aria-busy={loading}><Brand /><section className="gate-card"><div className="gate-icon">{loading ? <LoaderCircle className="spin" aria-hidden="true" /> : <ShieldCheck aria-hidden="true" />}</div><p className="eyebrow">TRUST & SAFETY WORKSPACE</p><h1>{title}</h1>{children}</section><small>Good things move with people.</small></main>; }
+export function Gate({ title, children, loading = false }: { title: string; children: ReactNode; loading?: boolean }) { return <main className="gate" aria-busy={loading}><Brand /><section className="gate-card"><div className="gate-icon">{loading ? <LoaderCircle className="spin" aria-hidden="true" /> : <ShieldCheck aria-hidden="true" />}</div><h1>{title}</h1>{children}</section><small>Good things move with people.</small></main>; }
 function ForcePasswordChange({ onChangePassword }: { onChangePassword: (args: { currentPassword: string; newPassword: string }) => Promise<unknown> }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");

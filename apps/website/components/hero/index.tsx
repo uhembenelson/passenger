@@ -103,9 +103,9 @@ export function Hero() {
       if (textOverlayRef.current) {
         const travelProg = Math.min(p / 0.88, 1);
         const translateY = -380 * travelProg;
-        const opacity = Math.max(0, 1 - travelProg);
+        const opacity = scrollY < 20 ? 1 : Math.max(0, 1 - travelProg);
 
-        textOverlayRef.current.style.transform = `translate3d(0, ${translateY}px, 0)`;
+        textOverlayRef.current.style.transform = `translate3d(0, ${scrollY < 20 ? 0 : translateY}px, 0)`;
         textOverlayRef.current.style.opacity = `${opacity}`;
         textOverlayRef.current.style.pointerEvents = opacity < 0.1 ? "none" : "auto";
       }
@@ -145,7 +145,7 @@ export function Hero() {
   return (
     <section
       ref={containerRef}
-      className="relative w-full h-[450vh] bg-[#FAFAFC]"
+      className="relative w-full h-[260vh] bg-[#FAFAFC]"
     >
       {/* Pinned 100vh viewport container */}
       <div className="sticky top-0 h-screen w-full overflow-hidden select-none">

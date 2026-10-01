@@ -144,9 +144,6 @@ export function HowItHappens({ sectionRef: externalRef }: HowItHappensProps) {
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#248A56]">
-            The whole thing
-          </p>
           <h2
             className="mt-5 font-bold text-[#1F2937] leading-[1.05]"
             style={{
@@ -157,7 +154,7 @@ export function HowItHappens({ sectionRef: externalRef }: HowItHappensProps) {
             It happens like this.
           </h2>
           <p className="mt-6 text-[#4B5563] text-lg leading-relaxed max-w-xl">
-            Three quiet things happen. Everything else is Passenger&apos;s.
+            Find a compatible trip, agree on the handover, and confirm arrival.
           </p>
         </div>
 
@@ -222,7 +219,7 @@ export function HowItHappens({ sectionRef: externalRef }: HowItHappensProps) {
                 You&apos;re sending
               </p>
               <a
-                href="#download"
+                href="https://app.usepassenger.com/"
                 className="inline-flex items-center gap-1.5 mt-2 text-base font-semibold text-[#248A56] border-b border-[#248A56]/40 hover:border-[#248A56]"
               >
                 Send something
@@ -233,8 +230,9 @@ export function HowItHappens({ sectionRef: externalRef }: HowItHappensProps) {
               <p className="text-lg font-semibold text-[#1F2937]">
                 You&apos;re travelling
               </p>
+              <p className="mt-3 text-[#4B5563] leading-relaxed">Share your route and available space for a parcel going your way.</p>
               <a
-                href="#download"
+                href="https://app.usepassenger.com/"
                 className="inline-flex items-center gap-1.5 mt-2 text-base font-semibold text-[#248A56] border-b border-[#248A56]/40 hover:border-[#248A56]"
               >
                 I&apos;m travelling

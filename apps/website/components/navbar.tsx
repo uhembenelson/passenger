@@ -29,8 +29,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "About", href: "#about" },
       { label: "Contact", href: "mailto:support@passenger.ng" },
-      { label: "Terms", href: "#faq" },
-      { label: "Privacy", href: "#safety" },
     ],
   },
 ];
@@ -111,8 +109,8 @@ export function Navbar() {
             asChild
             className="bg-[#34D186] hover:bg-[#2FA968] text-white font-semibold rounded-full shadow-sm text-sm h-10 px-5"
           >
-            <a href="#download">
-              Get the app
+            <a href="https://app.usepassenger.com/">
+              Open Passenger
             </a>
           </Button>
         </div>

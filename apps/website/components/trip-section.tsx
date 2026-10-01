@@ -38,9 +38,6 @@ export function TripSection({ nextSectionRef }: TripSectionProps) {
           revealed ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0"
         }`}
       >
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#248A56]">
-          The idea
-        </p>
 
         <h2
           className="mx-auto mt-6 max-w-4xl font-bold text-[#1F2937] leading-[1.05]"

@@ -18,6 +18,10 @@ export function HeroCopy({ headlineRef }: HeroCopyProps) {
         Send it with someone <br className="hidden sm:inline" />
         already going your way.
       </h1>
+      <p className="mx-auto mt-6 max-w-xl text-base sm:text-lg leading-relaxed text-[#4B5563]">
+        Send a parcel between cities with a verified traveller.
+        Agree on the handover and follow its journey in Passenger.
+      </p>
     </div>
   );
 }
