@@ -9,7 +9,15 @@ import { audit, fail, requireActive, requireAdmin, isAdmin, notify, requireUser,
 
 export function paymentMode(): "live" | "test" { return process.env.PAYSTACK_SECRET_KEY?.startsWith("sk_live_") ? "live" : "test"; }
 
-type TopUpInitialization = { mode: "provider"; url: string; reference: string };
+type TopUpInitialization = { mode: "virtual_account"; reference: string; externalReference: string; accountNumber: string; accountName: string; amount: number; expiresAt: string };
+
+function v4WalletConfig() {
+  const baseUrl = (process.env.V4_API_URL ?? process.env.V4_VERIFICATION_API_URL ?? process.env.V4_VERIFICATION_BASE_URL ?? "").replace(/\/$/, "");
+  const key = process.env.V4_VERIFICATION_API_KEY;
+  const secret = process.env.V4_VERIFICATION_API_SECRET;
+  if (!baseUrl || !key || !secret) fail("Wallet funding is not available yet. Please try again later.");
+  return { baseUrl, key, secret };
+}
 
 export const balance = query({
   args: {},
@@ -86,16 +94,36 @@ export const attachCheckout = internalMutation({ args: { reference: v.string(), 
   if (!p) fail("Deposit not found.");
   await ctx.db.patch(p._id, { url: args.url });
 } });
+export const reserveV4TopUp = internalMutation({
+  args: { userId: v.id("users"), reference: v.string(), amountKobo: v.number() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId); if (!user) fail("User not found."); requireActive(user);
+    if (user.walletBlocked) fail("Your wallet is under payment review. Contact support.");
+    const existing = await ctx.db.query("walletDeposits").withIndex("by_user_and_status", q => q.eq("userId", user._id).eq("status", "pending")).first();
+    if (existing) return { deposit: existing, initialize: false };
+    const id = await ctx.db.insert("walletDeposits", { ...args, provider: "v4", paymentStatus: "pending", status: "pending", createdAt: Date.now() });
+    return { deposit: (await ctx.db.get(id))!, initialize: true };
+  },
+});
+export const attachV4TopUp = internalMutation({
+  args: { reference: v.string(), externalReference: v.string(), accountNumber: v.string(), accountName: v.string(), expiresAt: v.string() },
+  handler: async (ctx, args) => {
+    const p = await ctx.db.query("walletDeposits").withIndex("by_reference", q => q.eq("reference", args.reference)).unique();
+    if (!p) fail("Deposit not found.");
+    await ctx.db.patch(p._id, { externalReference: args.externalReference, accountNumber: args.accountNumber, accountName: args.accountName, expiresAt: args.expiresAt });
+  },
+});
 export const pendingDeposit = query({ args: {}, handler: async (ctx) => {
   const user = await requireUser(ctx);
   const p = await ctx.db.query("walletDeposits").withIndex("by_user_and_status", q => q.eq("userId", user._id).eq("status", "pending")).first();
-  return p ? { reference: p.reference, amount: p.amountKobo / 100, url: p.url ?? "" } : null;
+  return p ? { reference: p.reference, amount: p.amountKobo / 100, url: p.url ?? "", externalReference: p.externalReference, accountNumber: p.accountNumber, accountName: p.accountName, expiresAt: p.expiresAt, paymentStatus: p.paymentStatus ?? "pending" } : null;
 } });
 
 export const depositByReference = internalQuery({
   args: { reference: v.string() },
   handler: async (ctx, args) => ctx.db.query("walletDeposits").withIndex("by_reference", q => q.eq("reference", args.reference)).unique(),
 });
+export const depositByExternalReference = internalQuery({ args: { externalReference: v.string() }, handler: async (ctx, args) => ctx.db.query("walletDeposits").withIndex("by_externalReference", q => q.eq("externalReference", args.externalReference)).unique() });
 
 export const recordTopUp = internalMutation({
   args: {
@@ -118,7 +146,7 @@ export const recordTopUp = internalMutation({
     const user = await ctx.db.get(args.userId);
     if (!user) fail("User not found.");
 
-    if (deposit.providerMode !== paymentMode() || user.walletMode && user.walletMode !== deposit.providerMode) fail("Payment environment mismatch. Contact support.");
+    if (deposit.provider !== "v4" && (deposit.providerMode !== paymentMode() || user.walletMode && user.walletMode !== deposit.providerMode)) fail("Payment environment mismatch. Contact support.");
     const sameTransaction = await ctx.db.query("walletDeposits").withIndex("by_providerTransactionId", q => q.eq("providerTransactionId", args.providerTransactionId)).unique();
     if (sameTransaction && sameTransaction._id !== deposit._id) fail("Provider transaction already belongs to another deposit.");
     const currentBalance = user.walletBalanceNaira ?? 0;
@@ -126,7 +154,7 @@ export const recordTopUp = internalMutation({
     if (!Number.isSafeInteger(nextBalance) || !Number.isSafeInteger((user.walletVerifiedBalanceNaira ?? 0) + args.amountNaira)) fail("Wallet balance limit exceeded.");
 
     await ctx.db.patch(deposit._id, { status: "paid", creditedAt: Date.now(), providerTransactionId: args.providerTransactionId, nextCheckAt: Date.now() + 86400000 });
-    await ctx.db.patch(user._id, { walletBalanceNaira: nextBalance, walletMode: deposit.providerMode, walletVerifiedBalanceNaira: (user.walletVerifiedBalanceNaira ?? 0) + args.amountNaira });
+    await ctx.db.patch(user._id, { walletBalanceNaira: nextBalance, ...(deposit.provider === "v4" ? {} : { walletMode: deposit.providerMode }), walletVerifiedBalanceNaira: (user.walletVerifiedBalanceNaira ?? 0) + args.amountNaira });
     await ctx.db.insert("walletTransactions", {
       userId: user._id,
       kind: "top_up",
@@ -209,9 +237,6 @@ export const initializeTopUp = action({
     if (!user) fail("Complete your profile first.");
     requireActive(user);
 
-    const key = process.env.PAYSTACK_SECRET_KEY;
-    if (!key) fail("Payments are not available yet. Please try again later.");
-
     const email = identity.email ?? user.email;
     if (typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       fail("A verified email is required for wallet top-up.");
@@ -219,60 +244,21 @@ export const initializeTopUp = action({
 
     await ctx.runMutation(internal.wallet.rateLimit, { subject: sub, kind: "initialize" });
     const reference = `wallet-${crypto.randomUUID()}`;
-    const callback = process.env.PAYSTACK_CALLBACK_URL;
-    if (callback) {
-      let url: URL;
-      try { url = new URL(callback); } catch { fail("Payment return URL is invalid."); }
-      if (url.protocol !== "https:" || url.username || url.password) fail("Payment return URL must use HTTPS.");
-    }
     const amountKobo = amountNaira * 100;
-    const reserved = await ctx.runMutation(internal.wallet.reserveTopUp, { userId: user._id, reference, amountKobo });
+    const reserved = await ctx.runMutation(internal.wallet.reserveV4TopUp, { userId: user._id, reference, amountKobo });
     if (!reserved.initialize) {
       if (reserved.deposit.amountKobo !== amountKobo) fail("Finish or check your existing deposit before changing the amount.");
-      if (reserved.deposit.url) return { mode: "provider", url: reserved.deposit.url, reference: reserved.deposit.reference };
-      fail("Your existing deposit is being checked. Open your wallet to check its status; another checkout was not created.");
+      if (reserved.deposit.externalReference && reserved.deposit.accountNumber && reserved.deposit.accountName && reserved.deposit.expiresAt) return { mode: "virtual_account", reference: reserved.deposit.reference, externalReference: reserved.deposit.externalReference, accountNumber: reserved.deposit.accountNumber, accountName: reserved.deposit.accountName, amount: reserved.deposit.amountKobo / 100, expiresAt: reserved.deposit.expiresAt };
+      fail("Your existing deposit is being checked. Open your wallet to check its status; another deposit was not created.");
     }
-
+    const { baseUrl, key, secret } = v4WalletConfig();
     let response: Response;
-    try {
-      response = await fetch("https://api.paystack.co/transaction/initialize", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${key}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email,
-          amount: amountKobo,
-          currency: "NGN",
-          reference,
-          ...(callback ? { callback_url: callback } : {}),
-          metadata: {
-            kind: "wallet_topup",
-            amountNaira,
-            subject: sub,
-          },
-        }),
-        signal: AbortSignal.timeout(15000),
-      });
-    } catch {
-      fail("We could not connect to the payment provider. Please check your connection and try again.");
-    }
-
-    if (!response.ok) fail("Failed to contact payment provider.");
-    const body = await response.json().catch(() => null) as { status?: boolean; data?: { authorization_url?: string; reference?: string } } | null;
-    if (body?.status !== true || !body.data?.authorization_url || body.data.reference !== reference) {
-      fail("Could not initialize payment with provider.");
-    }
-
-    const checkoutUrl = new URL(body.data.authorization_url);
-    if (checkoutUrl.protocol !== "https:" || checkoutUrl.hostname !== "checkout.paystack.com" || checkoutUrl.username || checkoutUrl.password) fail("Invalid payment checkout URL.");
-    await ctx.runMutation(internal.wallet.attachCheckout, { reference, url: checkoutUrl.toString() });
-    return {
-      mode: "provider",
-      url: body.data.authorization_url,
-      reference,
-    };
+    try { response = await fetch(`${baseUrl}/wallet/topup`, { method: "POST", headers: { "X-API-Key": key, "X-API-Secret": secret, "Idempotency-Key": reference, "Content-Type": "application/json" }, body: JSON.stringify({ email, name: user.name, phoneNumber: user.phone, amount: amountNaira, metadata: { passengerReference: reference, subject: sub } }), signal: AbortSignal.timeout(15000) }); } catch { fail("We could not connect to the wallet provider. Please try again."); }
+    const body = await response.json().catch(() => null) as { success?: boolean; data?: { externalReference?: string; accountNumber?: string; accountName?: string; amount?: number; expiresAt?: string } } | null;
+    const data = body?.data;
+    if (!response.ok || body?.success !== true || !data?.externalReference || !data.accountNumber || !data.accountName || typeof data.amount !== "number" || data.amount !== amountNaira || !data.expiresAt) fail("Could not create a virtual account for this top-up.");
+    await ctx.runMutation(internal.wallet.attachV4TopUp, { reference, externalReference: data.externalReference, accountNumber: data.accountNumber, accountName: data.accountName, expiresAt: data.expiresAt });
+    return { mode: "virtual_account", reference, externalReference: data.externalReference, accountNumber: data.accountNumber, accountName: data.accountName, amount: data.amount, expiresAt: data.expiresAt };
   },
 });
 
@@ -318,9 +304,58 @@ export const verifyTopUp = action({
     const deposit = await ctx.runQuery(internal.wallet.depositByReference, args);
     if (!deposit || deposit.userId !== user._id) fail("Payment not found.");
     await ctx.runMutation(internal.wallet.rateLimit, { subject: sub, kind: "verify" });
-    const success = await verifyDeposit(ctx, args.reference);
+    const success = deposit.provider === "v4" ? await verifyV4Deposit(ctx, deposit.externalReference!, deposit.amountKobo / 100) : await verifyDeposit(ctx, args.reference);
     const updated = await ctx.runQuery(internal.wallet.getUserForTopUp, { sub });
     return { success, balanceNaira: Math.max(0, updated.walletVerifiedBalanceNaira ?? 0) };
+  },
+});
+
+async function verifyV4Deposit(ctx: import("./_generated/server").ActionCtx, externalReference: string, amountNaira: number) {
+  const { baseUrl, key, secret } = v4WalletConfig();
+  const response = await fetch(`${baseUrl}/wallet/topup/${encodeURIComponent(externalReference)}`, { headers: { "X-API-Key": key, "X-API-Secret": secret }, signal: AbortSignal.timeout(15000) });
+  const body = await response.json().catch(() => null) as { success?: boolean; data?: { externalReference?: string; amount?: number; paymentStatus?: string; paymentReference?: string } } | null;
+  const data = body?.data;
+  if (!response.ok || body?.success !== true || !data || data.externalReference !== externalReference || data.amount !== amountNaira) fail("Payment verification did not match your deposit.");
+  if (data.paymentStatus === "completed") {
+    if (!data.paymentReference) fail("Completed payment is missing its provider reference.");
+    const deposit = await ctx.runQuery(internal.wallet.depositByExternalReference, { externalReference });
+    if (!deposit) fail("Payment not found.");
+    await ctx.runMutation(internal.wallet.recordTopUp, { userId: deposit.userId, reference: deposit.reference, amountNaira, providerTransactionId: data.paymentReference });
+    return true;
+  }
+  return false;
+}
+
+export const processV4Event = internalMutation({
+  args: { externalReference: v.string(), paymentReference: v.optional(v.string()), amount: v.number(), status: v.string(), responseCode: v.optional(v.string()), responseMessage: v.optional(v.string()), sessionId: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<{ received: boolean; credited: boolean; alreadyProcessed?: boolean; reason?: string }> => {
+    const p = await ctx.db.query("walletDeposits").withIndex("by_externalReference", q => q.eq("externalReference", args.externalReference)).unique();
+    if (!p) return { received: true, credited: false, reason: "unknown_reference" };
+    const approved = args.status.toLowerCase() === "completed" && (!args.responseCode || args.responseCode === "00");
+    if (!approved) {
+      if (!p.creditedAt) await ctx.db.patch(p._id, { status: "failed", paymentStatus: args.status.toLowerCase() === "reversed" ? "refunded" : "failed", lastCheckedAt: Date.now() });
+      else if (args.status.toLowerCase() === "reversed") await paymentAlert(ctx, `risk-${p.reference}`, `V4 wallet payment ${p.reference} was reversed after credit; no automatic debit was applied.`);
+      return { received: true, credited: false, reason: args.status.toLowerCase() === "reversed" ? "reversed_after_credit" : "declined" };
+    }
+    if (args.amount !== p.amountKobo / 100) {
+      if (!p.creditedAt) await ctx.db.patch(p._id, { paymentStatus: "partial", lastCheckedAt: Date.now() });
+      return { received: true, credited: false, reason: "amount_mismatch" };
+    }
+    if (p.creditedAt) return { received: true, credited: true, alreadyProcessed: true };
+    const providerTransactionId = args.paymentReference ?? args.sessionId ?? args.externalReference;
+    await ctx.runMutation(internal.wallet.recordTopUp, { userId: p.userId, reference: p.reference, amountNaira: args.amount, providerTransactionId });
+    await ctx.db.patch(p._id, { paymentStatus: "completed", paymentReference: args.paymentReference, lastCheckedAt: Date.now() });
+    return { received: true, credited: true };
+  },
+});
+
+export const receiveV4Webhook = internalAction({
+  args: { body: v.string() },
+  handler: async (ctx, args): Promise<{ received: boolean; credited: boolean; alreadyProcessed?: boolean; reason?: string }> => {
+    const parsed = JSON.parse(args.body) as { data?: Record<string, unknown> } & Record<string, unknown>;
+    const data = parsed.data && typeof parsed.data === "object" ? parsed.data : parsed;
+    if (typeof data.externalReference !== "string" || typeof data.amount !== "number" || typeof data.status !== "string") fail("Invalid V4 wallet webhook payload.");
+    return await ctx.runMutation(internal.wallet.processV4Event, { externalReference: data.externalReference, amount: data.amount, status: data.status, paymentReference: typeof data.paymentReference === "string" ? data.paymentReference : undefined, responseCode: typeof data.responseCode === "string" ? data.responseCode : undefined, responseMessage: typeof data.responseMessage === "string" ? data.responseMessage : undefined, sessionId: typeof data.sessionId === "string" ? data.sessionId : undefined });
   },
 });
 export const recordCheck = internalMutation({ args: { reference: v.string(), status: v.string() }, handler: async (ctx, args) => {

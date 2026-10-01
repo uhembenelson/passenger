@@ -9,7 +9,7 @@
 | `apps/mobile` | Expo **57**, React Native 0.86, React 19 | Sending, travelling, matching, milestones, handover/receipt proofs |
 | `apps/admin` | Next.js 16 App Router | Verification, contents review, delivery oversight, disputes, reconciliation |
 | `apps/website` | Next.js 16 App Router | Public marketing website, pricing calculator, trust & safety guide |
-| `packages/backend` | Convex 1.45 | Shared database, permissions, state machine, audit, proof codes, Paystack adapter |
+| `packages/backend` | Convex 1.45 | Shared database, permissions, state machine, audit, proof codes, Paystack and v4 verification/banking adapters |
 | `packages/core` | TypeScript | Shared contracts, validation, routing rules, demo fixtures |
 | `packages/design-tokens` | TypeScript / CSS | Shared design tokens, primitives, typography, colors, and shadows |
 
@@ -104,7 +104,7 @@ Both Convex URLs must identify **the same deployment**. Restart the apps after c
 
 Sign in and complete a Passenger profile. All new member profiles are pending manual verification. An allowlisted administrator can sign into the dashboard and review members. Identity/document evidence collection and physical contents inspection remain external operational procedures in this MVP; the dashboard records the decision and note, not an automated KYC result.
 
-### 4. Optional Paystack collection
+### 4. Payment and banking providers
 
 From `packages/backend`:
 
@@ -122,9 +122,20 @@ https://your-deployment.convex.site/paystack/webhook
 
 Use **`.convex.site`**, not the client **`.convex.cloud`** URL. The handler validates the raw-body HMAC-SHA512 signature, verifies the transaction with Paystack, and checks the immutable reference, NGN currency, and server-calculated amount. Replayed confirmations do not fund twice. The sender cannot fund a shipment directly from a client mutation, and returning from checkout is not proof of payment.
 
-`held` means payment was received by the configured provider and traveller payout has not been reconciled. It is **not regulated escrow**. Admin payout/refund controls record an already completed external operation with a unique transaction reference; they do not transfer money. Do not record one before it has actually happened.
+Configure the accountless v4 provider for BVN/NIN checks, bank lookup, account verification, and traveller transfers:
 
-Payment initialization deliberately locks ordinary cancellation to avoid a late paid webhook funding a cancelled shipment. Failed/uncertain initializations and stale departures require operational reconciliation; automatic payment timeout recovery and refund/transfer execution are not implemented. Start with provider test keys, not live collections.
+```sh
+bunx convex env set V4_VERIFICATION_API_KEY vk_live_...
+bunx convex env set V4_VERIFICATION_API_SECRET ...
+bunx convex env set V4_API_URL https://provider.example.com/api/v4
+bunx convex env set V4_BANK_ACCOUNT_ENCRYPTION_KEY ...
+```
+
+Use an independent stable random encryption value of at least 32 characters. The external v4 server must separately enable transfers and configure its debit account, provider OTP when required, and Redis rate-limit storage.
+
+`held` means payment was received by the configured provider and traveller payout has not been released. It is **not regulated escrow**. Eligible traveller payouts run only after delivery, the dispute window, identity checks, and verified bank setup. Manual admin reconciliation remains an audited fallback and must only record an operation that actually happened.
+
+Payment initialization deliberately locks ordinary cancellation to avoid a late paid webhook funding a cancelled shipment. Failed or uncertain deposits, refunds, and transfers remain visible for safe reconciliation and are never blindly duplicated. Start with provider test keys and a non-production v4 server, not live collections.
 
 ## Implemented workflows
 

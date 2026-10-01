@@ -19,7 +19,7 @@ async function fixture() {
     await ctx.db.insert("payments", { shipmentId: id, reference: "payment-test", amountKobo: 50000, travellerNetKobo: 45000, currency: "NGN", status: "paid", providerTransactionId: "provider-test", createdAt: Date.now() });
     return id;
   });
-  const addBank = () => t.run(ctx => ctx.db.insert("bankAccounts", { userId: travellerId, bankCode: "001", accountName: "Traveller", last4: "1234", recipientCode: "RCP_test", currency: "NGN", verifiedAt: Date.now(), updatedAt: Date.now() }));
+  const addBank = () => t.run(ctx => ctx.db.insert("bankAccounts", { userId: travellerId, bankCode: "001", accountName: "Traveller", last4: "1234", recipientCode: "NER_test", bankingProvider: "v4", nameEnquiryReference: "NER_test", encryptedAccountNumber: "encrypted", accountNumberIv: "iv", currency: "NGN", verifiedAt: Date.now(), updatedAt: Date.now() }));
   return { t, traveller, sender, travellerId, shipmentId, addBank };
 }
 
@@ -42,7 +42,7 @@ test("automatic preparation enforces 24 hours, a verified bank, and idempotent d
   const f = await fixture();
   const owner = await f.t.query(internal.financeState.automaticOwner, { shipmentId: f.shipmentId });
   const args = { subject: owner!, shipmentId: f.shipmentId, kind: "payout" as const };
-  await expect(f.t.mutation(internal.financeState.prepare, args)).rejects.toThrow("bank recipient");
+  await expect(f.t.mutation(internal.financeState.prepare, args)).rejects.toThrow("V4 banking");
   await f.addBank();
   await f.t.run(ctx => ctx.db.patch(f.shipmentId, { deliveredAt: Date.now() - 1000 }));
   await expect(f.t.mutation(internal.financeState.prepare, args)).rejects.toThrow("24-hour");
@@ -63,20 +63,41 @@ test("an open dispute holds earnings and blocks automatic transfer", async () =>
 });
 
 
-test("automatic payout sends once and verifies the provider result", async () => {
-  const f = await fixture(); await f.addBank();
-  vi.stubEnv("PAYSTACK_SECRET_KEY", "test-key");
-  let reference = "";
-  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url.endsWith("/transfer")) {
-      reference = JSON.parse(init!.body as string).reference;
-      return new Response(JSON.stringify({ status: true, data: { transfer_code: "TRF_test" } }));
+test("v4 banking verifies and encrypts an account before an idempotent payout", async () => {
+  const f = await fixture();
+  vi.stubEnv("PAYSTACK_SECRET_KEY", "");
+  vi.stubEnv("V4_VERIFICATION_API_KEY", "vk_test_passenger");
+  vi.stubEnv("V4_VERIFICATION_API_SECRET", "test-secret");
+  vi.stubEnv("V4_API_URL", "https://banking.test/api/v4");
+  vi.stubEnv("V4_BANK_ACCOUNT_ENCRYPTION_KEY", "test-only-encryption-key-at-least-32-characters");
+  const transferRequests: Array<{ body: any; idempotencyKey: string | null }> = [];
+  const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const href = String(url);
+    if (href.endsWith("/banks")) return new Response(JSON.stringify({ success: true, data: { banks: [{ bankCode: "090286", name: "Safe Haven Microfinance Bank" }] } }), { status: 200 });
+    if (href.endsWith("/accounts/verify")) {
+      const body = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ success: true, data: { verified: true, accountName: "TRAVELLER", accountNumber: body.accountNumber, bankCode: body.bankCode, nameEnquiryReference: "NER_test" } }), { status: 200 });
     }
-    return new Response(JSON.stringify({ status: true, data: { transfer_code: "TRF_test", amount: 45000, currency: "NGN", status: "success", reference, recipient: "RCP_test" } }));
+    if (href.endsWith("/transfers")) {
+      transferRequests.push({ body: JSON.parse(String(init?.body)), idempotencyKey: new Headers(init?.headers).get("Idempotency-Key") });
+      return new Response(JSON.stringify({ success: true, data: { transferReference: "V4_TRF_test" } }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ success: false, message: "Unexpected route" }), { status: 404 });
   });
   vi.stubGlobal("fetch", fetchMock);
+
+  expect(await f.traveller.action(api.finance.banks, {})).toEqual([{ code: "090286", name: "Safe Haven Microfinance Bank" }]);
+  expect(await f.traveller.action(api.finance.setupBank, { bankCode: "090286", accountNumber: "0123456789" })).toEqual({ accountName: "TRAVELLER", bankCode: "090286", last4: "6789", ready: true });
+
+  const stored = await f.t.run(ctx => ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", f.travellerId)).unique());
+  expect(stored).toMatchObject({ bankingProvider: "v4", nameEnquiryReference: "NER_test", last4: "6789" });
+  expect(stored?.encryptedAccountNumber).not.toContain("0123456789");
+  expect(JSON.stringify(stored)).not.toContain("0123456789");
+
   await f.t.action(internal.finance.automaticPayout, { shipmentId: f.shipmentId });
   await f.t.action(internal.finance.automaticPayout, { shipmentId: f.shipmentId });
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(transferRequests).toHaveLength(1);
+  expect(transferRequests[0]?.body).toMatchObject({ nameEnquiryReference: "NER_test", amount: 450, bankCode: "090286", accountNumber: "0123456789" });
+  expect(transferRequests[0]?.idempotencyKey).toMatch(/^passenger-/);
   expect(await f.traveller.query(api.finance.earnings, {})).toMatchObject([{ status: "paid", amountKobo: 45000 }]);
 });

@@ -46,7 +46,7 @@ export interface PassengerData {
   updateProfileImage: (input: { uri: string; contentType?: string }) => Promise<void>;
   submitIdentity: (input: { name: string; phone: string; documentType: DocumentType; evidenceIds: string[] }) => Promise<void>;
   requestAccountDeletion: () => Promise<void>;
-  topUpWallet: (amountNaira: number) => Promise<{ mode: "provider"; url: string; reference: string }>;
+  topUpWallet: (amountNaira: number) => Promise<{ mode: "virtual_account"; reference: string; externalReference: string; accountNumber: string; accountName: string; amount: number; expiresAt: string }>;
   verifyWalletTopUp: (reference: string) => Promise<{ success: boolean; balanceNaira: number }>;
   upgradeToTier2: (bvn: string) => Promise<void>;
   upgradeToTier3: (input: { state: string; lga: string; address: string; streetPhotoUrl?: string; housePhotoUrl?: string }) => Promise<void>;
@@ -234,9 +234,6 @@ export function LiveDataProvider({ children }: React.PropsWithChildren) {
     topUpWallet: async (amountNaira: number) => {
       connected();
       const result = await initializeTopUp({ amountNaira });
-      if (result.mode === "provider") {
-        if (!/^https:\/\//i.test(result.url)) throw new Error("The payment provider did not return a secure payment link.");
-      }
       return result;
     },
     verifyWalletTopUp: async (reference: string) => {

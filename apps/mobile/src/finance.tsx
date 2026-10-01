@@ -8,6 +8,8 @@ import { Badge, Button, Card, errorMessage, Field, Hydrated, InlineSkeleton, Not
 type Readiness = {
   smsConfigured: boolean;
   paymentsConfigured: boolean;
+  bankingConfigured: boolean;
+  bankingProvider: "v4" | "none";
   walletFundingMode: "provider" | "manual";
   platformFeePercent: 10;
   disputeWindowHours: number;
@@ -57,13 +59,13 @@ export function BankDetails() {
         : <Hydrated><View style={{ gap: 12 }}>
           <View style={s.wrap}>
             <Badge label={readiness.walletFundingMode === "manual" ? "Wallet funding uses in-app mode" : "Wallet funding uses provider checkout"} tone={readiness.walletFundingMode === "manual" ? "amber" : "green"} />
-            <Badge label={readiness.paymentsConfigured ? "Provider payouts configured" : "Provider payouts not configured"} tone={readiness.paymentsConfigured ? "green" : "amber"} />
+            <Badge label={readiness.bankingConfigured ? "V4 payouts configured" : "Provider payouts not configured"} tone={readiness.bankingConfigured ? "green" : "amber"} />
             <Badge label={readiness.smsConfigured ? "Receiver SMS configured" : "Receiver SMS not configured"} tone={readiness.smsConfigured ? "green" : "amber"} />
             <Badge label={`${readiness.platformFeePercent}% platform fee`} tone="neutral" />
             <Badge label={`${readiness.disputeWindowHours}-hour dispute window`} tone="neutral" />
           </View>
-          {readiness.walletFundingMode === "manual" && <Notice tone="warning">Paystack top-up is not configured yet, so wallet funding currently completes directly inside Passenger for this build. Parcel posting and wallet holds work; provider-backed payouts and bank verification still wait on the real integration.</Notice>}
-          {!readiness.paymentsConfigured && readiness.walletFundingMode !== "manual" && <Notice tone="warning">Paystack is not configured on this deployment yet. Hosted checkout, bank recipient verification, and payout/refund operations remain blocked until the backend receives a provider key.</Notice>}
+          {readiness.walletFundingMode === "manual" && <Notice tone="warning">Paystack top-up is not configured yet, so provider-backed wallet funding remains unavailable. Bank verification and traveller payouts use their separately configured provider.</Notice>}
+          {!readiness.bankingConfigured && <Notice tone="warning">Bank verification and traveller payouts are not configured on this deployment yet.</Notice>}
           {!readiness.smsConfigured && <Notice tone="warning">Receiver delivery-code SMS is not configured on this deployment yet. Final delivery proof fails closed until Twilio credentials are set.</Notice>}
         </View></Hydrated>}
     </Card>
@@ -77,33 +79,33 @@ export function BankDetails() {
         : bankReady
           ? <View style={{ gap: 12 }}>
             <Badge label={`Ready · ${bank.accountName} · •••• ${bank.last4}`} tone="green" />
-            <Txt style={s.hint}>Resolved bank code {bank.bankCode}. Verified {bank.verifiedAt ? new Date(bank.verifiedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "recently"} through Paystack. Full account numbers are not retained in Passenger.</Txt>
+            <Txt style={s.hint}>Resolved bank code {bank.bankCode}. Verified {bank.verifiedAt ? new Date(bank.verifiedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "recently"} through the configured banking provider.</Txt>
           </View>
           : <Notice>Add your Nigerian bank account so Passenger can verify a transfer recipient for future traveller payouts.</Notice>}
       <View style={{ marginTop: 16 }}>
-        <Button title={banks ? "Refresh supported banks" : "Load supported banks"} variant="secondary" busy={busy === "banks"} disabled={offline || !!busy || !readiness?.paymentsConfigured || !verified} onPress={() => void act("banks", async () => {
+        <Button title={banks ? "Refresh supported banks" : "Load supported banks"} variant="secondary" busy={busy === "banks"} disabled={offline || !!busy || !readiness?.bankingConfigured || !verified} onPress={() => void act("banks", async () => {
           const result = await banksAction({});
           setBanks(result);
           if (!bankCode && result[0]) setBankCode(result[0].code);
-          setNotice(`Loaded ${result.length} banks from Paystack.`);
+          setNotice(`Loaded ${result.length} banks from the banking provider.`);
         })} />
       </View>
       {banks && <View style={{ marginTop: 16, gap: 10 }}>
         <Txt style={s.label}>Choose your bank</Txt>
         <View style={s.wrap}>{banks.slice(0, 18).map(item => <Button key={item.code} title={item.name} small variant={bankCode === item.code ? "primary" : "secondary"} disabled={!!busy || offline} onPress={() => setBankCode(item.code)} />)}</View>
-        {banks.length > 18 && <Txt style={s.hint}>Showing the first 18 banks for this compact screen. The selected bank code is what Passenger sends to Paystack for recipient verification.</Txt>}
+        {banks.length > 18 && <Txt style={s.hint}>Showing the first 18 banks for this compact screen. The selected bank code is sent to V4 for account verification.</Txt>}
       </View>}
       <View style={{ marginTop: 16 }}>
-        <Field label="10-digit account number" value={accountNumber} onChangeText={setAccountNumber} keyboardType="number-pad" maxLength={10} editable={!busy && !offline && !!readiness?.paymentsConfigured && verified} hint={selectedBank ? `Selected bank: ${selectedBank.name}` : "Load the bank list, then choose the correct bank."} />
+        <Field label="10-digit account number" value={accountNumber} onChangeText={setAccountNumber} keyboardType="number-pad" maxLength={10} editable={!busy && !offline && !!readiness?.bankingConfigured && verified} hint={selectedBank ? `Selected bank: ${selectedBank.name}` : "Load the bank list, then choose the correct bank."} />
       </View>
       {error !== "" && <Notice tone="error">{error}</Notice>}
       {notice !== "" && <Notice tone="success">{notice}</Notice>}
-      <Button title={bankReady ? "Verify a replacement bank account" : "Verify this bank account"} busy={busy === "setup"} disabled={offline || !!busy || !readiness?.paymentsConfigured || !verified || !bankCode || !/^\d{10}$/.test(accountNumber)} onPress={() => void act("setup", async () => {
+      <Button title={bankReady ? "Verify a replacement bank account" : "Verify this bank account"} busy={busy === "setup"} disabled={offline || !!busy || !readiness?.bankingConfigured || !verified || !bankCode || !/^\d{10}$/.test(accountNumber)} onPress={() => void act("setup", async () => {
         const result = await setupBank({ bankCode, accountNumber });
         setAccountNumber("");
         setNotice(`Recipient verified for ${result.accountName} · •••• ${result.last4}.`);
       })} />
-      <Txt style={[s.hint, { marginTop: 12 }]}>Passenger verifies the recipient through Paystack before payout requests. Delivery, disputes, and provider status still decide whether money can move.</Txt>
+      <Txt style={[s.hint, { marginTop: 12 }]}>Passenger verifies the recipient through the configured banking provider before payout requests. Delivery, disputes, and provider status still decide whether money can move.</Txt>
     </Card>
   </View>;
 }

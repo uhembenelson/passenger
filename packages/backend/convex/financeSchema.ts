@@ -22,6 +22,8 @@ export const financeTables = {
   }).index("by_external_reference", ["externalReference"]).index("by_shipment", ["shipmentId"]),
   bankAccounts: defineTable({
     userId: v.id("users"), bankCode: v.string(), accountName: v.string(), last4: v.string(), recipientCode: v.string(),
+    bankingProvider: v.optional(v.literal("v4")),
+    nameEnquiryReference: v.optional(v.string()), encryptedAccountNumber: v.optional(v.string()), accountNumberIv: v.optional(v.string()),
     currency: v.literal("NGN"), verifiedAt: v.number(), updatedAt: v.number(),
   }).index("by_user", ["userId"]),
   payouts: defineTable({
@@ -29,6 +31,8 @@ export const financeTables = {
     reference: v.string(), amountKobo: v.number(), currency: v.literal("NGN"),
     status: v.union(v.literal("prepared"), v.literal("pending"), v.literal("success"), v.literal("failed"), v.literal("reversed"), v.literal("uncertain")),
     actorId: v.id("users"), recipientCode: v.optional(v.string()), providerId: v.optional(v.string()),
+    bankingProvider: v.optional(v.literal("v4")), bankCode: v.optional(v.string()),
+    nameEnquiryReference: v.optional(v.string()), encryptedAccountNumber: v.optional(v.string()), accountNumberIv: v.optional(v.string()),
     providerTransactionId: v.optional(v.string()), createdAt: v.number(), updatedAt: v.number(), dispatchedAt: v.optional(v.number()),
     verifiedAt: v.optional(v.number()), providerStatus: v.optional(v.string()), lastError: v.optional(v.string()),
   }).index("by_reference", ["reference"]).index("by_shipment", ["shipmentId"]).index("by_payment", ["paymentId"]),

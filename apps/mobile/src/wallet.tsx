@@ -32,7 +32,7 @@ export function WalletBalanceCard({ onTopUp }: { onTopUp: () => void }) {
       <View style={[s.row, { gap: 6, marginTop: 12, alignItems: "center" }]}>
         <ShieldCheck size={14} color={semantic.color.text.tertiary} />
         <Txt style={w.balanceSub}>
-          Add money securely with Paystack.
+          Add money by bank transfer to a dedicated virtual account.
         </Txt>
       </View>
     </Card>
@@ -66,7 +66,7 @@ export function TopUpSheet({
   const [errorTitle, setErrorTitle] = useState("We couldn't start your deposit");
   const [startAgain, setStartAgain] = useState(false);
   const [savedOnDevice, setSavedOnDevice] = useState(false);
-  const [payment, setPayment] = useState<{ reference: string; url: string; amount: number } | null>(null);
+  const [payment, setPayment] = useState<{ reference: string; url: string; amount: number; accountNumber?: string; accountName?: string; expiresAt?: string } | null>(null);
   const [newBalance, setNewBalance] = useState<number | null>(null);
   const [restoring, setRestoring] = useState(true);
   const [showReference, setShowReference] = useState(false);
@@ -100,6 +100,7 @@ export function TopUpSheet({
     if (pendingDeposit && !restoring) {
       setPayment(pendingDeposit);
       setSavedOnDevice(true);
+      setShowReference(true);
       setScreen(pendingDeposit.url ? "checkout" : "pending");
     }
   }, [pendingDeposit?.reference, pendingDeposit?.url, restoring]);
@@ -137,18 +138,11 @@ export function TopUpSheet({
     try {
       const result = await topUpWallet(parsedAmount);
       {
-        const pending = { reference: result.reference, url: result.url, amount: parsedAmount };
+        const pending = { reference: result.reference, url: "", amount: result.amount, accountNumber: result.accountNumber, accountName: result.accountName, expiresAt: result.expiresAt };
         setPayment(pending);
+        setShowReference(true);
         await persist(pending);
-        setScreen("checkout");
-        setAction("opening");
-        // Keep the reference before handing off to another app or browser tab.
-        setErrorTitle("The payment page couldn't open");
-        try {
-          await Linking.openURL(result.url);
-        } catch {
-          throw new Error("Unable to open the checkout page on this device. Please check your browser settings.");
-        }
+        setScreen("pending");
       }
     } catch (cause) { setError(errorMessage(cause)); setScreen("error"); }
     finally { inFlight.current = false; setAction(null); }
@@ -200,14 +194,14 @@ export function TopUpSheet({
       {shortfall > 0 && <Notice>Add at least {money(shortfall)} to cover this parcel.</Notice>}
       <Field label="Amount (₦)" value={amount} onChangeText={value => { edited.current = true; setAmount(value); }} keyboardType="number-pad" placeholder="5000" maxLength={12} editable={!restoring && !busy} style={w.amountInput} />
       {!!presets.length && <View style={s.wrap}>{presets.map(preset => <Pressable key={preset} accessibilityRole="radio" accessibilityLabel={money(preset)} accessibilityState={{ checked: parsedAmount === preset, disabled: restoring || busy }} disabled={restoring || busy} onPress={() => { edited.current = true; setAmount(String(preset)); }} style={({ pressed }) => [w.presetButton, parsedAmount === preset && w.presetButtonActive, (pressed || busy) && w.controlDimmed]}><Txt style={[w.presetText, parsedAmount === preset && w.presetTextActive]}>{money(preset)}</Txt></Pressable>)}</View>}
-      {amount.trim() !== "" && parsedAmount === null ? <Txt accessibilityRole="alert" style={s.hint}>Enter a whole-naira amount between {money(minimum)} and {money(maximum)}.</Txt> : <Txt style={s.hint}>Secure checkout with Paystack.</Txt>}
+      {amount.trim() !== "" && parsedAmount === null ? <Txt accessibilityRole="alert" style={s.hint}>Enter a whole-naira amount between {money(minimum)} and {money(maximum)}.</Txt> : <Txt style={s.hint}>You will receive a dedicated account number for this exact amount.</Txt>}
       {wallet?.blocked && <Notice tone="warning">Your wallet is under payment review. Contact support.</Notice>}
       {offline && <Notice tone="warning">Reconnect to add money.</Notice>}
     </View>
   </PresentationSheet>;
 
-  const title = screen === "error" ? errorTitle : screen === "pending" ? "Awaiting payment" : "Complete payment";
-  const description = screen === "error" ? error : screen === "pending" ? "Your payment isn't confirmed yet. If you've paid, wait a moment and check again." : "Complete payment with Paystack. We’ll check it when you return.";
+  const title = screen === "error" ? errorTitle : screen === "pending" ? "Awaiting bank transfer" : "Fund your wallet";
+  const description = screen === "error" ? error : screen === "pending" ? "Transfer the exact amount to the dedicated account below, then check again. Your wallet is credited only after the provider confirms the payment." : "Use the dedicated virtual account below to fund your wallet.";
   return <PresentationSheet title={title} onClose={close} containerStyle={sheetStyle} footer={<View style={{ gap: 8 }}>
     {payment ? <>
       <Button title={action === "checking" ? "Checking payment…" : screen === "pending" ? "Check again" : "Check payment"} variant="lime" busy={action === "checking"} disabled={busy || offline} onPress={() => void verify()} />
@@ -224,6 +218,8 @@ export function TopUpSheet({
         <Txt style={s.hint}>{savedOnDevice ? "You can close this and check again from your wallet." : "Keep this open or save your payment reference before leaving."}</Txt>
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: showReference || !savedOnDevice }} onPress={() => setShowReference(!showReference)} disabled={!savedOnDevice} style={({ pressed }) => [w.detailsToggle, pressed && w.controlDimmed]}><Txt style={w.detailsLabel}>Payment details</Txt>{savedOnDevice && (showReference ? <ChevronUp size={18} color={colors.muted} /> : <ChevronDown size={18} color={colors.muted} />)}</Pressable>
         {(showReference || !savedOnDevice) && <View style={w.paymentDetails}>
+          {!!payment.accountName && <><Txt style={s.hint}>Account name</Txt><Txt selectable style={w.accountValue}>{payment.accountName}</Txt></>}
+          {!!payment.accountNumber && <><Txt style={s.hint}>Account number</Txt><Txt selectable style={w.accountValue}>{payment.accountNumber}</Txt></>}
           <Txt style={s.hint}>Payment reference</Txt>
           <Txt selectable style={s.hint}>{payment.reference}</Txt>
           <Button title="Use a different amount" small variant="ghost" disabled={busy} onPress={() => setStartAgain(true)} />
@@ -337,6 +333,7 @@ const w = StyleSheet.create({
   controlDimmed: { opacity: 0.55 },
   detailsLabel: { fontSize: 14, fontFamily: fontFamily.medium, color: colors.forest },
   paymentDetails: { padding: 16, borderRadius: 16, backgroundColor: colors.soft, gap: 10 },
+  accountValue: { fontSize: 18, fontFamily: fontFamily.semibold, color: colors.forest, letterSpacing: 0.5 },
   depositSummary: { paddingVertical: 12, gap: 8 },
   depositAmount: { fontFamily: fontFamily.medium, fontSize: 40, lineHeight: 48, color: colors.text },
   emptyActivity: {

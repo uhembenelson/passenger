@@ -30,4 +30,20 @@ http.route({ path: "/paystack/webhook", method: "POST", handler: httpAction(asyn
     return new Response("Webhook processing error", { status: 500 });
   }
 }) });
+
+http.route({ path: "/v4/wallet/webhook", method: "POST", handler: httpAction(async (ctx, request) => {
+  const expected = process.env.V4_WALLET_WEBHOOK_SECRET;
+  const url = new URL(request.url);
+  const supplied = request.headers.get("x-v4-webhook-secret") ?? url.searchParams.get("v4_webhook_token");
+  if (!expected || !supplied || supplied !== expected) return new Response("Unauthorized", { status: 401 });
+  if (Number(request.headers.get("content-length") ?? 0) > 262144) return new Response("Payload too large", { status: 413 });
+  const body = await request.text(); if (body.length > 262144) return new Response("Payload too large", { status: 413 });
+  try {
+    const result = await ctx.runAction(internal.wallet.receiveV4Webhook, { body });
+    return Response.json(result, { status: 200, headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    console.error("V4 wallet webhook processing error:", error);
+    return new Response("Webhook processing error", { status: 400 });
+  }
+}) });
 export default http;

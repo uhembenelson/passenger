@@ -480,8 +480,10 @@ export const readiness = query({
     await requireUser(ctx);
     return {
       smsConfigured: smsConfigured(),
-      paymentsConfigured: !!process.env.PAYSTACK_SECRET_KEY,
-      walletFundingMode: process.env.PAYSTACK_SECRET_KEY ? ("provider" as const) : ("manual" as const),
+      paymentsConfigured: !!(process.env.V4_API_URL || process.env.V4_VERIFICATION_API_URL || process.env.V4_VERIFICATION_BASE_URL) && !!process.env.V4_VERIFICATION_API_KEY && !!process.env.V4_VERIFICATION_API_SECRET,
+      bankingConfigured: !!process.env.V4_VERIFICATION_API_KEY?.trim() && !!process.env.V4_VERIFICATION_API_SECRET?.trim() && (process.env.V4_BANK_ACCOUNT_ENCRYPTION_KEY?.trim().length ?? 0) >= 32,
+      bankingProvider: process.env.V4_VERIFICATION_API_KEY?.trim() && process.env.V4_VERIFICATION_API_SECRET?.trim() && (process.env.V4_BANK_ACCOUNT_ENCRYPTION_KEY?.trim().length ?? 0) >= 32 ? ("v4" as const) : ("none" as const),
+      walletFundingMode: (process.env.V4_API_URL || process.env.V4_VERIFICATION_API_URL || process.env.V4_VERIFICATION_BASE_URL) && process.env.V4_VERIFICATION_API_KEY && process.env.V4_VERIFICATION_API_SECRET ? ("provider" as const) : ("manual" as const),
       platformFeePercent: 10 as const,
       disputeWindowHours: 24,
     };

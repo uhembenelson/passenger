@@ -40,17 +40,23 @@ async function eligibility(ctx: MutationCtx, s: Doc<"shipments">, p: Doc<"paymen
     if (!eligibleAt || eligibleAt > Date.now()) fail("The 24-hour receipt/adjudication dispute window has not elapsed.");
     const traveller = await ctx.db.get(s.travellerId); if (!traveller) fail("Traveller unavailable."); await requireTransactionalVerification(ctx, traveller._id); if (traveller.walletBlocked) fail("Traveller account is under payment review.");
     const bank = await ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", s.travellerId!)).first();
-    if (!bank?.recipientCode || !bank.verifiedAt) fail("Traveller must resolve and verify their bank recipient before payout.");
+    if (!bank?.verifiedAt || bank.bankingProvider !== "v4" || !bank.nameEnquiryReference || !bank.encryptedAccountNumber || !bank.accountNumberIv) fail("Traveller must verify their payout account through V4 banking before payout.");
     return bank;
   }
 }
 export const bankOwner = internalQuery({ args: { subject: v.string() }, handler: async (ctx, args) => { const u = await userBySubject(ctx, args.subject); requireVerified(u); return { userId: u._id, name: u.name }; } });
-export const saveBank = internalMutation({ args: { subject: v.string(), bankCode: v.string(), accountName: v.string(), last4: v.string(), recipientCode: v.string() }, handler: async (ctx, args) => {
+export const saveBank = internalMutation({ args: {
+  subject: v.string(), bankCode: v.string(), accountName: v.string(), last4: v.string(), recipientCode: v.string(),
+  nameEnquiryReference: v.string(), encryptedAccountNumber: v.string(), accountNumberIv: v.string(),
+}, handler: async (ctx, args) => {
   const u = await userBySubject(ctx, args.subject); requireVerified(u);
   const existing = await ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", u._id)).first();
-  const data = { userId: u._id, bankCode: args.bankCode, accountName: args.accountName, last4: args.last4, recipientCode: args.recipientCode, currency: "NGN" as const, verifiedAt: Date.now(), updatedAt: Date.now() };
+  if (!args.nameEnquiryReference || !args.encryptedAccountNumber || !args.accountNumberIv) fail("V4 bank verification data is incomplete.");
+  const data = { userId: u._id, bankCode: args.bankCode, accountName: args.accountName, last4: args.last4, recipientCode: args.recipientCode,
+    bankingProvider: "v4" as const, nameEnquiryReference: args.nameEnquiryReference, encryptedAccountNumber: args.encryptedAccountNumber,
+    accountNumberIv: args.accountNumberIv, currency: "NGN" as const, verifiedAt: Date.now(), updatedAt: Date.now() };
   if (existing) await ctx.db.patch(existing._id, data); else await ctx.db.insert("bankAccounts", data);
-  await audit(ctx, u, "bank.recipient_verified", `Paystack resolved bank ${args.bankCode}, account ending ${args.last4}, and independently verified the transfer recipient. Full bank account number is not retained.`);
+  await audit(ctx, u, "bank.recipient_verified", `V4 banking resolved bank ${args.bankCode}, account ending ${args.last4}, and independently verified the transfer recipient. The full account number is encrypted for payout submission.`);
 } });
 export const prepare = internalMutation({ args: { subject: v.string(), shipmentId: v.id("shipments"), kind: operationKind, paymentId: v.optional(v.id("payments")) }, handler: async (ctx, args): Promise<Doc<"payouts">> => {
   const { user, s } = await financeAccess(ctx, args.subject, args.shipmentId); requireVerified(user);
@@ -73,7 +79,10 @@ export const prepare = internalMutation({ args: { subject: v.string(), shipmentI
   const amountKobo = args.kind === "refund" ? p.amountKobo : p.travellerNetKobo ?? p.amountKobo - Math.round(p.amountKobo / 10);
   if (!Number.isSafeInteger(amountKobo) || amountKobo <= 0) fail("Invalid server finance amount.");
   const now = Date.now();
-  const operationId = await ctx.db.insert("payouts", { shipmentId: s._id, paymentId: p._id, kind: args.kind, reference: "reserved", amountKobo, currency: "NGN", status: "prepared", actorId: user._id, recipientCode: bank?.recipientCode, providerTransactionId: p.providerTransactionId, createdAt: now, updatedAt: now });
+  const operationId = await ctx.db.insert("payouts", { shipmentId: s._id, paymentId: p._id, kind: args.kind, reference: "reserved", amountKobo, currency: "NGN", status: "prepared", actorId: user._id,
+    recipientCode: bank?.recipientCode, bankingProvider: bank?.bankingProvider, bankCode: bank?.bankCode,
+    nameEnquiryReference: bank?.nameEnquiryReference, encryptedAccountNumber: bank?.encryptedAccountNumber, accountNumberIv: bank?.accountNumberIv,
+    providerTransactionId: p.providerTransactionId, createdAt: now, updatedAt: now });
   const reference = `passenger-${operationId}`;
   await ctx.db.patch(operationId, { reference });
   await audit(ctx, user, `finance.${args.kind}_prepared`, `Provider operation ${reference} reserved for ${amountKobo} kobo. Payout is traveller net after the disclosed 10% platform fee.`, s._id);
@@ -124,7 +133,8 @@ export const applyVerified = internalMutation({ args: { operationId: v.id("payou
   if (op.status === "success" && status !== "reversed") return operationDto(op);
   if (op.status === "reversed" && status !== "reversed") return operationDto(op);
   const now = Date.now();
-  await ctx.db.patch(op._id, { status, providerId: args.providerId, providerStatus: args.providerStatus, verifiedAt: now, updatedAt: now, lastError: status === "failed" || status === "reversed" ? `Paystack reported ${args.providerStatus}.` : undefined });
+  const providerName = op.bankingProvider === "v4" ? "V4 banking" : "Paystack";
+  await ctx.db.patch(op._id, { status, providerId: args.providerId, providerStatus: args.providerStatus, verifiedAt: now, updatedAt: now, lastError: status === "failed" || status === "reversed" ? `${providerName} reported ${args.providerStatus}.` : undefined });
   const s = await shipment(ctx, op.shipmentId);
   const all = await ctx.db.query("payouts").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).collect();
   const conflicts = all.some(o => o._id !== op._id && o.paymentId === op.paymentId && o.status === "success");
@@ -138,8 +148,8 @@ export const applyVerified = internalMutation({ args: { operationId: v.id("payou
   }
   if (conflicts) paymentStatus = "reconciliation_required";
   await ctx.db.patch(s._id, { paymentStatus, updatedAt: now });
-  if (status === "failed" || status === "reversed" || conflicts) await paymentAlert(ctx, op.reference, `Paystack ${op.kind} ${op.reference}: ${status}. Review before retrying.`);
-  await audit(ctx, null, `finance.${op.kind}_${status}`, `Independently verified Paystack ${op.kind} ${op.reference}, ${op.amountKobo} kobo, status ${args.providerStatus}.${conflicts ? " Conflicting successful operations require manual reconciliation." : ""}`, s._id);
+  if (status === "failed" || status === "reversed" || conflicts) await paymentAlert(ctx, op.reference, `${providerName} ${op.kind} ${op.reference}: ${status}. Review before retrying.`);
+  await audit(ctx, null, `finance.${op.kind}_${status}`, `Independently verified ${providerName} ${op.kind} ${op.reference}, ${op.amountKobo} kobo, status ${args.providerStatus}.${conflicts ? " Conflicting successful operations require manual reconciliation." : ""}`, s._id);
   return operationDto((await ctx.db.get(op._id))!);
 } });
 export const prepareRetry = internalMutation({ args: { subject: v.string(), operationId: v.id("payouts") }, handler: async (ctx, args): Promise<Doc<"payouts">> => {
@@ -151,7 +161,7 @@ export const prepareRetry = internalMutation({ args: { subject: v.string(), oper
   const others = await ctx.db.query("payouts").withIndex("by_payment", q => q.eq("paymentId", p._id)).collect();
   if (others.some(o => o._id !== op._id && !["failed", "reversed"].includes(o.status))) fail("Another operation already exists; reconcile it instead.");
   if (op.kind === "payout") {
-    // Paystack transfer retries reuse the same idempotency reference and recipient.
+    // V4 transfer retries reuse the same idempotency reference and exact request.
     await ctx.db.patch(op._id, { status: "prepared", updatedAt: Date.now() });
     return (await ctx.db.get(op._id))!;
   }

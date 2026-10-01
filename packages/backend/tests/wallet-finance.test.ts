@@ -5,7 +5,13 @@ import { api, internal } from "../convex/_generated/api";
 import { deductForShipment, refundForShipment } from "../convex/wallet";
 import type { Id } from "../convex/_generated/dataModel";
 const modules = import.meta.glob("../convex/**/*.ts");
-beforeEach(() => vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_test_example"));
+beforeEach(() => {
+  vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_test_example");
+  vi.stubEnv("V4_VERIFICATION_API_KEY", "vk_test_passenger");
+  vi.stubEnv("V4_VERIFICATION_API_SECRET", "test-secret");
+  vi.stubEnv("V4_API_URL", "https://banking.test/api/v4");
+  vi.stubEnv("V4_BANK_ACCOUNT_ENCRYPTION_KEY", "test-only-encryption-key-at-least-32-characters");
+});
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 async function fixture() {
   const t = convexTest(schema, modules);
@@ -19,27 +25,30 @@ async function fixture() {
     const verifiedAt = Date.now();
     await ctx.db.patch(userId, { verification: "verified", identityVerificationStatus: "verified", kycTier: 1, phoneVerifiedAt: verifiedAt, phoneVerificationTime: verifiedAt });
     await ctx.db.patch(travellerId, { verification: "verified", identityVerificationStatus: "verified", kycTier: 1, phoneVerifiedAt: verifiedAt, phoneVerificationTime: verifiedAt });
-    await ctx.db.insert("bankAccounts", { userId: travellerId, bankCode: "001", accountName: "Traveller", last4: "1234", recipientCode: "RCP_test", currency: "NGN", verifiedAt: Date.now(), updatedAt: Date.now() });
     const id = await ctx.db.insert("shipments", { senderId: userId, travellerId, reference: "WALLET-PARCEL", origin: "Jos", destination: "Abuja", description: "Books", category: "Books", weightKg: 1, valueNaira: 1000, feeNaira: 5000, receiverName: "Receiver", receiverPhone: "+2348000000099", status: "delivered", paymentStatus: "held", approved: true, reservationActive: false, deliveredAt: Date.now() - 86400001, createdAt: Date.now(), updatedAt: Date.now() });
     await deductForShipment(ctx, (await ctx.db.get(userId))!, id, 5000);
     return id;
   });
+  vi.stubGlobal("fetch", vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ success: true, data: { verified: true, accountName: "TRAVELLER", accountNumber: body.accountNumber, bankCode: body.bankCode, nameEnquiryReference: "NER_wallet" } }), { status: 200 });
+  }));
+  await traveller.action(api.finance.setupBank, { bankCode: "001", accountNumber: "0123451234" });
+  vi.unstubAllGlobals();
   return { t, sender, traveller, userId, shipmentId };
 }
-it("pays a wallet-funded delivery through Paystack once after delivery eligibility", async () => {
+it("pays a wallet-funded delivery through V4 once after delivery eligibility", async () => {
   const { t, traveller, shipmentId } = await fixture();
-  let reference = "";
-  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    if (url.endsWith("/transfer")) {
-      const request = JSON.parse(init!.body as string); reference = request.reference;
-      expect(request.amount).toBe(450000);
-      return new Response(JSON.stringify({ status: true, data: { transfer_code: "TRF_wallet" } }));
-    }
-    return new Response(JSON.stringify({ status: true, data: { transfer_code: "TRF_wallet", reference, recipient: "RCP_test", amount: 450000, currency: "NGN", status: "success" } }));
+  const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    expect(String(url)).toContain("/transfers");
+    const request = JSON.parse(String(init?.body));
+    expect(request).toMatchObject({ amount: 4500, bankCode: "001", accountNumber: "0123451234", nameEnquiryReference: "NER_wallet" });
+    expect(new Headers(init?.headers).get("Idempotency-Key")).toMatch(/^passenger-/);
+    return new Response(JSON.stringify({ success: true, data: { transferReference: "V4_TRF_wallet" } }));
   }); vi.stubGlobal("fetch", fetchMock);
   await t.action(internal.finance.automaticPayout, { shipmentId });
   await t.action(internal.finance.automaticPayout, { shipmentId });
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(await traveller.query(api.finance.earnings)).toMatchObject([{ status: "paid", amountKobo: 450000 }]);
 });
 it("returns an approved wallet refund once without calling the provider", async () => {
