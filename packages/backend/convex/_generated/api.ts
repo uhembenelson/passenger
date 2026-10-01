@@ -13,6 +13,7 @@ import type * as address from "../address.js";
 import type * as admin from "../admin.js";
 import type * as auth from "../auth.js";
 import type * as cancellationPolicies from "../cancellationPolicies.js";
+import type * as captureFixtures from "../captureFixtures.js";
 import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
 import type * as deliveries from "../deliveries.js";
@@ -75,6 +76,7 @@ const fullApi: ApiFromModules<{
   admin: typeof admin;
   auth: typeof auth;
   cancellationPolicies: typeof cancellationPolicies;
+  captureFixtures: typeof captureFixtures;
   conversations: typeof conversations;
   crons: typeof crons;
   deliveries: typeof deliveries;
