@@ -3,7 +3,7 @@ import { PERMISSIONS } from "@passenger/core";
 import { mutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { audit, fail, failWithCode, getUserTier, identityStatus, noOpenDispute, note, notify, releaseCapacity, requireAdmin, requirePermission, requireUser, shipment, transition, VERIFICATION_ERROR_CODES } from "./lib";
+import { audit, fail, failWithCode, getUserTier, identityStatus, noOpenDispute, note, notify, notifyParticipants, releaseCapacity, requireAdmin, requirePermission, requireUser, shipment, transition, VERIFICATION_ERROR_CODES } from "./lib";
 import { stripLegacyTripPricePerKg } from "./maintenance";
 
 export const reviewUser = mutation({
@@ -286,6 +286,7 @@ export const resolveDispute = mutation({
       resolvedAt: Date.now(),
     });
     await ctx.db.patch(s._id, { paymentStatus: args.resolution === "refund" ? "refunded" : "released", updatedAt: Date.now() });
+    await notifyParticipants(ctx, s, args.resolution === "refund" ? "Refund completed" : "Payout sent", args.resolution === "refund" ? "The delivery dispute was resolved with a refund to the sender." : "The delivery dispute was resolved and the traveller payout was released.");
     if (args.resolution === "refund" && ["matched", "funded"].includes(dispute.previousStatus)) await releaseCapacity(ctx, s);
     await audit(ctx, admin, "dispute.reconciled", `Recorded externally completed ${args.resolution}. Reference: ${reference}. ${detail} No money moved by Passenger.`, s._id);
   },
@@ -305,6 +306,7 @@ export const recordPayout = mutation({
 
     const reference = await reconcile(ctx, admin, s._id, "release", args.externalReference);
     await ctx.db.patch(s._id, { paymentStatus: "released", updatedAt: Date.now() });
+    if (s.travellerId) await notify(ctx, s.travellerId, "Payout sent", "Your traveller payout was completed after delivery review.", s._id);
     await audit(ctx, admin, "payout.reconciled", `Recorded externally completed payout. Reference: ${reference}. ${detail} No money moved by Passenger.`, s._id);
   },
 });

@@ -26,7 +26,7 @@ The encryption key must be an independent stable random value of at least 32 cha
 
 Passenger uses the v4 endpoints to list banks, verify an account, and retain the returned `nameEnquiryReference`. Payout submission uses the saved server-calculated traveller amount and the Passenger payout reference as `Idempotency-Key`. Reconciliation repeats the same request body and key, allowing the v4 service to return the original result without creating another transfer.
 
-The external v4 server must separately configure `V4_TRANSFERS_ENABLED=true`, its debit account, provider OTP when required, Redis, and its own rate limits. These values do not belong in Passenger or any public client environment.
+The external v4 server must separately configure `V4_TRANSFERS_ENABLED=true`, its debit account, provider OTP when required, Redis, its own rate limits, and a matching `V4_TRANSFER_TRANSACTION_PIN`. Passenger never initiates a transfer automatically: eligible delivery earnings are released to the traveller's Passenger balance, and a withdrawal requires an amount within that balance plus the traveller's transaction PIN. The server-only `V4_TRANSFER_TRANSACTION_PIN` is sent only from the Convex action to the private v4 gateway; it is never exposed to the client. These values do not belong in any public client environment.
 
 A payment already dispatched to Paystack cannot be recalled by a later wallet freeze. The system records a risk alert so finance can reconcile that exposure.
 

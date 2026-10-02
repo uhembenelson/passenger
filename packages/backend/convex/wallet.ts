@@ -5,11 +5,25 @@ import { feeQuote } from "./financeSchema";
 import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { audit, fail, requireActive, requireAdmin, isAdmin, notify, requireUser, subject, userBySubject } from "./lib";
+import { audit, fail, requireActive, requireAdmin, isAdmin, notify, requireTransactionalVerification, requireUser, subject, userBySubject } from "./lib";
+import { decodeProviderText } from "./providerText";
+import { renderTransactionPinCodeEmail, sendBrandedEmail } from "./emails";
 
 export function paymentMode(): "live" | "test" { return process.env.PAYSTACK_SECRET_KEY?.startsWith("sk_live_") ? "live" : "test"; }
 
 type TopUpInitialization = { mode: "virtual_account"; reference: string; externalReference: string; accountNumber: string; accountName: string; amount: number; expiresAt: string };
+
+function transactionPinPepper() {
+  const pepper = process.env.TRANSACTION_PIN_PEPPER?.trim();
+  if (!pepper || pepper.length < 32) fail("Transaction PIN security is not configured.");
+  return pepper;
+}
+
+async function transactionPinDigest(pin: string, salt: string) {
+  const bytes = new TextEncoder().encode(`${transactionPinPepper()}:${salt}:${pin}`);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");
+}
 
 function v4WalletConfig() {
   const baseUrl = (process.env.V4_API_URL ?? process.env.V4_VERIFICATION_API_URL ?? process.env.V4_VERIFICATION_BASE_URL ?? "").replace(/\/$/, "");
@@ -26,6 +40,128 @@ export const balance = query({
     return { balanceNaira: Math.max(0, user.walletVerifiedBalanceNaira ?? 0), blocked: !!user.walletBlocked };
   },
 });
+
+export const transactionPinStatus = query({ args: {}, handler: async (ctx) => {
+  const user = await requireUser(ctx);
+  return { configured: !!user.transactionPinHash && !!user.transactionPinSalt, lockedUntil: user.transactionPinLockedUntil };
+} });
+
+export const getTransactionPinEmailContext = internalQuery({ args: { subject: v.string() }, handler: async (ctx, args) => {
+  const user = await userBySubject(ctx, args.subject);
+  requireActive(user);
+  if (!user.transactionPinHash || !user.transactionPinSalt) fail("Create your transaction PIN first.");
+  return { userId: user._id, name: user.name };
+} });
+
+export const createTransactionPinChallenge = internalMutation({
+  args: { userId: v.id("users"), codeHash: v.string(), salt: v.string(), expiresAt: v.number() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db.query("transactionPinChallenges").withIndex("by_user", q => q.eq("userId", args.userId)).collect();
+    const now = Date.now();
+    for (const challenge of existing) {
+      if (!challenge.consumedAt) await ctx.db.patch(challenge._id, { consumedAt: now });
+    }
+    return ctx.db.insert("transactionPinChallenges", { ...args, attempts: 0, createdAt: now });
+  },
+});
+
+export const consumeTransactionPinChallenge = internalMutation({
+  args: { challengeId: v.id("transactionPinChallenges") },
+  handler: async (ctx, args) => {
+    const challenge = await ctx.db.get(args.challengeId);
+    if (challenge && !challenge.consumedAt) await ctx.db.patch(challenge._id, { consumedAt: Date.now() });
+  },
+});
+
+function maskEmail(email: string) {
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return "your account email";
+  return `${local.slice(0, 2)}${"*".repeat(Math.max(2, Math.min(6, local.length - 2)))}@${domain}`;
+}
+
+export const requestTransactionPinChangeCode = action({
+  args: {},
+  handler: async (ctx): Promise<{ sentTo: string }> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) fail("Sign in required.");
+    const email = identity.email?.trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail("A verified account email is required to change your transaction PIN.");
+    const sub = identity.subject.split("|")[0]!;
+    const user = await ctx.runQuery(internal.wallet.getTransactionPinEmailContext, { subject: sub });
+    await ctx.runMutation(internal.wallet.rateLimit, { subject: sub, kind: "transaction-pin-code", limit: 3 });
+
+    const values = new Uint32Array(1);
+    crypto.getRandomValues(values);
+    const code = String((values[0]! % 900_000) + 100_000);
+    const salt = crypto.randomUUID();
+    const codeHash = await transactionPinDigest(code, salt);
+    const challengeId = await ctx.runMutation(internal.wallet.createTransactionPinChallenge, {
+      userId: user.userId,
+      codeHash,
+      salt,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+    const appUrl = (process.env.SITE_URL?.trim() || "https://usepassenger.com").replace(/\/$/, "");
+    const message = renderTransactionPinCodeEmail({ name: user.name, appUrl, code });
+    try {
+      await sendBrandedEmail({ to: email, subject: "Your Passenger transaction PIN code", ...message });
+    } catch (cause) {
+      await ctx.runMutation(internal.wallet.consumeTransactionPinChallenge, { challengeId });
+      throw cause;
+    }
+    return { sentTo: maskEmail(email) };
+  },
+});
+
+export const setTransactionPin = mutation({ args: {
+  pin: v.string(),
+  currentPin: v.optional(v.string()),
+  emailCode: v.optional(v.string()),
+  resetWithEmail: v.optional(v.boolean()),
+}, handler: async (ctx, args) => {
+  const user = await requireUser(ctx);
+  requireActive(user);
+  if (!/^\d{4}$/.test(args.pin)) fail("Choose a 4-digit transaction PIN.");
+  if (user.transactionPinHash && user.transactionPinSalt) {
+    const now = Date.now();
+    const challenge = await ctx.db.query("transactionPinChallenges").withIndex("by_user", q => q.eq("userId", user._id)).order("desc").first();
+    if (!challenge || challenge.consumedAt) return { success: false, error: "Request a new email code before changing your PIN." } as const;
+    if (challenge.expiresAt <= now) {
+      await ctx.db.patch(challenge._id, { consumedAt: now });
+      return { success: false, error: "That email code has expired. Request a new one." } as const;
+    }
+    const emailCode = args.emailCode?.trim() ?? "";
+    const codeMatches = /^\d{6}$/.test(emailCode) && await transactionPinDigest(emailCode, challenge.salt) === challenge.codeHash;
+    if (!codeMatches) {
+      const attempts = challenge.attempts + 1;
+      const exhausted = attempts >= 5;
+      await ctx.db.patch(challenge._id, { attempts, consumedAt: exhausted ? now : undefined });
+      return { success: false, error: exhausted ? "That email code can no longer be used. Request a new one." : `That email code is incorrect. ${5 - attempts} attempt${5 - attempts === 1 ? "" : "s"} remaining.` } as const;
+    }
+    if (!args.resetWithEmail) {
+      if (user.transactionPinLockedUntil && user.transactionPinLockedUntil > now) return { success: false, error: "Transaction PIN is temporarily locked. Use Forgot PIN to reset it with your email code, or try again later." } as const;
+      const matches = !!args.currentPin && /^\d{4}$/.test(args.currentPin) && await transactionPinDigest(args.currentPin, user.transactionPinSalt) === user.transactionPinHash;
+      if (!matches) {
+        const attempts = (user.transactionPinFailedAttempts ?? 0) + 1;
+        const lockedUntil = attempts >= 5 ? now + 15 * 60 * 1000 : undefined;
+        await ctx.db.patch(user._id, { transactionPinFailedAttempts: lockedUntil ? 0 : attempts, transactionPinLockedUntil: lockedUntil });
+        return { success: false, error: lockedUntil ? "Transaction PIN is locked for 15 minutes after repeated incorrect attempts. You can reset it using Forgot PIN." : `Your current transaction PIN is incorrect. ${5 - attempts} attempt${5 - attempts === 1 ? "" : "s"} remaining.` } as const;
+      }
+    }
+    await ctx.db.patch(challenge._id, { consumedAt: now });
+  }
+  const salt = crypto.randomUUID();
+  await ctx.db.patch(user._id, {
+    transactionPinHash: await transactionPinDigest(args.pin, salt),
+    transactionPinSalt: salt,
+    transactionPinSetAt: Date.now(),
+    transactionPinFailedAttempts: 0,
+    transactionPinLockedUntil: undefined,
+  });
+  const event = !user.transactionPinHash ? "wallet.transaction_pin_created" : args.resetWithEmail ? "wallet.transaction_pin_reset" : "wallet.transaction_pin_changed";
+  await audit(ctx, user, event, "Transaction PIN updated.");
+  return { success: true, configured: true } as const;
+} });
 
 export const transactionsPage = query({
   args: { paginationOpts: paginationOptsValidator },
@@ -59,9 +195,9 @@ export async function paymentRateLimit(ctx: MutationCtx, key: string, limit = 10
   const data = { key, windowStart: row && now - row.windowStart < 60_000 ? row.windowStart : now, count: row && now - row.windowStart < 60_000 ? row.count + 1 : 1 };
   if (row) await ctx.db.patch(row._id, data); else await ctx.db.insert("paymentRateLimits", data);
 }
-export const rateLimit = internalMutation({ args: { subject: v.string(), kind: v.string() }, handler: async (ctx, args) => {
+export const rateLimit = internalMutation({ args: { subject: v.string(), kind: v.string(), limit: v.optional(v.number()) }, handler: async (ctx, args) => {
   const user = await userBySubject(ctx, args.subject);
-  await paymentRateLimit(ctx, `${user._id}:${args.kind}`);
+  await paymentRateLimit(ctx, `${user._id}:${args.kind}`, args.limit);
 } });
 export async function paymentAlert(ctx: MutationCtx, key: string, detail: string) {
   const existing = await ctx.db.query("paymentAlerts").withIndex("by_key", q => q.eq("key", key)).unique();
@@ -116,7 +252,7 @@ export const attachV4TopUp = internalMutation({
 export const pendingDeposit = query({ args: {}, handler: async (ctx) => {
   const user = await requireUser(ctx);
   const p = await ctx.db.query("walletDeposits").withIndex("by_user_and_status", q => q.eq("userId", user._id).eq("status", "pending")).first();
-  return p ? { reference: p.reference, amount: p.amountKobo / 100, url: p.url ?? "", externalReference: p.externalReference, accountNumber: p.accountNumber, accountName: p.accountName, expiresAt: p.expiresAt, paymentStatus: p.paymentStatus ?? "pending" } : null;
+  return p ? { reference: p.reference, amount: p.amountKobo / 100, url: p.url ?? "", externalReference: p.externalReference, accountNumber: p.accountNumber, accountName: p.accountName ? decodeProviderText(p.accountName) : p.accountName, expiresAt: p.expiresAt, paymentStatus: p.paymentStatus ?? "pending" } : null;
 } });
 
 export const depositByReference = internalQuery({
@@ -163,22 +299,90 @@ export const recordTopUp = internalMutation({
       createdAt: Date.now(),
       note: `Wallet funded with ₦${args.amountNaira.toLocaleString()}`,
     });
+    await notify(ctx, user._id, "Wallet top-up confirmed", `₦${args.amountNaira.toLocaleString()} was added to your Passenger wallet.`);
     await audit(ctx, user, "wallet.top_up", `Added ₦${args.amountNaira.toLocaleString()} to wallet. New balance: ₦${nextBalance.toLocaleString()}`);
   },
 });
 
-export const requestWithdrawal = mutation({
-  args: {
-    amountNaira: v.number(),
-    bankCode: v.optional(v.string()),
-    accountNumber: v.optional(v.string()),
-    accountName: v.optional(v.string()),
-  },
-  handler: async (ctx, _args) => {
-    await requireUser(ctx);
-    fail("General wallet withdrawal is not available. Traveller payouts use the verified delivery payout flow after completion and dispute checks.");
-  },
-});
+export const reserveWithdrawal = internalMutation({ args: { subject: v.string(), amountNaira: v.number(), transactionPin: v.string() }, handler: async (ctx, args) => {
+  const user = await userBySubject(ctx, args.subject);
+  requireActive(user);
+  await requireTransactionalVerification(ctx, user._id);
+  if (!Number.isSafeInteger(args.amountNaira) || args.amountNaira < 100) return { error: "Enter a whole-naira withdrawal amount of at least ₦100." } as const;
+  if (user.walletBlocked) return { error: "Your wallet is under payment review. Contact support." } as const;
+  if (!user.transactionPinHash || !user.transactionPinSalt) return { error: "Create your transaction PIN before withdrawing." } as const;
+  if (user.transactionPinLockedUntil && user.transactionPinLockedUntil > Date.now()) return { error: "Transaction PIN is temporarily locked. Try again later." } as const;
+  const pinMatches = /^\d{4}$/.test(args.transactionPin) && await transactionPinDigest(args.transactionPin, user.transactionPinSalt) === user.transactionPinHash;
+  if (!pinMatches) {
+    const attempts = (user.transactionPinFailedAttempts ?? 0) + 1;
+    const lockedUntil = attempts >= 5 ? Date.now() + 15 * 60 * 1000 : undefined;
+    await ctx.db.patch(user._id, { transactionPinFailedAttempts: lockedUntil ? 0 : attempts, transactionPinLockedUntil: lockedUntil });
+    return { error: lockedUntil ? "Transaction PIN is locked for 15 minutes after repeated incorrect attempts." : `Incorrect transaction PIN. ${5 - attempts} attempt${5 - attempts === 1 ? "" : "s"} remaining.` } as const;
+  }
+  const bank = await ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", user._id)).first();
+  if (!bank?.verifiedAt || bank.bankingProvider !== "v4" || !bank.nameEnquiryReference || !bank.encryptedAccountNumber || !bank.accountNumberIv) return { error: "Add and verify your payout account before withdrawing." } as const;
+  const currentBalance = user.walletVerifiedBalanceNaira ?? 0;
+  if (args.amountNaira > Math.floor(currentBalance)) return { error: "Withdrawal amount exceeds your available balance." } as const;
+  const now = Date.now();
+  const reference = `withdrawal-${crypto.randomUUID()}`;
+  const withdrawalId = await ctx.db.insert("walletWithdrawals", {
+    userId: user._id,
+    amountNaira: args.amountNaira,
+    reference,
+    status: "prepared",
+    bankCode: bank.bankCode,
+    accountName: decodeProviderText(bank.accountName),
+    last4: bank.last4,
+    nameEnquiryReference: bank.nameEnquiryReference,
+    encryptedAccountNumber: bank.encryptedAccountNumber,
+    accountNumberIv: bank.accountNumberIv,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await ctx.db.patch(user._id, {
+    walletBalanceNaira: (user.walletBalanceNaira ?? 0) - args.amountNaira,
+    walletVerifiedBalanceNaira: currentBalance - args.amountNaira,
+    transactionPinFailedAttempts: 0,
+    transactionPinLockedUntil: undefined,
+  });
+  await audit(ctx, user, "wallet.withdrawal_reserved", `Reserved ₦${args.amountNaira.toLocaleString()} for withdrawal ${reference}.`);
+  return { withdrawalId, reference } as const;
+} });
+
+export const withdrawalById = internalQuery({ args: { withdrawalId: v.id("walletWithdrawals") }, handler: async (ctx, args) => ctx.db.get(args.withdrawalId) });
+
+export const markWithdrawalPending = internalMutation({ args: { withdrawalId: v.id("walletWithdrawals") }, handler: async (ctx, args) => {
+  const withdrawal = await ctx.db.get(args.withdrawalId);
+  if (!withdrawal || withdrawal.status !== "prepared") return withdrawal;
+  await ctx.db.patch(withdrawal._id, { status: "pending", updatedAt: Date.now() });
+  return ctx.db.get(withdrawal._id);
+} });
+
+export const finishWithdrawal = internalMutation({ args: { withdrawalId: v.id("walletWithdrawals"), status: v.union(v.literal("success"), v.literal("uncertain")), providerId: v.optional(v.string()), providerStatus: v.optional(v.string()), error: v.optional(v.string()) }, handler: async (ctx, args) => {
+  const withdrawal = await ctx.db.get(args.withdrawalId);
+  if (!withdrawal || withdrawal.status === "success") return withdrawal;
+  await ctx.db.patch(withdrawal._id, { status: args.status, providerId: args.providerId, providerStatus: args.providerStatus, lastError: args.error, updatedAt: Date.now() });
+  if (args.status === "success") {
+    if (!await ctx.db.query("walletTransactions").withIndex("by_reference", q => q.eq("reference", withdrawal.reference)).unique()) {
+      await ctx.db.insert("walletTransactions", { userId: withdrawal.userId, kind: "withdrawal", amountNaira: withdrawal.amountNaira, reference: withdrawal.reference, createdAt: Date.now(), note: `Withdrawal to ${withdrawal.accountName} ending ${withdrawal.last4}` });
+    }
+    await notify(ctx, withdrawal.userId, "Payout sent", `₦${withdrawal.amountNaira.toLocaleString()} was sent to your verified bank account.`);
+  } else {
+    await paymentAlert(ctx, withdrawal.reference, `Withdrawal ${withdrawal.reference} has an uncertain provider outcome. Reconcile before retrying or returning the reserved balance.`);
+  }
+  return ctx.db.get(withdrawal._id);
+} });
+
+export const requestWithdrawal = action({ args: { amountNaira: v.number(), transactionPin: v.string() }, handler: async (ctx, args): Promise<{ reference: string; status: string }> => {
+  const transferPin = process.env.V4_TRANSFER_TRANSACTION_PIN?.trim();
+  if (!transferPin || !/^\d{4,12}$/.test(transferPin)) fail("Secure withdrawals are not configured.");
+  v4WalletConfig();
+  const sub = await subject(ctx);
+  await ctx.runMutation(internal.wallet.rateLimit, { subject: sub, kind: "withdrawal" });
+  const reserved = await ctx.runMutation(internal.wallet.reserveWithdrawal, { subject: sub, amountNaira: args.amountNaira, transactionPin: args.transactionPin });
+  if ("error" in reserved) fail(reserved.error);
+  return ctx.runAction(internal.finance.submitWithdrawal, { withdrawalId: reserved.withdrawalId });
+} });
 
 async function walletPayment(ctx: MutationCtx, shipmentId: Id<"shipments">) {
   return ctx.db.query("payments").withIndex("by_shipment", q => q.eq("shipmentId", shipmentId)).filter(q => q.eq(q.field("source"), "wallet")).unique();
@@ -216,6 +420,7 @@ export async function refundForShipment(ctx: MutationCtx, user: Doc<"users">, sh
   await ctx.db.patch(p._id, { refundedKobo, platformFeeKobo: (p.amountKobo - refundedKobo) / 10, travellerNetKobo: (p.amountKobo - refundedKobo) - (p.amountKobo - refundedKobo) / 10 });
   await ctx.db.patch(user._id, { walletBalanceNaira: (user.walletBalanceNaira ?? 0) + amountNaira, walletVerifiedBalanceNaira: (user.walletVerifiedBalanceNaira ?? 0) + amountNaira });
   await ctx.db.insert("walletTransactions", { userId: user._id, kind: "parcel_refund", amountNaira, reference: `refund-${p._id}-${refundedKobo}`, shipmentId, createdAt: Date.now(), note: reason });
+  await notify(ctx, user._id, "Wallet refund completed", `₦${amountNaira.toLocaleString()} was returned to your Passenger wallet.`, shipmentId);
   await audit(ctx, user, "wallet.refunded", `Returned ${amountNaira} naira to wallet: ${reason}`, shipmentId);
 }
 
@@ -248,7 +453,7 @@ export const initializeTopUp = action({
     const reserved = await ctx.runMutation(internal.wallet.reserveV4TopUp, { userId: user._id, reference, amountKobo });
     if (!reserved.initialize) {
       if (reserved.deposit.amountKobo !== amountKobo) fail("Finish or check your existing deposit before changing the amount.");
-      if (reserved.deposit.externalReference && reserved.deposit.accountNumber && reserved.deposit.accountName && reserved.deposit.expiresAt) return { mode: "virtual_account", reference: reserved.deposit.reference, externalReference: reserved.deposit.externalReference, accountNumber: reserved.deposit.accountNumber, accountName: reserved.deposit.accountName, amount: reserved.deposit.amountKobo / 100, expiresAt: reserved.deposit.expiresAt };
+      if (reserved.deposit.externalReference && reserved.deposit.accountNumber && reserved.deposit.accountName && reserved.deposit.expiresAt) return { mode: "virtual_account", reference: reserved.deposit.reference, externalReference: reserved.deposit.externalReference, accountNumber: reserved.deposit.accountNumber, accountName: decodeProviderText(reserved.deposit.accountName), amount: reserved.deposit.amountKobo / 100, expiresAt: reserved.deposit.expiresAt };
       fail("Your existing deposit is being checked. Open your wallet to check its status; another deposit was not created.");
     }
     const { baseUrl, key, secret } = v4WalletConfig();
@@ -257,8 +462,9 @@ export const initializeTopUp = action({
     const body = await response.json().catch(() => null) as { success?: boolean; data?: { externalReference?: string; accountNumber?: string; accountName?: string; amount?: number; expiresAt?: string } } | null;
     const data = body?.data;
     if (!response.ok || body?.success !== true || !data?.externalReference || !data.accountNumber || !data.accountName || typeof data.amount !== "number" || data.amount !== amountNaira || !data.expiresAt) fail("Could not create a virtual account for this top-up.");
-    await ctx.runMutation(internal.wallet.attachV4TopUp, { reference, externalReference: data.externalReference, accountNumber: data.accountNumber, accountName: data.accountName, expiresAt: data.expiresAt });
-    return { mode: "virtual_account", reference, externalReference: data.externalReference, accountNumber: data.accountNumber, accountName: data.accountName, amount: data.amount, expiresAt: data.expiresAt };
+    const accountName = decodeProviderText(data.accountName);
+    await ctx.runMutation(internal.wallet.attachV4TopUp, { reference, externalReference: data.externalReference, accountNumber: data.accountNumber, accountName, expiresAt: data.expiresAt });
+    return { mode: "virtual_account", reference, externalReference: data.externalReference, accountNumber: data.accountNumber, accountName, amount: data.amount, expiresAt: data.expiresAt };
   },
 });
 

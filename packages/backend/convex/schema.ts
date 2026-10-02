@@ -40,7 +40,7 @@ export const documentType = v.union(v.literal("national_id"), v.literal("passpor
 export const purpose = v.union(v.literal("identity"), v.literal("parcel"), v.literal("proof_of_address"));
 export const offerStatus = v.union(v.literal("pending"), v.literal("accepted"), v.literal("declined"), v.literal("withdrawn"), v.literal("expired"));
 export const resolution = v.union(v.literal("refund"), v.literal("release"), v.literal("resume"), v.literal("cancel"));
-export const walletTransactionKind = v.union(v.literal("top_up"), v.literal("parcel_hold"), v.literal("parcel_refund"), v.literal("payout"));
+export const walletTransactionKind = v.union(v.literal("top_up"), v.literal("parcel_hold"), v.literal("parcel_refund"), v.literal("payout"), v.literal("withdrawal"));
 
 // Staged trust model. Tier is trust earned, not account status. `identityVerificationStatus`
 // is canonical and separate from `kycTier`. `verification` is retained as a legacy mirror.
@@ -229,6 +229,11 @@ export default defineSchema({
     walletVerifiedBalanceNaira: v.optional(v.number()),
     walletBlocked: v.optional(v.boolean()),
     walletMode: v.optional(v.union(v.literal("test"), v.literal("live"))),
+    transactionPinHash: v.optional(v.string()),
+    transactionPinSalt: v.optional(v.string()),
+    transactionPinSetAt: v.optional(v.number()),
+    transactionPinFailedAttempts: v.optional(v.number()),
+    transactionPinLockedUntil: v.optional(v.number()),
     tier: v.optional(v.union(v.literal("Tier 1"), v.literal("Tier 2"), v.literal("Tier 3"))),
     bvn: v.optional(v.string()),
     residenceState: v.optional(v.string()),
@@ -570,6 +575,32 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_reference", ["reference"]).index("by_externalReference", ["externalReference"]).index("by_user_and_status", ["userId", "status"]).index("by_nextCheckAt", ["nextCheckAt"]).index("by_providerTransactionId", ["providerTransactionId"]),
   walletReversals: defineTable({ reference: v.string(), providerId: v.string(), amountKobo: v.number(), createdAt: v.number() }).index("by_providerId", ["providerId"]),
+  walletWithdrawals: defineTable({
+    userId: v.id("users"),
+    amountNaira: v.number(),
+    reference: v.string(),
+    status: v.union(v.literal("prepared"), v.literal("pending"), v.literal("success"), v.literal("failed"), v.literal("uncertain")),
+    bankCode: v.string(),
+    accountName: v.string(),
+    last4: v.string(),
+    nameEnquiryReference: v.string(),
+    encryptedAccountNumber: v.string(),
+    accountNumberIv: v.string(),
+    providerId: v.optional(v.string()),
+    providerStatus: v.optional(v.string()),
+    lastError: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_reference", ["reference"]).index("by_user", ["userId"]),
+  transactionPinChallenges: defineTable({
+    userId: v.id("users"),
+    codeHash: v.string(),
+    salt: v.string(),
+    attempts: v.number(),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+    consumedAt: v.optional(v.number()),
+  }).index("by_user", ["userId"]),
   paymentRateLimits: defineTable({ key: v.string(), windowStart: v.number(), count: v.number() }).index("by_key", ["key"]),
   paymentAlerts: defineTable({ key: v.string(), detail: v.string(), createdAt: v.number(), updatedAt: v.number(), resolvedAt: v.optional(v.number()) }).index("by_key", ["key"]),
   walletTransactions: defineTable({

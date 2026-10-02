@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { audit, fail, isAdmin, noOpenDispute, requireTransactionalVerification, requireVerified, shipment, userBySubject } from "./lib";
+import { audit, fail, isAdmin, noOpenDispute, notify, requireTransactionalVerification, requireVerified, shipment, userBySubject } from "./lib";
 
 export const operationKind = v.union(v.literal("payout"), v.literal("refund"));
 export function operationDto(p: Doc<"payouts">) {
@@ -56,7 +56,41 @@ export const saveBank = internalMutation({ args: {
     bankingProvider: "v4" as const, nameEnquiryReference: args.nameEnquiryReference, encryptedAccountNumber: args.encryptedAccountNumber,
     accountNumberIv: args.accountNumberIv, currency: "NGN" as const, verifiedAt: Date.now(), updatedAt: Date.now() };
   if (existing) await ctx.db.patch(existing._id, data); else await ctx.db.insert("bankAccounts", data);
+  await notify(ctx, u._id, "Payout account verified", `${args.accountName} ending ${args.last4} is now ready for traveller payouts.`);
   await audit(ctx, u, "bank.recipient_verified", `V4 banking resolved bank ${args.bankCode}, account ending ${args.last4}, and independently verified the transfer recipient. The full account number is encrypted for payout submission.`);
+} });
+
+export const releaseEarning = internalMutation({ args: { shipmentId: v.id("shipments") }, handler: async (ctx, args) => {
+  const s = await ctx.db.get(args.shipmentId);
+  if (!s?.travellerId || !s.deliveredAt || s.status === "cancelled" || s.refundApproved || s.paymentStatus !== "held") return { released: false };
+  const eligibleAt = Math.max(s.disputeUntil ?? 0, s.deliveredAt + 24 * 60 * 60 * 1000);
+  if (eligibleAt > Date.now()) return { released: false };
+  const disputes = await ctx.db.query("disputes").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).collect();
+  if (disputes.some(dispute => dispute.status === "open")) return { released: false };
+  const payments = await ctx.db.query("payments").withIndex("by_shipment", q => q.eq("shipmentId", s._id)).collect();
+  const payment = payments.filter(item => item.status === "paid" && !item.quarantined).sort((a, b) => b.createdAt - a.createdAt)[0];
+  if (!payment || payment.source !== "wallet" && !payment.providerTransactionId) return { released: false };
+  if (payment.source === "wallet") {
+    if (payment.providerMode !== paymentMode()) return { released: false };
+    const sender = await ctx.db.get(s.senderId);
+    if (!sender || sender.walletBlocked || sender.suspended || payment.amountKobo - (payment.refundedKobo ?? 0) !== s.feeNaira * 100) return { released: false };
+  }
+  const payoutOperations = await ctx.db.query("payouts").withIndex("by_payment", q => q.eq("paymentId", payment._id)).collect();
+  if (payoutOperations.some(operation => operation.kind === "payout" && !["failed", "reversed"].includes(operation.status))) return { released: false };
+  const reference = `earning-${payment._id}`;
+  if (await ctx.db.query("walletTransactions").withIndex("by_reference", q => q.eq("reference", reference)).unique()) return { released: false };
+  const amountKobo = payment.travellerNetKobo ?? payment.amountKobo - Math.round(payment.amountKobo / 10);
+  if (!Number.isSafeInteger(amountKobo) || amountKobo <= 0) return { released: false };
+  const amountNaira = amountKobo / 100;
+  const traveller = await ctx.db.get(s.travellerId);
+  if (!traveller) return { released: false };
+  const nextBalance = (traveller.walletVerifiedBalanceNaira ?? 0) + amountNaira;
+  await ctx.db.patch(traveller._id, { walletBalanceNaira: (traveller.walletBalanceNaira ?? 0) + amountNaira, walletVerifiedBalanceNaira: nextBalance });
+  await ctx.db.insert("walletTransactions", { userId: traveller._id, kind: "payout", amountNaira, reference, shipmentId: s._id, createdAt: Date.now(), note: `Delivery earnings from ${s.origin} to ${s.destination}` });
+  await ctx.db.patch(s._id, { paymentStatus: "released", updatedAt: Date.now() });
+  await notify(ctx, traveller._id, "Earnings available", `₦${amountNaira.toLocaleString()} is now available in your Passenger balance. Withdraw it when you are ready.`, s._id);
+  await audit(ctx, traveller, "earnings.released_to_balance", `Released ${amountKobo} kobo of eligible delivery earnings to the traveller balance. No bank transfer was initiated.`, s._id);
+  return { released: true, amountNaira, balanceNaira: nextBalance };
 } });
 export const prepare = internalMutation({ args: { subject: v.string(), shipmentId: v.id("shipments"), kind: operationKind, paymentId: v.optional(v.id("payments")) }, handler: async (ctx, args): Promise<Doc<"payouts">> => {
   const { user, s } = await financeAccess(ctx, args.subject, args.shipmentId); requireVerified(user);
@@ -148,6 +182,12 @@ export const applyVerified = internalMutation({ args: { operationId: v.id("payou
   }
   if (conflicts) paymentStatus = "reconciliation_required";
   await ctx.db.patch(s._id, { paymentStatus, updatedAt: now });
+  if (op.kind === "payout" && s.travellerId && ["success", "failed", "reversed"].includes(status)) {
+    await notify(ctx, s.travellerId, status === "success" ? "Payout sent" : "Payout failed", status === "success" ? `Your traveller payout of ₦${(op.amountKobo / 100).toLocaleString()} was sent to your verified bank account.` : "Your traveller payout did not complete. Passenger support can help review it.", s._id);
+  }
+  if (op.kind === "refund" && ["success", "failed", "reversed"].includes(status)) {
+    await notify(ctx, s.senderId, status === "success" ? "Refund completed" : "Refund failed", status === "success" ? `Your refund of ₦${(op.amountKobo / 100).toLocaleString()} was completed.` : "Your refund did not complete and requires review.", s._id);
+  }
   if (status === "failed" || status === "reversed" || conflicts) await paymentAlert(ctx, op.reference, `${providerName} ${op.kind} ${op.reference}: ${status}. Review before retrying.`);
   await audit(ctx, null, `finance.${op.kind}_${status}`, `Independently verified ${providerName} ${op.kind} ${op.reference}, ${op.amountKobo} kobo, status ${args.providerStatus}.${conflicts ? " Conflicting successful operations require manual reconciliation." : ""}`, s._id);
   return operationDto((await ctx.db.get(op._id))!);
@@ -173,26 +213,28 @@ export const prepareRetry = internalMutation({ args: { subject: v.string(), oper
   return (await ctx.db.get(id))!;
 } });
 
-export const automaticOwner = internalQuery({ args: { shipmentId: v.id("shipments") }, handler: async (ctx, args) => {
-  const s = await ctx.db.get(args.shipmentId);
-  if (!s?.travellerId || !s.deliveredAt || !["held", "payout_pending"].includes(s.paymentStatus)) return null;
-  return (await ctx.db.get(s.travellerId))?.subject ?? null;
-} });
-
-export const sweepPayouts = internalMutation({ args: { cursor: v.optional(v.string()) }, handler: async (ctx, args) => {
+export const sweepEarnings = internalMutation({ args: { cursor: v.optional(v.string()) }, handler: async (ctx, args) => {
   const page = await ctx.db.query("shipments").paginate({ cursor: args.cursor ?? null, numItems: 100 });
   for (const s of page.page) {
-    if (s.deliveredAt && s.deliveredAt + 86400000 <= Date.now() && ["held", "payout_pending"].includes(s.paymentStatus)) {
-      await ctx.scheduler.runAfter(0, internal.finance.automaticPayout, { shipmentId: s._id });
+    if (s.deliveredAt && Math.max(s.deliveredAt + 86400000, s.disputeUntil ?? 0) <= Date.now() && s.paymentStatus === "held") {
+      await ctx.scheduler.runAfter(0, internal.financeState.releaseEarning, { shipmentId: s._id });
     }
   }
-  if (!page.isDone) await ctx.scheduler.runAfter(0, internal.financeState.sweepPayouts, { cursor: page.continueCursor });
+  if (!page.isDone) await ctx.scheduler.runAfter(0, internal.financeState.sweepEarnings, { cursor: page.continueCursor });
+} });
+
+// Retained for queued legacy jobs and older test fixtures. It only identifies
+// the traveller; it no longer authorizes or initiates a bank payout.
+export const automaticOwner = internalQuery({ args: { shipmentId: v.id("shipments") }, handler: async (ctx, args) => {
+  const s = await ctx.db.get(args.shipmentId);
+  if (!s?.travellerId) return null;
+  return (await ctx.db.get(s.travellerId))?.subject ?? null;
 } });
 
 export const operationById = internalQuery({ args: { operationId: v.id("payouts") }, handler: async (ctx, args) => ctx.db.get(args.operationId) });
 export const sweepOperations = internalMutation({ args: { cursor: v.optional(v.string()) }, handler: async (ctx, args) => {
   const page = await ctx.db.query("payouts").paginate({ cursor: args.cursor ?? null, numItems: 100 });
-  for (const op of page.page) if (["pending", "uncertain"].includes(op.status)) {
+  for (const op of page.page) if (op.kind === "refund" && ["pending", "uncertain"].includes(op.status)) {
     await ctx.scheduler.runAfter(0, internal.finance.reconcileInternal, { operationId: op._id });
     if (Date.now() - op.createdAt > 900000) await paymentAlert(ctx, op.reference, `Unresolved ${op.kind} ${op.reference}. Provider reconciliation required.`);
   }

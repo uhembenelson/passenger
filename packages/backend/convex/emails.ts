@@ -95,9 +95,9 @@ function emailShell({ microLabel, headline, bodyHtml, cardHtml, ctaHref, ctaLabe
                   <p style="margin:0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:600; letter-spacing:0.02em; text-transform:uppercase; color:#4B5563;">Passenger</p>
                   <p style="margin:6px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:400; color:#7A7F87;">Good things move with people.</p>
                   <p style="margin:20px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:400; color:#7A7F87; line-height:1.8;">
-                    <a href="https://passenger.ng/help" style="color:#4B5563; text-decoration:none;">Help centre</a>
+                    <a href="https://usepassenger.com/help" style="color:#4B5563; text-decoration:none;">Help centre</a>
                     &nbsp;·&nbsp;
-                    <a href="https://passenger.ng/privacy" style="color:#4B5563; text-decoration:none;">Privacy</a>
+                    <a href="https://usepassenger.com/privacy" style="color:#4B5563; text-decoration:none;">Privacy</a>
                   </p>
                   <p style="margin:20px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:400; color:#9CA3AF; line-height:1.6;">
                     You are receiving this because you use Passenger.<br>
@@ -176,6 +176,37 @@ export function renderVerificationEmail(args: { email: string; appUrl: string; c
       noteHtml: "Your code expires in 10 minutes. If you did not request this email, you can ignore it.",
     }),
     text: `Verify your email address.\n\nEnter this code in Passenger for ${args.email}:\n${args.code}\n\nThe code expires in 10 minutes.\nOpen Passenger: ${args.appUrl}\n\nIf you did not request this email, you can ignore it.`,
+  };
+}
+
+export function renderTransactionPinCodeEmail(args: { name: string; appUrl: string; code: string }): { html: string; text: string } {
+  return {
+    html: emailShell({
+      microLabel: "Transaction PIN security",
+      headline: "Confirm your PIN change.",
+      bodyHtml: `<p style="margin:0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Hello ${escapeHtmlAttribute(args.name)},<br><br>Enter this single-use code in Passenger before changing or resetting your transaction PIN.</p>`,
+      cardHtml: `<tr><td class="pad" style="padding:32px 56px 0;"><p style="margin:0; font-family:monospace; font-size:28px; font-weight:600; letter-spacing:0.18em; color:#248A56;">${escapeHtmlAttribute(args.code)}</p></td></tr>`,
+      ctaHref: escapeHtmlAttribute(args.appUrl),
+      ctaLabel: "Open Passenger",
+      noteHtml: "This code expires in 10 minutes. If you did not request it, do not share the code and contact Passenger support.",
+    }),
+    text: `Hello ${args.name},\n\nUse this code to change or reset your Passenger transaction PIN:\n${args.code}\n\nThe code expires in 10 minutes and can be used once.\n\nOpen Passenger: ${args.appUrl}\n\nIf you did not request this, do not share the code and contact Passenger support.`,
+  };
+}
+
+export function renderNotificationEmail(args: { name: string; title: string; body: string; appUrl: string; reference?: string }): { html: string; text: string } {
+  const detail = args.reference ? `${args.body} Reference: ${args.reference}.` : args.body;
+  return {
+    html: emailShell({
+      microLabel: "Account update",
+      headline: escapeHtmlAttribute(args.title),
+      bodyHtml: `<p style="margin:0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Hello ${escapeHtmlAttribute(args.name)},<br><br>${escapeHtmlAttribute(detail)}</p>`,
+      cardHtml: "",
+      ctaHref: escapeHtmlAttribute(args.appUrl),
+      ctaLabel: "Open Passenger",
+      noteHtml: "This is an important transactional update about your Passenger account or delivery.",
+    }),
+    text: `Hello ${args.name},\n\n${args.title}\n\n${detail}\n\nOpen Passenger: ${args.appUrl}`,
   };
 }
 

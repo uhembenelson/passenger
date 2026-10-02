@@ -121,7 +121,7 @@ export const consumeCode = internalMutation({
     await ctx.db.patch(s._id, args.kind === "handover"
       ? { handoverAt: Date.now(), handoverEvidenceIds: args.evidenceIds ?? [], receiverPickupSmsStatus: "pending" }
       : { deliveredAt: Date.now(), deliveryEvidenceIds: args.evidenceIds ?? [], receiverDeliverySmsStatus: "pending" });
-    if (args.kind === "delivery") await ctx.scheduler.runAfter(86400000, internal.finance.automaticPayout, { shipmentId: s._id });
+    if (args.kind === "delivery") await ctx.scheduler.runAfter(86400000, internal.financeState.releaseEarning, { shipmentId: s._id });
     await notifyParticipants(ctx, s, args.kind === "handover" ? "Parcel collected" : "Parcel delivered", args.kind === "handover" ? "The traveller verified collection with the sender's code." : "Delivery was confirmed with the receiver's code.");
     await ctx.scheduler.runAfter(0, internal.sms.sendParcelMilestone, { shipmentId: s._id, kind: args.kind, receiverPhone: s.receiverPhone, reference: s.reference });
     await audit(
@@ -155,6 +155,7 @@ export const disputeDefinition = {
       previousStatus: s.status,
       createdAt: Date.now(),
     });
+    await notifyParticipants(ctx, s, "Delivery dispute opened", "A dispute was opened for this delivery. Payment and payout activity are paused while Passenger reviews it.");
     await audit(ctx, user, "dispute.opened", "A participant opened a dispute; payout and proof actions frozen.", s._id);
     return id;
   },

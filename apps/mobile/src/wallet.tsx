@@ -266,6 +266,7 @@ const TransactionRow = memo(function TransactionRow({ transaction: t }: { transa
     parcel_hold: "Held for parcel",
     parcel_refund: "Fee refunded",
     payout: "Traveller payout",
+    withdrawal: "Bank withdrawal",
   }[t.kind];
 
   return (

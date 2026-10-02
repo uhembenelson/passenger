@@ -5,7 +5,7 @@ const crons = cronJobs();
 
 crons.interval("expire offers and reservations", { minutes: 5 }, internal.maintenance.expire, {});
 
-crons.interval("process automatic traveller payouts", { minutes: 5 }, internal.financeState.sweepPayouts, {});
+crons.interval("release eligible traveller earnings", { minutes: 5 }, internal.financeState.sweepEarnings, {});
 
 crons.interval("reconcile wallet deposits", { minutes: 5 }, internal.wallet.sweepDeposits, {});
 

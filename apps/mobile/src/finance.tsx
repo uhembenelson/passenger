@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from "react";
-import { View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useAction, useQuery } from "convex/react";
 import { api } from "@passenger/backend/convex/_generated/api";
 import { usePassengerState } from "./data";
 import { Badge, Button, Card, errorMessage, Field, Hydrated, InlineSkeleton, Notice, s, SectionTitle, Txt } from "./ui";
+import { normalizeAccountNumber, searchBanks } from "./bank-search";
 
 type Readiness = {
   smsConfigured: boolean;
@@ -27,12 +28,14 @@ export function BankDetails() {
   const setupBank = useAction(api.finance.setupBank);
   const [banks, setBanks] = useState<Bank[] | null>(null);
   const [bankCode, setBankCode] = useState("");
+  const [bankSearch, setBankSearch] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   const selectedBank = useMemo(() => banks?.find(item => item.code === bankCode), [banks, bankCode]);
+  const matchingBanks = useMemo(() => banks ? searchBanks(banks, bankSearch) : [], [banks, bankSearch]);
   if (!viewer) return null;
 
   const act = async (key: string, fn: () => Promise<void>) => {
@@ -79,24 +82,31 @@ export function BankDetails() {
         : bankReady
           ? <View style={{ gap: 12 }}>
             <Badge label={`Ready · ${bank.accountName} · •••• ${bank.last4}`} tone="green" />
-            <Txt style={s.hint}>Resolved bank code {bank.bankCode}. Verified {bank.verifiedAt ? new Date(bank.verifiedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "recently"} through the configured banking provider.</Txt>
+            <Txt style={s.hint}>Verified {bank.verifiedAt ? new Date(bank.verifiedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "recently"} through the configured banking provider.</Txt>
           </View>
           : <Notice>Add your Nigerian bank account so Passenger can verify a transfer recipient for future traveller payouts.</Notice>}
       <View style={{ marginTop: 16 }}>
         <Button title={banks ? "Refresh supported banks" : "Load supported banks"} variant="secondary" busy={busy === "banks"} disabled={offline || !!busy || !readiness?.bankingConfigured || !verified} onPress={() => void act("banks", async () => {
           const result = await banksAction({});
           setBanks(result);
-          if (!bankCode && result[0]) setBankCode(result[0].code);
           setNotice(`Loaded ${result.length} banks from the banking provider.`);
         })} />
       </View>
       {banks && <View style={{ marginTop: 16, gap: 10 }}>
-        <Txt style={s.label}>Choose your bank</Txt>
-        <View style={s.wrap}>{banks.slice(0, 18).map(item => <Button key={item.code} title={item.name} small variant={bankCode === item.code ? "primary" : "secondary"} disabled={!!busy || offline} onPress={() => setBankCode(item.code)} />)}</View>
-        {banks.length > 18 && <Txt style={s.hint}>Showing the first 18 banks for this compact screen. The selected bank code is sent to V4 for account verification.</Txt>}
+        {selectedBank ? <View style={bankUi.selected}>
+          <View style={{ flex: 1, gap: 4 }}><Txt style={s.hint}>Selected payout bank</Txt><Txt style={s.label}>{selectedBank.name}</Txt></View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Change selected bank" disabled={!!busy || offline} onPress={() => { setBankCode(""); setBankSearch(""); }}><Txt style={bankUi.change}>Change</Txt></Pressable>
+        </View> : <>
+          <Field label="Find your bank" value={bankSearch} onChangeText={setBankSearch} editable={!busy && !offline} placeholder="Search by bank name" />
+          <ScrollView style={bankUi.results} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+            {matchingBanks.map(item => <Pressable key={item.code} accessibilityRole="radio" disabled={!!busy || offline} onPress={() => setBankCode(item.code)} style={bankUi.choice}><Txt style={s.label}>{item.name}</Txt></Pressable>)}
+            {!matchingBanks.length && <Txt style={s.hint}>No banks found. Search using another bank name.</Txt>}
+          </ScrollView>
+          {matchingBanks.length === 50 && <Txt style={s.hint}>Showing the first 50 matches. Type more of the bank name to narrow the list.</Txt>}
+        </>}
       </View>}
       <View style={{ marginTop: 16 }}>
-        <Field label="10-digit account number" value={accountNumber} onChangeText={setAccountNumber} keyboardType="number-pad" maxLength={10} editable={!busy && !offline && !!readiness?.bankingConfigured && verified} hint={selectedBank ? `Selected bank: ${selectedBank.name}` : "Load the bank list, then choose the correct bank."} />
+        <Field label="10-digit account number" value={accountNumber} onChangeText={value => setAccountNumber(normalizeAccountNumber(value))} inputMode="numeric" editable={!busy && !offline && !!readiness?.bankingConfigured && verified} hint={selectedBank ? `Selected bank: ${selectedBank.name}` : "Enter or paste the account number after choosing the correct bank."} />
       </View>
       {error !== "" && <Notice tone="error">{error}</Notice>}
       {notice !== "" && <Notice tone="success">{notice}</Notice>}
@@ -109,3 +119,10 @@ export function BankDetails() {
     </Card>
   </View>;
 }
+
+const bankUi = StyleSheet.create({
+  results: { maxHeight: 260 },
+  selected: { padding: 14, borderRadius: 12, backgroundColor: "#F2F6EC", flexDirection: "row", alignItems: "center", gap: 12 },
+  change: { color: "#1F4D3B", fontSize: 13, lineHeight: 19, fontWeight: "600" },
+  choice: { minHeight: 52, padding: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, borderRadius: 10 },
+});

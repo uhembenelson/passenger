@@ -3,7 +3,7 @@ import { isPlaceholderPhone, type Person } from "@passenger/core";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { audit, fail, findUserBySubject, isIdentityNumberVerified, markPhoneVerified, person, personDto, requireActive, requireUser, safeNormalizePhone, smsConfigured, subject } from "./lib";
+import { audit, fail, findUserBySubject, isIdentityNumberVerified, markPhoneVerified, notify, person, personDto, requireActive, requireUser, safeNormalizePhone, smsConfigured, subject } from "./lib";
 import { documentType, identityBioData } from "./schema";
 import { validateEvidence } from "./evidence";
 
@@ -193,6 +193,7 @@ export const requestAccountDeletion = mutation({
     if ((user.walletBalanceNaira ?? 0) !== 0) fail("Your wallet balance must be zero before requesting account deletion.");
     if (!user.deletionRequestedAt) {
       await ctx.db.patch(user._id, { deletionRequestedAt: Date.now() });
+      await notify(ctx, user._id, "Account deletion requested", "We received your account deletion request. Passenger support will review it before account data is removed.");
       await audit(ctx, user, "account.deletion_requested", "Account deletion requested for operations review.");
     }
     return { requested: true };

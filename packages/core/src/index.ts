@@ -5,7 +5,7 @@ export type PaymentStatus = "unpaid" | "pending" | "failed" | "held" | "refund_p
 export type OfferStatus = "pending" | "accepted" | "declined" | "withdrawn" | "expired";
 export type DocumentType = "national_id" | "passport" | "drivers_license";
 export type LocationCheckInState = "up_to_date" | "due_soon" | "overdue" | "complete";
-export type WalletTransactionKind = "top_up" | "parcel_hold" | "parcel_refund" | "payout";
+export type WalletTransactionKind = "top_up" | "parcel_hold" | "parcel_refund" | "payout" | "withdrawal";
 
 export interface WalletTransaction { id: string; userId: string; kind: WalletTransactionKind; amountNaira: number; reference: string; shipmentId?: string; createdAt: number; note: string; }
 export type IdentityNumberType = "BVN" | "NIN";

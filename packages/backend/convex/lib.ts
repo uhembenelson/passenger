@@ -4,6 +4,7 @@ import { assertTransition, normalizePhone, quoteFee, routeSegment, tripRoute, va
 import type { Doc, Id } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
 import { verificationPolicy } from "./verificationPolicy";
+import { internal } from "./_generated/api";
 
 export function smsConfigured() {
   return !!(process.env.TERMII_API_KEY && process.env.TERMII_SENDER_ID);
@@ -397,6 +398,15 @@ export async function audit(
 
 export async function notify(ctx: MutationCtx, userId: Id<"users">, title: string, body: string, shipmentId?: Id<"shipments">) {
   await ctx.db.insert("notifications", { userId, title, body, shipmentId, createdAt: Date.now() });
+  const emailTitles = new Set([
+    "Identity verified", "Identity needs changes", "Identity review needs changes",
+    "Payout account verified", "Wallet top-up confirmed", "Wallet refund completed", "Earnings available",
+    "Payout sent", "Payout failed", "Refund completed", "Refund failed",
+    "New traveller offer", "Parcel matched", "Parcel matched and funded", "Payment window expired",
+    "Parcel collected", "Parcel delivered", "Booking cancelled", "Delivery dispute opened",
+    "Support replied", "Support request resolved", "Account deletion requested",
+  ]);
+  if (process.env.NODE_ENV !== "test" && emailTitles.has(title)) await ctx.scheduler.runAfter(0, internal.notificationEmails.send, { userId, title, body, shipmentId });
 }
 
 export async function notifyParticipants(ctx: MutationCtx, shipment: Doc<"shipments">, title: string, body: string) {

@@ -1,15 +1,16 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { ArrowDownLeft, Banknote, Building2, ChevronRight, Clock3 } from "lucide-react-native";
 import { useAction, useQuery } from "convex/react";
 import { api } from "@passenger/backend/convex/_generated/api";
 import { usePassengerState } from "./data";
 import { IdentityVerificationCard } from "./identity-verification-card";
+import { normalizeAccountNumber, searchBanks } from "./bank-search";
 import { BackButton, Badge, Button, colors, errorMessage, Field, fontFamily, InlineSkeleton, Notice, PresentationSheet, Txt } from "./ui";
 
 const money = (kobo: number) => `NGN ${(kobo / 100).toLocaleString("en-NG", { maximumFractionDigits: 2 })}`;
 const date = (time: number) => new Date(time).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const labels: Record<string, string> = { paid: "Paid", scheduled: "Scheduled", processing: "Processing", held: "On hold", bank_required: "Add bank account", verification_required: "Verify identity", failed: "Payout failed" };
+const labels: Record<string, string> = { available: "Available to withdraw", paid: "Paid", scheduled: "Pending release", processing: "Processing", held: "On hold", bank_required: "Add bank account", verification_required: "Verify identity", failed: "Payout failed" };
 
 export function EarningsScreen({ onBack, onStartEarning }: { onBack: () => void; onStartEarning?: () => void }) {
   const earnings = useQuery(api.finance.earnings, {});
@@ -68,7 +69,7 @@ export function EarningsScreen({ onBack, onStartEarning }: { onBack: () => void;
         <Badge label={labels[item.status]!} tone={item.status === "paid" ? "green" : "amber"} />
         <Txt style={e.label}>{item.origin} to {item.destination}</Txt>
         <Txt style={e.muted}>{item.reference} · Delivered {date(item.deliveredAt)}</Txt>
-        <Txt style={e.muted}>{item.status === "paid" ? "Your payout has been sent to your bank." : item.status === "failed" ? "Your bank transfer did not complete. Contact support so we can check it." : item.status === "held" ? "This payout is on hold while we review the delivery or its payment. Contact support if you need help." : item.status === "verification_required" ? "Complete identity verification in Account Tier to receive your payout." : item.status === "bank_required" ? "Add your bank account. Once verified, any earnings past the 24-hour wait are processed automatically." : item.status === "processing" ? "Your transfer is processing. You do not need to request another payout." : `Automatic payout from ${item.payoutAt ? date(item.payoutAt) : "24 hours after confirmed delivery"}. Bank processing times may vary.`}</Txt>
+        <Txt style={e.muted}>{item.status === "available" ? "This earning is available in your Passenger balance. Open Wallet to choose how much to withdraw." : item.status === "paid" ? "This earning has been released to your Passenger balance." : item.status === "failed" ? "The previous bank transfer did not complete. Contact support so we can check it." : item.status === "held" ? "This earning is on hold while we review the delivery or its payment. Contact support if you need help." : item.status === "processing" ? "This earning is being released after the delivery review window." : `Earnings become available after ${item.payoutAt ? date(item.payoutAt) : "the delivery review window"}.`}</Txt>
         <Txt style={e.caption}>Amount shown is after the 10% platform fee.</Txt>
         {item.status === "bank_required" && <Button title="Add payout account" onPress={() => { setReturnToPayout(item.id); setSelected(null); setBankOpen(true); }} />}
         <Button title="Done" variant="secondary" onPress={() => setSelected(null)} />
@@ -90,23 +91,31 @@ function PayoutAccount({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const matchingBanks = useMemo(() => banks ? searchBanks(banks, search) : [], [banks, search]);
+  const selectedBank = useMemo(() => banks?.find(item => item.code === bankCode), [banks, bankCode]);
   const verified = snapshot?.viewer?.verification === "verified" && !snapshot.viewer.suspended;
   const act = async (fn: () => Promise<void>) => { setBusy(true); setError(""); try { await fn(); } catch (cause) { setError(errorMessage(cause)); } finally { setBusy(false); } };
   return <PresentationSheet title="Payout account" onClose={onClose}>
     <View style={e.sheet}>
       <Txt style={e.muted}>Automatic payouts go straight to your Nigerian bank account.</Txt>
       {bank?.ready && <View style={e.savedBank}><Txt style={e.label}>{bank.accountName}</Txt><Txt style={e.muted}>Account ending {bank.last4}</Txt><Badge label="Verified" tone="green" /></View>}
-      {saved ? <><Notice tone="success">Bank account saved. Your eligible earnings will be paid automatically.</Notice><Button title="Done" onPress={onClose} /></> : <>
+      {saved ? <><Notice tone="success">Bank account saved. Use Wallet whenever you want to withdraw from your available balance.</Notice><Button title="Done" onPress={onClose} /></> : <>
         {snapshot?.viewer && snapshot.viewer.verification !== "verified" && <IdentityVerificationCard viewer={snapshot.viewer} />}
         {snapshot?.viewer?.suspended && <Notice>Your account is suspended. Contact support before updating your payout account.</Notice>}
         {offline && <Notice>Reconnect to update your payout account.</Notice>}
         {!banks ? <Button title={bank?.ready ? "Change bank account" : "Choose bank"} variant="secondary" busy={busy} disabled={offline || !verified} onPress={() => void act(async () => setBanks(await getBanks({})))} /> : <>
-          <Field label="Find your bank" value={search} onChangeText={setSearch} editable={!busy} />
-          <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-            {banks.filter(b => b.name.toLowerCase().includes(search.toLowerCase())).map(b => <Pressable key={b.code} accessibilityRole="radio" accessibilityState={{ checked: bankCode === b.code }} disabled={busy} onPress={() => setBankCode(b.code)} style={[e.bankChoice, bankCode === b.code && { backgroundColor: colors.soft }]}><Txt style={e.label}>{b.name}</Txt>{bankCode === b.code && <Badge label="Selected" tone="green" />}</Pressable>)}
-            {!banks.some(b => b.name.toLowerCase().includes(search.toLowerCase())) && <Txt style={e.muted}>No banks found. Try another name.</Txt>}
-          </ScrollView>
-          <Field label="Account number" value={accountNumber} onChangeText={value => setAccountNumber(value.replace(/\D/g, ""))} keyboardType="number-pad" maxLength={10} editable={!busy} hint="Enter your 10-digit account number." />
+          {selectedBank ? <View style={e.selectedBank}>
+            <View style={e.flex}><Txt style={e.caption}>Selected payout bank</Txt><Txt style={e.label}>{selectedBank.name}</Txt></View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Change selected bank" disabled={busy} onPress={() => { setBankCode(""); setSearch(""); }}><Txt style={e.changeBank}>Change</Txt></Pressable>
+          </View> : <>
+            <Field label="Find your bank" value={search} onChangeText={setSearch} editable={!busy} placeholder="Search by bank name" />
+            <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              {matchingBanks.map(b => <Pressable key={b.code} accessibilityRole="radio" disabled={busy} onPress={() => setBankCode(b.code)} style={e.bankChoice}><Txt style={e.label}>{b.name}</Txt></Pressable>)}
+              {!matchingBanks.length && <Txt style={e.muted}>No banks found. Search using another bank name.</Txt>}
+            </ScrollView>
+            {matchingBanks.length === 50 && <Txt style={e.caption}>Showing the first 50 matches. Type more of the bank name to narrow the list.</Txt>}
+          </>}
+          <Field label="Account number" value={accountNumber} onChangeText={value => setAccountNumber(normalizeAccountNumber(value))} inputMode="numeric" editable={!busy} hint="Enter or paste your 10-digit account number." />
           <Button title="Verify and save account" busy={busy} disabled={offline || !verified || !bankCode || accountNumber.length !== 10} onPress={() => void act(async () => { await saveBank({ bankCode, accountNumber }); setAccountNumber(""); setSaved(true); })} />
         </>}
       </>}
@@ -126,8 +135,8 @@ const e = StyleSheet.create({
   label: { fontSize: 14, fontFamily: fontFamily.medium, color: "#1F2937" },
   balance: { alignItems: "center", marginTop: 8 },
   balanceIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: "#DCFCE7", alignItems: "center", justifyContent: "center", marginBottom: 14 },
-  balanceLabel: { fontSize: 15, fontFamily: fontFamily.medium, color: "#4B5563", marginBottom: 6 },
-  amount: { fontSize: 30, fontFamily: fontFamily.semibold, color: "#111827", letterSpacing: -0.5 },
+  balanceLabel: { fontSize: 15, lineHeight: 22, fontFamily: fontFamily.medium, color: "#4B5563", marginBottom: 8 },
+  amount: { fontSize: 30, lineHeight: 38, fontFamily: fontFamily.semibold, color: "#111827", letterSpacing: -0.5 },
   subAmount: { fontSize: 18, fontFamily: fontFamily.semibold, color: "#111827", marginTop: 4 },
   totals: { flexDirection: "row", alignItems: "center", paddingVertical: 20, marginTop: 24, backgroundColor: "#FFFFFF", borderRadius: 16 },
   stat: { flex: 1, alignItems: "center" },
@@ -147,5 +156,7 @@ const e = StyleSheet.create({
   routeIcon: { width: 32, alignItems: "center", justifyContent: "center" },
   sheet: { gap: 18, paddingBottom: 16 },
   savedBank: { padding: 20, borderRadius: 16, backgroundColor: "#F9F9FB", gap: 8 },
+  selectedBank: { padding: 14, borderRadius: 12, backgroundColor: colors.soft, flexDirection: "row", alignItems: "center", gap: 12 },
+  changeBank: { color: colors.forest, fontFamily: fontFamily.semibold, fontSize: 13, lineHeight: 19 },
   bankChoice: { minHeight: 48, padding: 12, flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 8, borderRadius: 10 },
 });

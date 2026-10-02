@@ -6,6 +6,7 @@ import { internal } from "./_generated/api";
 import { fail, requireTransactionalVerification, requireUser, requireVerified, subject } from "./lib";
 import { feeQuote } from "./financeSchema";
 import { financeAccess, operationDto, operationKind } from "./financeState";
+import { decodeProviderText } from "./providerText";
 
 function secret() { const key = process.env.PAYSTACK_SECRET_KEY; if (!key) fail("Live Paystack banking and finance are not configured. No simulated transfer is available."); return key; }
 async function paystackProvider(path: string, init?: RequestInit): Promise<any> {
@@ -95,7 +96,7 @@ async function decryptAccountNumber(encryptedAccountNumber: string, accountNumbe
 export const quote = query({ args: { feeNaira: v.number() }, handler: async (ctx, args) => { await requireUser(ctx); return feeQuote(args.feeNaira); } });
 export const bankAccount = query({ args: {}, handler: async (ctx) => {
   const u = await requireUser(ctx); const bank = await ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", u._id)).first();
-  return bank ? { accountName: bank.accountName, bankCode: bank.bankCode, last4: bank.last4, ready: bank.bankingProvider === "v4" && !!bank.nameEnquiryReference && !!bank.encryptedAccountNumber && !!bank.accountNumberIv, verifiedAt: bank.verifiedAt } : null;
+  return bank ? { accountName: decodeProviderText(bank.accountName), bankCode: bank.bankCode, last4: bank.last4, ready: bank.bankingProvider === "v4" && !!bank.nameEnquiryReference && !!bank.encryptedAccountNumber && !!bank.accountNumberIv, verifiedAt: bank.verifiedAt } : null;
 } });
 export const history = query({ args: { shipmentId: v.id("shipments") }, handler: async (ctx, args) => {
   await financeAccess(ctx, await subject(ctx), args.shipmentId);
@@ -107,7 +108,13 @@ export const banks = action({ args: {}, handler: async (ctx): Promise<Array<{ co
   if (!v4BankingConfigured()) fail("V4 banking is not fully configured.");
   const data = await v4Provider("/banks");
   if (!Array.isArray(data?.banks)) fail("Invalid V4 bank directory.");
-  return data.banks.filter((b: any) => typeof b.bankCode === "string" && typeof b.name === "string").map((b: any) => ({ code: b.bankCode, name: b.name }));
+  const directory = new Map<string, string>();
+  for (const bank of data.banks) {
+    const code = typeof bank?.bankCode === "string" ? bank.bankCode.trim() : "";
+    const name = typeof bank?.name === "string" ? decodeProviderText(bank.name.trim()) : "";
+    if (/^\d{3,10}$/.test(code) && name && !directory.has(code)) directory.set(code, name);
+  }
+  return [...directory].map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name, "en-NG", { sensitivity: "base" }));
 } });
 export const setupBank = action({ args: { bankCode: v.string(), accountNumber: v.string() }, handler: async (ctx, args): Promise<{ accountName: string; bankCode: string; last4: string; ready: boolean }> => {
   const sub = await subject(ctx); await ctx.runQuery(internal.financeState.bankOwner, { subject: sub });
@@ -119,7 +126,7 @@ export const setupBank = action({ args: { bankCode: v.string(), accountNumber: v
     fail("The V4 provider could not independently verify these bank details.");
   }
   const encrypted = await encryptAccountNumber(args.accountNumber, args.bankCode, resolved.nameEnquiryReference);
-  const result = { accountName: resolved.accountName.trim(), bankCode: args.bankCode, last4: args.accountNumber.slice(-4), ready: true };
+  const result = { accountName: decodeProviderText(resolved.accountName.trim()), bankCode: args.bankCode, last4: args.accountNumber.slice(-4), ready: true };
   await ctx.runMutation(internal.financeState.saveBank, { subject: sub, bankCode: result.bankCode, accountName: result.accountName, last4: result.last4,
     recipientCode: resolved.nameEnquiryReference, nameEnquiryReference: resolved.nameEnquiryReference, ...encrypted });
   return result;
@@ -130,6 +137,8 @@ async function submitV4Transfer(ctx: ActionCtx, op: Doc<"payouts">): Promise<Ret
     fail("V4 payout details are incomplete. Contact support before retrying.");
   }
   if (!Number.isSafeInteger(op.amountKobo) || op.amountKobo <= 0 || op.amountKobo % 100 !== 0) fail("V4 payouts require a positive whole-naira amount.");
+  const transferPin = process.env.V4_TRANSFER_TRANSACTION_PIN?.trim();
+  if (!transferPin || !/^\d{4,12}$/.test(transferPin)) fail("Secure transfers are not configured.");
   const accountNumber = await decryptAccountNumber(op.encryptedAccountNumber, op.accountNumberIv, op.bankCode, op.nameEnquiryReference);
   const data = await v4Provider("/transfers", {
     method: "POST",
@@ -140,6 +149,7 @@ async function submitV4Transfer(ctx: ActionCtx, op: Doc<"payouts">): Promise<Ret
       bankCode: op.bankCode,
       accountNumber,
       narration: `Passenger delivery ${op.shipmentId}`,
+      transactionPin: transferPin,
     }),
   });
   const providerId = data?.transferId ?? data?.transferReference ?? data?.paymentReference ?? data?.sessionId ?? data?.reference ?? data?.id ?? op.reference;
@@ -210,14 +220,43 @@ async function dispatch(ctx: ActionCtx, op: Doc<"payouts">): Promise<ReturnType<
     return operationDto(current ?? op);
   }
 }
-export const requestPayout = action({ args: { shipmentId: v.id("shipments") }, handler: async (ctx, args): Promise<ReturnType<typeof operationDto>> => {
-  if (!v4BankingConfigured()) fail("V4 banking and payouts are not configured. No simulated transfer is available.");
-  const op = await ctx.runMutation(internal.financeState.prepare, { subject: await subject(ctx), shipmentId: args.shipmentId, kind: "payout" });
-  return dispatch(ctx, op);
-} });
 export const requestRefund = action({ args: { shipmentId: v.id("shipments"), paymentId: v.optional(v.id("payments")) }, handler: async (ctx, args): Promise<ReturnType<typeof operationDto>> => {
   secret(); const op = await ctx.runMutation(internal.financeState.prepare, { subject: await subject(ctx), ...args, kind: "refund" });
   return dispatch(ctx, op);
+} });
+
+export const submitWithdrawal = internalAction({ args: { withdrawalId: v.id("walletWithdrawals") }, handler: async (ctx, args): Promise<{ reference: string; status: string }> => {
+  const withdrawal = await ctx.runQuery(internal.wallet.withdrawalById, args);
+  if (!withdrawal) fail("Withdrawal not found.");
+  if (withdrawal.status === "success") return { reference: withdrawal.reference, status: withdrawal.status };
+  if (!['prepared', 'pending', 'uncertain'].includes(withdrawal.status)) fail("Withdrawal cannot be submitted.");
+  const transferPin = process.env.V4_TRANSFER_TRANSACTION_PIN?.trim();
+  if (!transferPin || !/^\d{4,12}$/.test(transferPin)) fail("Secure withdrawals are not configured.");
+  const accountNumber = await decryptAccountNumber(withdrawal.encryptedAccountNumber, withdrawal.accountNumberIv, withdrawal.bankCode, withdrawal.nameEnquiryReference);
+  await ctx.runMutation(internal.wallet.markWithdrawalPending, args);
+  try {
+    const data = await v4Provider("/transfers", {
+      method: "POST",
+      headers: { "Idempotency-Key": withdrawal.reference },
+      body: JSON.stringify({
+        nameEnquiryReference: withdrawal.nameEnquiryReference,
+        amount: withdrawal.amountNaira,
+        bankCode: withdrawal.bankCode,
+        accountNumber,
+        narration: "Passenger balance withdrawal",
+        transactionPin: transferPin,
+      }),
+    });
+    const providerId = data?.transferId ?? data?.transferReference ?? data?.paymentReference ?? data?.sessionId ?? data?.reference ?? data?.id;
+    if (typeof providerId !== "string" && typeof providerId !== "number") fail("V4 banking did not return a valid withdrawal result.");
+    const providerStatus = String(data?.status ?? "submitted");
+    await ctx.runMutation(internal.wallet.finishWithdrawal, { withdrawalId: withdrawal._id, status: "success", providerId: String(providerId), providerStatus });
+    return { reference: withdrawal.reference, status: "success" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "The provider outcome could not be confirmed.";
+    await ctx.runMutation(internal.wallet.finishWithdrawal, { withdrawalId: withdrawal._id, status: "uncertain", error: message });
+    return { reference: withdrawal.reference, status: "uncertain" };
+  }
 } });
 export const reconcile = action({ args: { operationId: v.id("payouts") }, handler: async (ctx, args): Promise<ReturnType<typeof operationDto>> => {
   await ctx.runMutation(internal.wallet.rateLimit, { subject: await subject(ctx), kind: "finance-check" });
@@ -242,8 +281,6 @@ export const receiveVerifiedEvent = internalAction({ args: { kind: operationKind
 export const earnings = query({ args: {}, handler: async (ctx) => {
   const user = await requireUser(ctx);
   const shipments = await ctx.db.query("shipments").withIndex("by_traveller", q => q.eq("travellerId", user._id)).collect();
-  const bank = await ctx.db.query("bankAccounts").withIndex("by_user", q => q.eq("userId", user._id)).first();
-  const bankReady = bank?.bankingProvider === "v4" && !!bank.nameEnquiryReference && !!bank.encryptedAccountNumber && !!bank.accountNumberIv;
   const items = [];
   for (const s of shipments) {
     if ((!s.deliveredAt && s.paymentStatus !== "released") || !["held", "released", "payout_pending", "payout_failed"].includes(s.paymentStatus)) continue;
@@ -255,29 +292,26 @@ export const earnings = query({ args: {}, handler: async (ctx) => {
     const amountKobo = payout?.amountKobo ?? payment?.travellerNetKobo ?? (payment ? payment.amountKobo - Math.round(payment.amountKobo / 10) : feeQuote(s.feeNaira).travellerNetKobo);
     const fundingOwner = payment?.source === "wallet" ? await ctx.db.get(s.senderId) : null;
     const fundingBlocked = payment?.source === "wallet" && (!fundingOwner || fundingOwner.walletBlocked || fundingOwner.suspended);
-    const status = s.paymentStatus === "released" ? "paid" : s.paymentStatus === "payout_failed" ? "failed" : s.paymentStatus === "payout_pending" ? "processing" : disputes.some(d => d.status === "open") || s.refundApproved || fundingBlocked ? "held" : !bankReady ? "bank_required" : user.verification !== "verified" || user.suspended ? "verification_required" : (!payment || payment.source !== "wallet" && !payment.providerTransactionId) ? "held" : "scheduled";
+    const status = s.paymentStatus === "released" ? "available" : s.paymentStatus === "payout_failed" ? "failed" : s.paymentStatus === "payout_pending" ? "processing" : disputes.some(d => d.status === "open") || s.refundApproved || fundingBlocked ? "held" : (!payment || payment.source !== "wallet" && !payment.providerTransactionId) ? "held" : "scheduled";
     items.push({ id: s._id, tripId: s.tripId, reference: s.reference, origin: s.origin, destination: s.destination, amountKobo, status, deliveredAt: s.deliveredAt ?? s.updatedAt, payoutAt: s.deliveredAt ? Math.max(s.deliveredAt + 86400000, s.disputeUntil ?? 0) : null });
   }
   return items.sort((a, b) => b.deliveredAt - a.deliveredAt);
 } });
 
+// Legacy scheduled jobs may still exist in a deployment queue. They now only
+// release eligible earnings into the user's Passenger balance; they never
+// initiate a bank transfer.
 export const automaticPayout = internalAction({ args: { shipmentId: v.id("shipments") }, handler: async (ctx, args): Promise<void> => {
-  if (!v4BankingConfigured()) return;
-  const owner = await ctx.runQuery(internal.financeState.automaticOwner, args);
-  if (!owner) return;
-  try {
-    const op = await ctx.runMutation(internal.financeState.prepare, { subject: owner, shipmentId: args.shipmentId, kind: "payout" });
-    if (op.status === "prepared") await dispatch(ctx, op);
-    else if (op.status === "pending" || op.status === "uncertain") await verifiedOperation(ctx, op);
-  } catch (error) {
-    // The next sweep rechecks eligibility. Failed transfers require reconciliation, never a blind retry.
-    console.warn("Automatic payout deferred", args.shipmentId, error instanceof Error ? error.message : "Unavailable");
-  }
+  await ctx.runMutation(internal.financeState.releaseEarning, args);
 } });
 
 export const reconcileInternal = internalAction({ args: { operationId: v.id("payouts") }, handler: async (ctx, args): Promise<void> => {
   const op = await ctx.runQuery(internal.financeState.operationById, args);
   if (!op || !["pending", "uncertain"].includes(op.status)) return;
-  if (op.kind === "payout" ? !v4BankingConfigured() : !process.env.PAYSTACK_SECRET_KEY) return;
+  // Traveller bank transfers are user-requested withdrawals now. Never turn
+  // an old scheduled payout record into an automatic transfer during retry or
+  // reconciliation sweeps.
+  if (op.kind === "payout") return;
+  if (!process.env.PAYSTACK_SECRET_KEY) return;
   try { await verifiedOperation(ctx, op); } catch { await ctx.runMutation(internal.wallet.raiseAlert, { key: op.reference, detail: `Unable to reconcile ${op.kind} ${op.reference}. Do not send another operation.` }); }
 } });

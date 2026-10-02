@@ -17,6 +17,7 @@ import {
   ChevronRight,
   ChevronUp,
   FileText,
+  LockKeyhole,
   LogOut,
   Pencil,
   Package,
@@ -27,7 +28,7 @@ import {
   Wallet,
   X,
 } from "lucide-react-native";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@passenger/backend/convex/_generated/api";
 import { isPlaceholderPhone, type Person } from "@passenger/core";
 import { primitives, semantic } from "@passenger/design-tokens";
@@ -57,7 +58,7 @@ import { BackButton,
 import { EarningsScreen } from "./earnings";
 import { ParcelHistory } from "./parcel-history";
 
-type SubScreen = "earnings" | "menu" | "personal_info" | "account_tier" | "identity_number_verification" | "wallet" | "parcel_history";
+type SubScreen = "earnings" | "menu" | "personal_info" | "account_tier" | "identity_number_verification" | "wallet" | "parcel_history" | "transaction_pin";
 
 export function Profile({
   viewer: propViewer,
@@ -141,6 +142,8 @@ export function Profile({
           onBack={() => setSubScreen("menu")}
         />
       )}
+
+      {subScreen === "transaction_pin" && <TransactionPinScreen onBack={() => setSubScreen("menu")} />}
 
       {subScreen === "earnings" && <EarningsScreen onBack={() => setSubScreen("menu")} onStartEarning={onStartEarning} />}
 
@@ -247,6 +250,11 @@ function ProfileMenuView({
           <ChevronRight size={20} color="#9CA3AF" />
         </Pressable>
 
+        <Pressable accessibilityRole="button" onPress={() => onSelect("transaction_pin")} style={p.menuItem}>
+          <View style={p.menuLeft}><LockKeyhole size={22} color="#1F2937" strokeWidth={1.8} /><Txt style={p.menuLabel}>Transaction PIN</Txt></View>
+          <ChevronRight size={20} color="#9CA3AF" />
+        </Pressable>
+
         <Pressable accessibilityRole="button" onPress={() => onSelect("earnings")} style={p.menuItem}>
           <View style={p.menuLeft}><Banknote size={22} color="#1F2937" strokeWidth={1.8} /><Txt style={p.menuLabel}>Earnings</Txt></View>
           <ChevronRight size={20} color="#9CA3AF" />
@@ -282,6 +290,100 @@ function ProfileMenuView({
       </View>
     </ScrollView>
   );
+}
+
+function TransactionPinScreen({ onBack }: { onBack: () => void }) {
+  const { offline } = usePassenger();
+  const status = useQuery(api.wallet.transactionPinStatus, {});
+  const savePin = useMutation(api.wallet.setTransactionPin);
+  const requestEmailCode = useAction(api.wallet.requestTransactionPinChangeCode);
+  const [currentPin, setCurrentPin] = useState("");
+  const [nextPin, setNextPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [sentTo, setSentTo] = useState("");
+  const [resetMode, setResetMode] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [savedMessage, setSavedMessage] = useState("");
+  const configured = status?.configured === true;
+  const valid = /^\d{4}$/.test(nextPin)
+    && nextPin === confirmPin
+    && (!configured || /^\d{6}$/.test(emailCode))
+    && (!configured || resetMode || /^\d{4}$/.test(currentPin));
+
+  const sendCode = async () => {
+    if (codeBusy || busy || offline) return;
+    setCodeBusy(true);
+    setError("");
+    setSavedMessage("");
+    try {
+      const result = await requestEmailCode({});
+      setSentTo(result.sentTo);
+      setSavedMessage(`A six-digit code was sent to ${result.sentTo}. It expires in 10 minutes.`);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setCodeBusy(false);
+    }
+  };
+
+  const submit = async () => {
+    if (!valid || busy || offline) return;
+    setBusy(true);
+    setError("");
+    setSavedMessage("");
+    try {
+      const result = await savePin({
+        pin: nextPin,
+        ...(configured ? { emailCode, resetWithEmail: resetMode } : {}),
+        ...(configured && !resetMode ? { currentPin } : {}),
+      });
+      if (!result.success) throw new Error(result.error);
+      setCurrentPin("");
+      setNextPin("");
+      setConfirmPin("");
+      setEmailCode("");
+      setSentTo("");
+      setResetMode(false);
+      setSavedMessage(configured ? "Transaction PIN updated successfully." : "Transaction PIN created successfully.");
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <View style={pinStyles.screen}>
+    <ScrollView contentContainerStyle={pinStyles.page} keyboardShouldPersistTaps="handled">
+      <View style={pinStyles.header}><BackButton accessibilityLabel="Back to profile" onPress={onBack} /><Txt style={pinStyles.headerTitle}>Transaction PIN</Txt><View style={{ width: 40 }} /></View>
+      <View style={pinStyles.icon}><LockKeyhole size={26} color={colors.forest} strokeWidth={1.8} /></View>
+      <Txt style={pinStyles.title}>{configured ? resetMode ? "Reset your PIN" : "Change your PIN" : "Create your PIN"}</Txt>
+      <Txt style={pinStyles.detail}>{configured ? "We will email a code to confirm it is you before your transaction PIN is updated." : "Your four-digit PIN confirms withdrawals from your Passenger balance. Do not share it with anyone."}</Txt>
+      {configured && !resetMode && <Field label="Current PIN" value={currentPin} onChangeText={value => setCurrentPin(value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" keyboardType="number-pad" secureTextEntry maxLength={4} editable={!busy && !offline} />}
+      {configured && <>
+        <Button title={sentTo ? "Send a new email code" : "Send email code"} variant="secondary" busy={codeBusy} disabled={busy || offline} onPress={() => void sendCode()} />
+        <Field label="Email code" value={emailCode} onChangeText={value => setEmailCode(value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" keyboardType="number-pad" maxLength={6} editable={!busy && !codeBusy && !offline} />
+        {!!sentTo && <Txt style={pinStyles.codeHint}>Enter the code sent to {sentTo}.</Txt>}
+      </>}
+      <Field label={configured ? "New PIN" : "PIN"} value={nextPin} onChangeText={value => setNextPin(value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" keyboardType="number-pad" secureTextEntry maxLength={4} editable={!busy && !offline} />
+      <Field label="Confirm PIN" value={confirmPin} onChangeText={value => setConfirmPin(value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" keyboardType="number-pad" secureTextEntry maxLength={4} editable={!busy && !offline} />
+      {confirmPin.length === 4 && nextPin !== confirmPin && <Notice tone="error">The new PINs do not match.</Notice>}
+      {configured && <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={resetMode ? "Use current PIN instead" : "Reset a forgotten PIN"}
+        disabled={busy || codeBusy}
+        onPress={() => { setResetMode(value => !value); setCurrentPin(""); setError(""); setSavedMessage(""); }}
+        style={pinStyles.forgotButton}
+      ><Txt style={pinStyles.forgotText}>{resetMode ? "I remember my current PIN" : "Forgot PIN? Reset with email"}</Txt></Pressable>}
+      {!!status?.lockedUntil && status.lockedUntil > Date.now() && <Notice tone="warning">PIN verification is temporarily locked after repeated incorrect attempts. You can reset it now using Forgot PIN and an email code.</Notice>}
+      {offline && <Notice tone="warning">Reconnect to update your transaction PIN.</Notice>}
+      {!!error && <Notice tone="error">{error}</Notice>}
+      {!!savedMessage && <Notice tone="success">{savedMessage}</Notice>}
+      <Button title={configured ? resetMode ? "Reset PIN" : "Change PIN" : "Create PIN"} busy={busy} disabled={!valid || offline || status === undefined || codeBusy} onPress={() => void submit()} />
+    </ScrollView>
+  </View>;
 }
 
 // -------------------------------------------------------------
@@ -1237,8 +1339,10 @@ function UpgradeToTier3Modal({
 function WalletScreenView({ onBack }: { onBack: () => void }) {
   const { snapshot } = usePassenger();
   const [topUpOpen, setTopUpOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const wallet = useQuery(api.wallet.balance, {});
 
-  const balance = snapshot?.viewer?.walletBalanceNaira ?? 0;
+  const balance = wallet?.balanceNaira ?? snapshot?.viewer?.walletBalanceNaira ?? 0;
 
   return (
     <View style={walletViewStyles.container}>
@@ -1274,7 +1378,12 @@ function WalletScreenView({ onBack }: { onBack: () => void }) {
             </Pressable>
             <Txt style={walletViewStyles.actionLabel}>Deposit</Txt>
           </View>
-
+          <View style={walletViewStyles.actionItem}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Withdraw" onPress={() => setWithdrawOpen(true)} style={walletViewStyles.actionCircle}>
+              <ArrowUp size={24} color="#1F2937" strokeWidth={2.2} />
+            </Pressable>
+            <Txt style={walletViewStyles.actionLabel}>Withdraw</Txt>
+          </View>
         </View>
 
         {/* Activity Section */}
@@ -1289,6 +1398,7 @@ function WalletScreenView({ onBack }: { onBack: () => void }) {
       {topUpOpen && (
         <TopUpSheet onClose={() => setTopUpOpen(false)} />
       )}
+      {withdrawOpen && <WithdrawSheet onClose={() => setWithdrawOpen(false)} />}
 
     </View>
   );
@@ -1297,25 +1407,23 @@ function WalletScreenView({ onBack }: { onBack: () => void }) {
 function WithdrawSheet({ onClose }: { onClose: () => void }) {
   const { snapshot } = usePassenger();
   const viewer = snapshot?.viewer;
-  const banks = snapshot?.mobileConfig?.banks ?? [];
   const withdrawalPresets = snapshot?.mobileConfig?.wallet.withdrawalPresetsNaira ?? [];
-  const balance = viewer?.walletBalanceNaira ?? 0;
+  const wallet = useQuery(api.wallet.balance, {});
+  const balance = wallet?.balanceNaira ?? viewer?.walletBalanceNaira ?? 0;
   const bank = useQuery(api.finance.bankAccount, viewer ? {} : "skip");
-  const requestWithdrawal = useMutation(api.wallet.requestWithdrawal);
+  const requestWithdrawal = useAction(api.wallet.requestWithdrawal);
+  const setTransactionPin = useMutation(api.wallet.setTransactionPin);
+  const pinStatus = useQuery(api.wallet.transactionPinStatus, {});
 
   const [amount, setAmount] = useState("");
-  const [selectedBankCode, setSelectedBankCode] = useState(bank?.bankCode ?? banks[0]?.code ?? "");
-  const [accountNumber, setAccountNumber] = useState(bank?.last4 ? `•••• •••• ${bank.last4}` : "");
-  const [accountName, setAccountName] = useState(bank?.accountName ?? "");
-  const [editingBank, setEditingBank] = useState(!bank?.ready);
-  const [bankPickerOpen, setBankPickerOpen] = useState(false);
+  const [transactionPin, setTransactionPinValue] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
   const numericAmount = Number(amount.replace(/[^0-9]/g, ""));
-  const selectedBank = banks.find(b => b.code === selectedBankCode) ?? banks[0];
-  const canWithdraw = numericAmount >= 100 && numericAmount <= balance && (bank?.ready || (accountNumber.replace(/[^0-9]/g, "").length === 10));
+  const canWithdraw = numericAmount >= 100 && numericAmount <= Math.floor(balance) && !!bank?.ready && /^\d{4}$/.test(transactionPin) && (!!pinStatus?.configured || transactionPin === confirmPin);
 
   const handleQuickAmount = (val: number) => {
     setAmount(String(Math.min(val, balance)));
@@ -1326,12 +1434,12 @@ function WithdrawSheet({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError("");
     try {
-      await requestWithdrawal({
-        amountNaira: numericAmount,
-        bankCode: selectedBankCode,
-        accountNumber: accountNumber.replace(/[^0-9]/g, ""),
-        accountName: accountName.trim() || bank?.accountName,
-      });
+      if (!pinStatus?.configured) {
+        const pinResult = await setTransactionPin({ pin: transactionPin });
+        if (!pinResult.success) throw new Error(pinResult.error);
+      }
+      const result = await requestWithdrawal({ amountNaira: numericAmount, transactionPin });
+      if (result.status === "uncertain") throw new Error("The provider outcome is still being confirmed. Your balance is reserved until reconciliation completes.");
       setSuccess(true);
     } catch (e) {
       setError(errorMessage(e));
@@ -1350,7 +1458,7 @@ function WithdrawSheet({ onClose }: { onClose: () => void }) {
           <Txt style={withdrawStyles.successTitle}>Withdrawal Requested!</Txt>
           <Txt style={withdrawStyles.successSubtitle}>
             ₦{numericAmount.toLocaleString()} will be transferred to your account (
-            {accountName || bank?.accountName || "bank account"}).
+            {bank?.accountName || "your verified bank account"}).
           </Txt>
           <Pressable
             accessibilityRole="button"
@@ -1427,104 +1535,21 @@ function WithdrawSheet({ onClose }: { onClose: () => void }) {
             </View>
           </View>
 
-          {/* Destination Account */}
           <View style={withdrawStyles.inputGroup}>
-            <View style={withdrawStyles.destHeaderRow}>
-              <Txt style={withdrawStyles.fieldLabel}>Destination Account</Txt>
-              {bank?.ready && (
-                <Pressable
-                  onPress={() => {
-                    setEditingBank(!editingBank);
-                    if (editingBank) {
-                      setAccountNumber(`•••• •••• ${bank.last4}`);
-                      setAccountName(bank.accountName);
-                    } else {
-                      setAccountNumber("");
-                      setAccountName("");
-                    }
-                  }}
-                >
-                  <Txt style={withdrawStyles.changeLink}>
-                    {editingBank ? "Use saved account" : "Change"}
-                  </Txt>
-                </Pressable>
-              )}
-            </View>
-
-            {bank?.ready && !editingBank ? (
-              <View style={withdrawStyles.savedBankCard}>
-                <View style={withdrawStyles.savedBankIconCircle}>
-                  <Wallet size={18} color="#168B61" strokeWidth={2} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Txt style={withdrawStyles.savedBankName}>
-                    {selectedBank.name} •••• {bank.last4}
-                  </Txt>
-                  <Txt style={withdrawStyles.savedAccountHolder}>{bank.accountName}</Txt>
-                </View>
+            <Txt style={withdrawStyles.fieldLabel}>Destination account</Txt>
+            {bank?.ready ? <View style={withdrawStyles.savedBankCard}>
+              <View style={withdrawStyles.savedBankIconCircle}><Wallet size={18} color="#168B61" strokeWidth={2} /></View>
+              <View style={{ flex: 1 }}>
+                <Txt style={withdrawStyles.savedAccountHolder}>{bank.accountName}</Txt>
+                <Txt style={withdrawStyles.savedAccountHolder}>Account ending {bank.last4}</Txt>
               </View>
-            ) : (
-              <View style={{ gap: 10 }}>
-                {/* Bank picker */}
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => setBankPickerOpen(!bankPickerOpen)}
-                  style={withdrawStyles.dropdownButton}
-                >
-                  <Txt style={withdrawStyles.dropdownText}>{selectedBank.name}</Txt>
-                  <ChevronDown size={18} color="#6B7280" strokeWidth={2} />
-                </Pressable>
+            </View> : <Notice tone="warning">Verify a payout account in Earnings before withdrawing.</Notice>}
+          </View>
 
-                {bankPickerOpen && (
-                  <View style={withdrawStyles.dropdownMenu}>
-                    <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled>
-                      {banks.map(b => (
-                        <Pressable
-                          key={b.code}
-                          onPress={() => {
-                            setSelectedBankCode(b.code);
-                            setBankPickerOpen(false);
-                          }}
-                          style={[
-                            withdrawStyles.dropdownItem,
-                            b.code === selectedBankCode && withdrawStyles.dropdownItemSelected,
-                          ]}
-                        >
-                          <Txt
-                            style={[
-                              withdrawStyles.dropdownItemText,
-                              b.code === selectedBankCode && withdrawStyles.dropdownItemTextSelected,
-                            ]}
-                          >
-                            {b.name}
-                          </Txt>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-
-                {/* Account Number input */}
-                <TextInput
-                  value={accountNumber}
-                  onChangeText={setAccountNumber}
-                  placeholder="10-digit Account Number"
-                  placeholderTextColor="#9CA3AF"
-                  keyboardType="number-pad"
-                  maxLength={10}
-                  style={withdrawStyles.standardInput}
-                />
-
-                {/* Account Name input */}
-                <TextInput
-                  value={accountName}
-                  onChangeText={setAccountName}
-                  placeholder="Account Holder Name"
-                  placeholderTextColor="#9CA3AF"
-                  style={withdrawStyles.standardInput}
-                />
-              </View>
-            )}
+          <View style={withdrawStyles.inputGroup}>
+            <Txt style={withdrawStyles.fieldLabel}>{pinStatus?.configured ? "Transaction PIN" : "Create transaction PIN"}</Txt>
+            <TextInput value={transactionPin} onChangeText={setTransactionPinValue} placeholder="4 digits" placeholderTextColor="#9CA3AF" keyboardType="number-pad" inputMode="numeric" maxLength={4} secureTextEntry style={withdrawStyles.standardInput} />
+            {!pinStatus?.configured && <TextInput value={confirmPin} onChangeText={setConfirmPin} placeholder="Confirm PIN" placeholderTextColor="#9CA3AF" keyboardType="number-pad" inputMode="numeric" maxLength={4} secureTextEntry style={withdrawStyles.standardInput} />}
           </View>
 
           {/* Transfer Summary */}
@@ -1892,6 +1917,19 @@ function LogoutModal({
 // -------------------------------------------------------------
 // Styles matching the design mockups
 // -------------------------------------------------------------
+const pinStyles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: "#F9F9FB" },
+  page: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40, gap: 16 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8, marginBottom: 12 },
+  headerTitle: { fontSize: 18, lineHeight: 24, fontFamily: fontFamily.semibold, color: "#1F2937" },
+  icon: { width: 58, height: 58, borderRadius: 20, alignItems: "center", justifyContent: "center", alignSelf: "center", backgroundColor: "#EAF3DD", marginTop: 8 },
+  title: { fontSize: 22, lineHeight: 29, fontFamily: fontFamily.semibold, color: "#111827", textAlign: "center" },
+  detail: { maxWidth: 420, alignSelf: "center", fontSize: 14, lineHeight: 21, color: "#4B5563", textAlign: "center", marginBottom: 4 },
+  codeHint: { marginTop: -10, fontSize: 13, lineHeight: 18, color: "#6B7280" },
+  forgotButton: { minHeight: 44, alignItems: "center", justifyContent: "center", alignSelf: "center", paddingHorizontal: 12 },
+  forgotText: { fontSize: 14, lineHeight: 20, fontFamily: fontFamily.semibold, color: colors.forest },
+});
+
 const p = StyleSheet.create({
   screen: {
     flex: 1,
