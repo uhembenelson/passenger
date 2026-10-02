@@ -34,10 +34,13 @@ test("returns image data without exposing Convex's provider token", async () => 
     expect(url).toContain("access_token=backend-only-token");
     if (url.includes("geocoding")) return Response.json({ features: [{ center: url.includes("Jos") ? [8.9, 9.9] : [7.5, 9.1] }] });
     if (url.includes("directions")) return Response.json({ routes: [] });
+    expect(url).toContain("/mapbox/navigation-day-v1/static/");
+    expect(url).toContain("pin-s-circle+183E32");
+    expect(url).toContain("pin-s+111827");
     return new Response(new Uint8Array([137, 80, 78, 71]), { headers: { "content-type": "image/png" } });
   });
   vi.stubGlobal("fetch", fetch);
-  const result = await sender.action(api.deliveries.parcelMap, { shipmentId });
+  const result = await sender.action(api.deliveries.parcelMap, { shipmentId, viewport: { width: 430, height: 932 } });
   expect(result).toEqual({ imageUri: "data:image/png;base64,iVBORw==", roadRoute: false });
   expect(JSON.stringify(result)).not.toContain("backend-only-token");
   expect(fetch).toHaveBeenCalledTimes(4);

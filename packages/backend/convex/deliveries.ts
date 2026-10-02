@@ -126,7 +126,7 @@ export const parcelMap = action({
   handler: async (ctx, args): Promise<{ imageUri: string; roadRoute: boolean }> => {
     if (args.viewport && (!Number.isFinite(args.viewport.width) || !Number.isFinite(args.viewport.height) || args.viewport.width < 100 || args.viewport.height < 100 || args.viewport.width > 10000 || args.viewport.height > 10000)) fail("Invalid map size.");
     // Authorize before any paid provider calls. Never trust client coordinates.
-    const record = await ctx.runQuery(internal.deliveryState.parcelMapShipment, args);
+    const record = await ctx.runQuery(internal.deliveryState.parcelMapShipment, { shipmentId: args.shipmentId });
     const token = process.env.MAPBOX_ACCESS_TOKEN?.trim();
     if (!token) fail("Parcel maps are unavailable.");
     try {

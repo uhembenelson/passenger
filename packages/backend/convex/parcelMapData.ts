@@ -24,10 +24,14 @@ export async function drivingRoute(from: MapPoint, to: MapPoint, token: string, 
 export function parcelMapUrl(from: MapPoint, to: MapPoint, last: MapPoint | null, route: MapPoint[] | null, token: string, viewport?: { width: number; height: number }) {
   const size = mapViewport(viewport);
   const make = (points: MapPoint[]) => {
-    const line = { type: "Feature", properties: { stroke: "#437966", "stroke-width": 4, "stroke-opacity": 0.7 }, geometry: { type: "LineString", coordinates: points } };
-    const overlays = [`geojson(${encodeURIComponent(JSON.stringify(line))})`, `pin-s-a+437966(${from.join(',')})`, `pin-s-b+7957a8(${to.join(',')})`];
-    if (last) overlays.push(`pin-l+e58b25(${last.join(',')})`);
-    return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${overlays.join(',')}/auto/${size.width}x${size.height}?padding=${size.padding}&access_token=${encodeURIComponent(token)}`;
+    const line = { type: "Feature", properties: { stroke: "#183E32", "stroke-width": 6, "stroke-opacity": 0.92 }, geometry: { type: "LineString", coordinates: points } };
+    const overlays = [
+      `geojson(${encodeURIComponent(JSON.stringify(line))})`,
+      `pin-s-circle+183E32(${from.join(',')})`,
+      `pin-s+111827(${to.join(',')})`,
+    ];
+    if (last) overlays.push(`pin-l-car+34D186(${last.join(',')})`);
+    return `https://api.mapbox.com/styles/v1/mapbox/navigation-day-v1/static/${overlays.join(',')}/auto/${size.width}x${size.height}?padding=${size.padding}&access_token=${encodeURIComponent(token)}`;
   };
   const url = make(route ?? [from, to]);
   return url.length <= 8000 ? { url, roadRoute: !!route } : { url: make([from, to]), roadRoute: false };
