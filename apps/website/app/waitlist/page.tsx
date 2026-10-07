@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { ArrowRight, Check, ArrowLeft, ChevronDown, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { JourneyStory, JourneyStoryRef } from "@/components/hero/journey-story";
+
 
 const NIGERIAN_STATES = [
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
@@ -30,6 +30,8 @@ export default function WaitlistPage() {
   const [email, setEmail] = useState("");
   const [state, setState] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   // Custom state dropdown controls
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -37,27 +39,7 @@ export default function WaitlistPage() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Background journey animation ref
-  const storyRef = useRef<JourneyStoryRef>(null);
 
-  // Auto-play the journey animation softly in the background
-  useEffect(() => {
-    let animId: number;
-    const startTime = performance.now();
-    const PERIOD = 28000; // 28s smooth loop
-
-    const render = (now: number) => {
-      const elapsed = now - startTime;
-      const progress = 0.5 * (1 - Math.cos((2 * Math.PI * elapsed) / PERIOD));
-      if (storyRef.current) {
-        storyRef.current.updateProgress(progress);
-      }
-      animId = window.requestAnimationFrame(render);
-    };
-
-    animId = window.requestAnimationFrame(render);
-    return () => window.cancelAnimationFrame(animId);
-  }, []);
 
   // Close custom dropdown on outside click or escape
   useEffect(() => {
@@ -90,15 +72,30 @@ export default function WaitlistPage() {
   const isValid = currentValue.trim().length > 0;
   const config = STEP_CONFIG[step];
 
-  const handleNext = (e: React.FormEvent) => {
+  const handleNext = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isValid) return;
+    if (!isValid || submitting) return;
+    setSubmitError("");
 
     const currentIndex = STEPS.indexOf(step);
     if (currentIndex < STEPS.length - 1) {
       setStep(STEPS[currentIndex + 1]);
     } else {
-      setSubmitted(true);
+      setSubmitting(true);
+      try {
+        const response = await fetch("/api/waitlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, email, state }),
+        });
+        const result = await response.json().catch(() => null) as { error?: string } | null;
+        if (!response.ok) throw new Error(result?.error || "We could not add you right now. Please try again.");
+        setSubmitted(true);
+      } catch (error) {
+        setSubmitError(error instanceof Error ? error.message : "We could not add you right now. Please try again.");
+      } finally {
+        setSubmitting(false);
+      }
     }
   };
 
@@ -108,10 +105,7 @@ export default function WaitlistPage() {
 
   return (
     <div className="relative min-h-screen flex flex-col bg-[#FAFAFC] overflow-hidden select-none">
-      {/* ── Background Journey Animation (Reused from Hero) ── */}
-      <div className="absolute inset-0 z-0 pointer-events-none opacity-40">
-        <JourneyStory storyRef={storyRef} />
-      </div>
+
 
       {/* ── Minimal top bar ── */}
       <header className="relative z-10 w-full px-6 sm:px-10 py-6 flex items-center justify-between">
@@ -246,13 +240,19 @@ export default function WaitlistPage() {
 
                   <Button
                     type="submit"
-                    disabled={!isValid}
+                    disabled={!isValid || submitting}
                     className="h-11 px-6 rounded-full bg-[#1F2937] hover:bg-[#111827] text-white font-medium text-sm shrink-0 disabled:bg-[#D1D5DB] transition-colors gap-2 cursor-pointer"
                   >
-                    {config.buttonLabel}
+                    {submitting ? "Joining..." : config.buttonLabel}
                     <ArrowRight className="w-4 h-4" />
                   </Button>
                 </form>
+
+                {submitError ? (
+                  <p className="text-red-600 text-sm" role="alert" aria-live="polite">
+                    {submitError}
+                  </p>
+                ) : null}
 
                 <p className="text-[#9CA3AF] text-xs">
                   No spam. Just the good stuff.
@@ -291,7 +291,7 @@ export default function WaitlistPage() {
       {/* ── Minimal footer ── */}
       <footer className="relative z-10 px-6 sm:px-10 py-8 text-center">
         <p className="text-[#9CA3AF] text-xs">
-          &copy; {new Date().getFullYear()} Passenger · Lagos, Nigeria
+          &copy; {new Date().getFullYear()} Passenger · Jos, Plateau State, Nigeria
         </p>
       </footer>
     </div>

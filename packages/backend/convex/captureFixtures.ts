@@ -14,7 +14,7 @@ function developmentOnly() {
 export const prepare = internalAction({
   args: { password: v.string() },
   returns: v.object({ email: v.string(), trips: v.number(), parcels: v.number() }),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ email: string; trips: number; parcels: number }> => {
     developmentOnly();
     if (args.password.length < 16) throw new Error("Use a strong capture-account password.");
     const { user } = await createAccount(ctx, {
@@ -34,7 +34,7 @@ export const prepare = internalAction({
 export const populate = internalMutation({
   args: { userId: v.id("users") },
   returns: v.object({ email: v.string(), trips: v.number(), parcels: v.number() }),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ email: string; trips: number; parcels: number }> => {
     developmentOnly();
     const user = await ctx.db.get(args.userId);
     if (user?.email !== email) throw new Error("Unexpected capture account.");

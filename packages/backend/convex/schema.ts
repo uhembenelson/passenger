@@ -176,6 +176,16 @@ export const promotionFields = {
 
 export default defineSchema({
   promotions: defineTable(promotionFields).index("by_published_and_position", ["published", "position"]),
+  waitlistSignups: defineTable({
+    name: v.string(),
+    email: v.string(),
+    state: v.string(),
+    confirmationStatus: v.union(v.literal("pending"), v.literal("sent"), v.literal("failed")),
+    confirmationEmailId: v.optional(v.string()),
+    lastConfirmationAttemptAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_email", ["email"]),
   ...authTables,
 
   users: defineTable({

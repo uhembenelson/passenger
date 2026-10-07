@@ -63,6 +63,8 @@ import type * as tier1 from "../tier1.js";
 import type * as verificationMigration from "../verificationMigration.js";
 import type * as verificationPolicy from "../verificationPolicy.js";
 import type * as verificationReview from "../verificationReview.js";
+import type * as waitlist from "../waitlist.js";
+import type * as waitlistState from "../waitlistState.js";
 import type * as wallet from "../wallet.js";
 
 import type {
@@ -128,6 +130,8 @@ const fullApi: ApiFromModules<{
   verificationMigration: typeof verificationMigration;
   verificationPolicy: typeof verificationPolicy;
   verificationReview: typeof verificationReview;
+  waitlist: typeof waitlist;
+  waitlistState: typeof waitlistState;
   wallet: typeof wallet;
 }> = anyApi as any;
 

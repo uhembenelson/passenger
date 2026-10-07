@@ -380,7 +380,7 @@ export const requestWithdrawal = action({ args: { amountNaira: v.number(), trans
   const sub = await subject(ctx);
   await ctx.runMutation(internal.wallet.rateLimit, { subject: sub, kind: "withdrawal" });
   const reserved = await ctx.runMutation(internal.wallet.reserveWithdrawal, { subject: sub, amountNaira: args.amountNaira, transactionPin: args.transactionPin });
-  if ("error" in reserved) fail(reserved.error);
+  if ("error" in reserved) fail(reserved.error ?? "Withdrawal could not be reserved.");
   return ctx.runAction(internal.finance.submitWithdrawal, { withdrawalId: reserved.withdrawalId });
 } });
 

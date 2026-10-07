@@ -245,7 +245,7 @@ describe("identity and least privilege", () => {
     const f = await fixture();
     await expect(f.outsider.mutation(api.accounts.upgradeToTier2, { bvn: "12345678901" })).rejects.toThrow("identity evidence");
     await expect(f.sender.mutation(api.accounts.upgradeToTier3, { state: "Plateau", lga: "Jos North", address: "Example address" })).rejects.toThrow("disabled");
-    await expect(f.sender.mutation(api.wallet.requestWithdrawal, { amountNaira: 1000 })).rejects.toThrow("not available");
+    await expect(f.sender.action(api.wallet.requestWithdrawal, { amountNaira: 1000, transactionPin: "1234" })).rejects.toThrow("not configured");
   });
   it("records deletion requests only when no delivery or wallet work remains", async () => {
     const f = await fixture();

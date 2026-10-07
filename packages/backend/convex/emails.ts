@@ -13,7 +13,7 @@ function escapeHtmlAttribute(value: string) {
 
 const LOGO_DATA_URI = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1024' height='1024' viewBox='0 0 1024 1024'%3E%3Crect width='1024' height='1024' rx='224' fill='%23183E32'/%3E%3Cpath d='M302 702 701 303M338 303h363v363' fill='none' stroke='%23D8ED93' stroke-width='88' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='302' cy='702' r='59' fill='%23D8ED93'/%3E%3C/svg%3E";
 
-function emailShell({ microLabel, headline, bodyHtml, cardHtml, ctaHref, ctaLabel, noteHtml }: {
+function emailShell({ microLabel, headline, bodyHtml, cardHtml, ctaHref, ctaLabel, noteHtml, footerReason = "You are receiving this because you use Passenger." }: {
   microLabel: string;
   headline: string;
   bodyHtml: string;
@@ -21,6 +21,7 @@ function emailShell({ microLabel, headline, bodyHtml, cardHtml, ctaHref, ctaLabe
   ctaHref: string;
   ctaLabel: string;
   noteHtml: string;
+  footerReason?: string;
 }) {
   return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -34,8 +35,16 @@ function emailShell({ microLabel, headline, bodyHtml, cardHtml, ctaHref, ctaLabe
 <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 @media only screen and (max-width: 600px) {
-  .container { width: 100% !important; }
-  .pad { padding-left: 32px !important; padding-right: 32px !important; }
+  .container { width: 100% !important; min-width: 100% !important; }
+  .mobile-px { padding-left: 20px !important; padding-right: 20px !important; }
+  .pad { padding-left: 20px !important; padding-right: 20px !important; }
+  .mobile-pt { padding-top: 32px !important; }
+  .mobile-pb { padding-bottom: 40px !important; }
+  .mobile-hero-pt { padding-top: 40px !important; }
+  .mobile-body { font-size: 16px !important; line-height: 1.8 !important; }
+  .mobile-h1 { font-size: 24px !important; line-height: 1.25 !important; }
+  .mobile-btn { width: 100% !important; }
+  .mobile-btn a { display: block !important; width: 100% !important; padding: 16px 20px !important; text-align: center !important; }
 }
 </style>
 </head>
@@ -45,11 +54,11 @@ function emailShell({ microLabel, headline, bodyHtml, cardHtml, ctaHref, ctaLabe
 <![endif]-->
 <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" bgcolor="#F7F7F8">
   <tr>
-    <td align="center" style="padding:48px 24px 64px 24px;">
+    <td align="center" class="mobile-px" style="padding:24px 16px 40px 16px;">
       <table role="presentation" class="container" width="600" border="0" cellspacing="0" cellpadding="0"
-             style="width:600px; max-width:600px; background-color:#FFFFFF; border-radius:16px; overflow:hidden;">
+             style="width:600px; max-width:600px; background-color:#FFFFFF; border-radius:12px; overflow:hidden; margin:0 auto;">
         <tr>
-          <td class="pad" style="padding:40px 56px 0 56px;" align="left">
+          <td class="pad mobile-pt" style="padding:40px 56px 0 56px;" align="left">
             <table role="presentation" border="0" cellspacing="0" cellpadding="0">
               <tr>
                 <td style="vertical-align:middle; font-size:0; line-height:0;">
@@ -65,43 +74,51 @@ function emailShell({ microLabel, headline, bodyHtml, cardHtml, ctaHref, ctaLabe
           </td>
         </tr>
         <tr>
-          <td class="pad" style="padding:56px 56px 0 56px;" align="left">
-            <p style="margin:0 0 20px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:#248A56;">${microLabel}</p>
-            <h1 style="margin:0 0 20px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:30px; font-weight:600; line-height:1.35; letter-spacing:-0.015em; color:#2D362F;">${headline}</h1>
-            ${bodyHtml}
+          <td class="pad mobile-hero-pt" style="padding:48px 56px 0 56px;" align="left">
+            <p style="margin:0 0 16px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:#248A56;">${microLabel}</p>
+            <h1 class="mobile-h1" style="margin:0 0 20px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:28px; font-weight:600; line-height:1.25; letter-spacing:-0.015em; color:#2D362F;">${headline}</h1>
+            <div class="mobile-body" style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.75; color:#4B5563;">
+              ${bodyHtml}
+            </div>
           </td>
         </tr>
         ${cardHtml}
         <tr>
-          <td class="pad" style="padding:48px 56px 0 56px;" align="left">
-            <table role="presentation" border="0" cellspacing="0" cellpadding="0">
+          <td class="pad" style="padding:40px 56px 0 56px;" align="left">
+            <table role="presentation" class="mobile-btn" border="0" cellspacing="0" cellpadding="0" width="100%">
               <tr>
-                <td align="center" bgcolor="#34D186" style="border-radius:999px;">
-                  <a href="${ctaHref}" target="_blank"
-                     style="display:inline-block; padding:16px 40px; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:16px; font-weight:600; line-height:1; color:#FFFFFF; background-color:#34D186; border-radius:999px; text-decoration:none; mso-padding-alt:0px;">
-                    ${ctaLabel}
-                  </a>
+                <td align="left">
+                  <table role="presentation" border="0" cellspacing="0" cellpadding="0">
+                    <tr>
+                      <td align="center" bgcolor="#34D186" style="border-radius:999px;">
+                        <a href="${ctaHref}" target="_blank"
+                           style="display:inline-block; padding:16px 32px; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:16px; font-weight:600; line-height:1; color:#FFFFFF; background-color:#34D186; border-radius:999px; text-decoration:none; mso-padding-alt:0px;">
+                          ${ctaLabel}
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
                 </td>
               </tr>
             </table>
-            <p style="margin:20px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:400; line-height:1.6; color:#7A7F87;">${noteHtml}</p>
+            <p style="margin:16px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:400; line-height:1.6; color:#7A7F87;">${noteHtml}</p>
           </td>
         </tr>
         <tr>
-          <td style="padding:64px 56px 0 56px;" align="left">
+          <td class="pad mobile-pb" style="padding:56px 56px 40px 56px;" align="left">
             <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%; border-top:1px solid #E5E7EB;">
               <tr>
-                <td style="padding:32px 0 40px 0;">
+                <td style="padding:32px 0 0 0;">
                   <p style="margin:0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:600; letter-spacing:0.02em; text-transform:uppercase; color:#4B5563;">Passenger</p>
                   <p style="margin:6px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:400; color:#7A7F87;">Good things move with people.</p>
-                  <p style="margin:20px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:400; color:#7A7F87; line-height:1.8;">
+                  <p style="margin:16px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:400; color:#7A7F87; line-height:1.7;">
                     <a href="https://usepassenger.com/help" style="color:#4B5563; text-decoration:none;">Help centre</a>
                     &nbsp;·&nbsp;
                     <a href="https://usepassenger.com/privacy" style="color:#4B5563; text-decoration:none;">Privacy</a>
                   </p>
-                  <p style="margin:20px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:400; color:#9CA3AF; line-height:1.6;">
-                    You are receiving this because you use Passenger.<br>
-                    Passenger, 12 Awolowo Road, Ikoyi, Lagos, Nigeria.
+                  <p style="margin:16px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:400; color:#9CA3AF; line-height:1.6;">
+                    ${escapeHtmlAttribute(footerReason)}<br>
+                    Passenger, Jos, Plateau State, Nigeria.
                   </p>
                 </td>
               </tr>
@@ -207,6 +224,61 @@ export function renderNotificationEmail(args: { name: string; title: string; bod
       noteHtml: "This is an important transactional update about your Passenger account or delivery.",
     }),
     text: `Hello ${args.name},\n\n${args.title}\n\n${detail}\n\nOpen Passenger: ${args.appUrl}`,
+  };
+}
+
+export function renderWaitlistEmail(args: { name: string; state: string; siteUrl: string }): { html: string; text: string } {
+  const firstName = args.name.trim().split(/\s+/)[0] || "there";
+  const htmlBody = `<p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Hi ${escapeHtmlAttribute(firstName)},</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Thank you for joining the Passenger waitlist.</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Passenger is being built around a simple everyday problem. Someone needs to send a package from one city to another, while someone else is already travelling along that same route.</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Most of the time, those two people never find each other. People still depend on friends, WhatsApp updates, transport parks, or whatever option is available at the time.</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Passenger is being built to make that process easier.</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">If you need to send something, you will be able to find a traveller already going in that direction. If you are travelling, you will be able to earn from a journey you were already making.</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">We are currently preparing the first version of Passenger and working through the areas that matter most, including identity verification, payments, package handoff, delivery confirmation, and user safety.</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Because you joined the waitlist, you will be among the first people to hear from us when Passenger begins opening to users. You will also receive important updates as we get closer to launch.</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">You do not need to do anything else at the moment. We will contact you when early access becomes available.</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">We appreciate you being here this early.</p>
+    <p style="margin:0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">
+      Passenger<br>
+      Send it with someone already going your way.
+    </p>`;
+
+  const text = `Hi ${firstName},
+
+Thank you for joining the Passenger waitlist.
+
+Passenger is being built around a simple everyday problem. Someone needs to send a package from one city to another, while someone else is already travelling along that same route.
+
+Most of the time, those two people never find each other. People still depend on friends, WhatsApp updates, transport parks, or whatever option is available at the time.
+
+Passenger is being built to make that process easier.
+
+If you need to send something, you will be able to find a traveller already going in that direction. If you are travelling, you will be able to earn from a journey you were already making.
+
+We are currently preparing the first version of Passenger and working through the areas that matter most, including identity verification, payments, package handoff, delivery confirmation, and user safety.
+
+Because you joined the waitlist, you will be among the first people to hear from us when Passenger begins opening to users. You will also receive important updates as we get closer to launch.
+
+You do not need to do anything else at the moment. We will contact you when early access becomes available.
+
+We appreciate you being here this early.
+
+Passenger
+Send it with someone already going your way.`;
+
+  return {
+    html: emailShell({
+      microLabel: "Waitlist confirmed",
+      headline: "You are on the Passenger waitlist",
+      bodyHtml: `<div style="margin:0;">${htmlBody}</div>`,
+      cardHtml: "",
+      ctaHref: escapeHtmlAttribute(args.siteUrl),
+      ctaLabel: "Visit Passenger",
+      noteHtml: "We will contact you when early access becomes available.",
+      footerReason: "You are receiving this because you joined the Passenger waitlist.",
+    }),
+    text,
   };
 }
 

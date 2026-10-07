@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderResetPasswordEmail, renderVerificationEmail, sendBrandedEmail } from "../convex/emails";
+import { renderResetPasswordEmail, renderVerificationEmail, renderWaitlistEmail, sendBrandedEmail } from "../convex/emails";
 
 const fetchMock = vi.fn();
 
@@ -90,4 +90,17 @@ it("renders signup verification with escaped recipient details and the code", ()
   expect(html).toContain("a=1&amp;b=2");
   expect(html).toContain("verification-token");
   expect(text).toContain("expires in 10 minutes");
+});
+
+it("renders a branded waitlist confirmation with an accurate footer", () => {
+  const { html, text } = renderWaitlistEmail({
+    name: "<Ada> Okafor",
+    state: "Lagos",
+    siteUrl: "https://usepassenger.com",
+  });
+  expect(html).toContain("You are on the Passenger waitlist.");
+  expect(html).toContain("&lt;Ada&gt;");
+  expect(html).toContain("because you joined the Passenger waitlist");
+  expect(html).not.toContain("because you use Passenger");
+  expect(text).toContain("Thanks for joining us from Lagos");
 });
