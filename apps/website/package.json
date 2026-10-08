@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@lucasmarkes/hairline": "0.5.0",
     "@passenger/backend": "workspace:*",
     "@passenger/core": "workspace:*",
     "@passenger/design-tokens": "workspace:*",
