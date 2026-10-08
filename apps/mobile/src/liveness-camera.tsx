@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Linking, Modal, Platform, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Camera, X } from "lucide-react-native";
@@ -6,6 +6,8 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { WebView } from "react-native-webview";
 import { Button, colors, fontFamily, Txt } from "./ui";
+
+const isWeb = Platform.OS === "web";
 
 export type LivenessAsset = {
   uri?: string;
@@ -217,6 +219,12 @@ export function LivenessCameraModal({ visible, onClose, onCapture }: Props) {
 
   useEffect(() => {
     if (!visible) return;
+    // Browser prompts for camera inside the iframe via getUserMedia.
+    if (isWeb) {
+      setPermissionStatus("granted");
+      setErrorNotice("");
+      return;
+    }
     void (async () => {
       try {
         const current = await ImagePicker.getCameraPermissionsAsync();
@@ -244,16 +252,18 @@ export function LivenessCameraModal({ visible, onClose, onCapture }: Props) {
     }
   };
 
-  const handleMessage = async (event: { nativeEvent: { data: string } }) => {
+  const handleMessage = useCallback(async (event: { nativeEvent: { data: string } }) => {
     try {
-      const payload = JSON.parse(event.nativeEvent.data);
+      const raw = event.nativeEvent.data;
+      if (typeof raw !== "string" || !raw.startsWith("{")) return;
+      const payload = JSON.parse(raw);
       if (payload.type === "success" && payload.dataUrl) {
         setProcessing(true);
         const dataUrl = payload.dataUrl as string;
         const base64Index = dataUrl.indexOf(",");
         const base64Data = base64Index !== -1 ? dataUrl.slice(base64Index + 1) : dataUrl;
 
-        if (Platform.OS === "web") {
+        if (isWeb) {
           const res = await fetch(dataUrl);
           const blob = await res.blob();
           onCapture({
@@ -277,7 +287,18 @@ export function LivenessCameraModal({ visible, onClose, onCapture }: Props) {
     } catch (e) {
       console.warn("[liveness] error handling camera message", e);
     }
-  };
+  }, [onCapture]);
+
+  // react-native-webview is a stub on web; receive iframe postMessage instead.
+  useEffect(() => {
+    if (!isWeb || !visible || permissionStatus !== "granted") return;
+    const onWindowMessage = (event: MessageEvent) => {
+      if (typeof event.data !== "string") return;
+      void handleMessage({ nativeEvent: { data: event.data } });
+    };
+    window.addEventListener("message", onWindowMessage);
+    return () => window.removeEventListener("message", onWindowMessage);
+  }, [visible, permissionStatus, handleMessage]);
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
@@ -324,20 +345,36 @@ export function LivenessCameraModal({ visible, onClose, onCapture }: Props) {
           </View>
         ) : (
           <View style={styles.webContainer}>
-            <WebView
-              key={cameraAttempt}
-              source={{ html: LIVENESS_HTML, baseUrl: "https://localhost/" }}
-              originWhitelist={["*"]}
-              javaScriptEnabled={true}
-              domStorageEnabled={true}
-              mediaPlaybackRequiresUserAction={false}
-              allowsInlineMediaPlayback={true}
-              mediaCapturePermissionGrantType="grant"
-              onPermissionRequest={(request: any) => request.grant(request.resources)}
-              onMessage={handleMessage}
-              onError={event => setErrorNotice(event.nativeEvent.description || "Could not load the live camera.")}
-              style={styles.webView}
-            />
+            {isWeb ? (
+              React.createElement("iframe", {
+                key: cameraAttempt,
+                title: "Live identity check",
+                srcDoc: LIVENESS_HTML,
+                allow: "camera; microphone; autoplay",
+                style: {
+                  flex: 1,
+                  width: "100%",
+                  height: "100%",
+                  border: "none",
+                  backgroundColor: "#000000",
+                },
+              })
+            ) : (
+              <WebView
+                key={cameraAttempt}
+                source={{ html: LIVENESS_HTML, baseUrl: "https://localhost/" }}
+                originWhitelist={["*"]}
+                javaScriptEnabled={true}
+                domStorageEnabled={true}
+                mediaPlaybackRequiresUserAction={false}
+                allowsInlineMediaPlayback={true}
+                mediaCapturePermissionGrantType="grant"
+                onPermissionRequest={(request: any) => request.grant(request.resources)}
+                onMessage={handleMessage}
+                onError={event => setErrorNotice(event.nativeEvent.description || "Could not load the live camera.")}
+                style={styles.webView}
+              />
+            )}
             {!!errorNotice && <View style={styles.cameraError}><Txt style={styles.promptTitle}>Camera unavailable</Txt><Txt style={styles.promptBody}>{errorNotice}</Txt><Button title="Try again" variant="lime" onPress={() => { setErrorNotice(""); setCameraAttempt(current => current + 1); }} /><Button title="Go back" variant="ghost" onPress={onClose} /></View>}
             {processing && (
               <View style={styles.processingOverlay}>
