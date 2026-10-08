@@ -89,10 +89,10 @@ export function FaqSection() {
         <p className="mx-auto mt-12 max-w-3xl text-center text-sm text-[#7A7F87]">
           Something else on your mind?{" "}
           <a
-            href="mailto:support@passenger.ng"
+            href="mailto:support@usepassenger.com"
             className="font-semibold text-[#248A56] border-b border-[#248A56]/40 hover:border-[#248A56] transition-colors"
           >
-            support@passenger.ng
+            support@usepassenger.com
           </a>
         </p>
       </div>

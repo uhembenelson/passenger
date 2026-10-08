@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Work_Sans } from "next/font/google";
 import { rootCssVariables } from "@passenger/design-tokens";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const workSans = Work_Sans({
@@ -15,10 +16,17 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+const rootDescription =
+  "Good things move with people. Send packages with verified travellers already heading in the right direction, or monetize your extra luggage space.";
+
 export const metadata: Metadata = {
-  title: "Passenger — Peer-to-Peer Delivery Going Your Way",
-  description:
-    "Good things move with people. Send packages with verified travellers already heading in the right direction, or monetize your extra luggage space.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: `${SITE_NAME} — Peer-to-Peer Delivery Going Your Way`,
+    template: `%s | ${SITE_NAME}`,
+  },
+  description: rootDescription,
+  applicationName: SITE_NAME,
   keywords: [
     "peer to peer delivery",
     "send package",
@@ -27,7 +35,29 @@ export const metadata: Metadata = {
     "nigeria courier",
     "passenger app",
   ],
-  authors: [{ name: "Passenger" }],
+  authors: [{ name: SITE_NAME }],
+  creator: SITE_NAME,
+  publisher: SITE_NAME,
+  alternates: {
+    canonical: SITE_URL,
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_NG",
+    url: SITE_URL,
+    siteName: SITE_NAME,
+    title: `${SITE_NAME} — Peer-to-Peer Delivery Going Your Way`,
+    description: rootDescription,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${SITE_NAME} — Peer-to-Peer Delivery Going Your Way`,
+    description: rootDescription,
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({

@@ -11,7 +11,7 @@ const PRODUCT_LINKS = [
 
 const COMPANY_LINKS = [
   { label: "About", href: "#about" },
-  { label: "Contact", href: "mailto:support@passenger.ng" },
+  { label: "Contact", href: "mailto:support@usepassenger.com" },
 ];
 
 export function Footer() {
