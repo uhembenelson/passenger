@@ -52,7 +52,7 @@ function Parcel({
 }) {
   const stroke = highlight ? "#1F2937" : "#34D186";
   return (
-    <g transform={`translate(${x} ${y}) scale(${scale})`}>
+    <g transform={`translate(${x + 22} ${y + 36}) scale(${scale}) translate(-22 -36)`}>
       <rect width="44" height="36" rx="8" fill="#FAFAFC" stroke={stroke} strokeWidth="2" />
       <line x1="22" y1="6" x2="22" y2="30" stroke={stroke} strokeWidth="1.4" />
       <line x1="8" y1="18" x2="36" y2="18" stroke={stroke} strokeWidth="1.4" />
@@ -66,17 +66,19 @@ function Person({
   walking = false,
   phase = 0,
   tone = "traveller",
+  size = 1,
 }: {
   x: number;
   facing?: 1 | -1;
   walking?: boolean;
   phase?: number;
   tone?: "traveller" | "sender";
+  size?: number;
 }) {
   const stroke = tone === "traveller" ? "#1F2937" : "#248A56";
   const stride = walking ? Math.sin(phase * Math.PI * 2) * 6 : 0;
   return (
-    <g transform={`translate(${x} 0) scale(${facing} 1)`}>
+    <g transform={`translate(${x} 218) scale(${facing * size} ${size}) translate(0 -218)`}>
       <circle cx="0" cy="118" r="14" fill="#FAFAFC" stroke={stroke} strokeWidth="2" />
       <rect x="-16" y="134" width="32" height="46" rx="12" fill="#FAFAFC" stroke={stroke} strokeWidth="2" />
       <line x1="-8" y1="184" x2={-10 - stride} y2="218" stroke={stroke} strokeWidth="2.2" strokeLinecap="round" />
@@ -94,7 +96,16 @@ function Person({
  */
 function JourneyAtmosphere() {
   const [t, setT] = useState(0.42);
+  const [isMobile, setIsMobile] = useState(false);
   const reducedMotion = useRef(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   useEffect(() => {
     reducedMotion.current =
@@ -179,6 +190,7 @@ function JourneyAtmosphere() {
   }
 
   const pathDash = reducedMotion.current ? 0 : t * 240;
+  const figureScale = isMobile ? 2.6 : 1;
 
   // Caption timing is independent so the middle line can be read
   const beat =
@@ -194,7 +206,12 @@ function JourneyAtmosphere() {
       {/* Scene above the footer; caption sits under the road */}
       <div className="absolute inset-x-0 bottom-14 flex w-full flex-col sm:bottom-16">
         <div className="h-[min(36vh,340px)] w-full">
-          <svg className="h-full w-full" viewBox="0 0 1200 260" preserveAspectRatio="xMidYMax meet" fill="none">
+          <svg
+            className="h-full w-full"
+            viewBox={isMobile ? "0 -80 1200 340" : "0 0 1200 260"}
+            preserveAspectRatio="xMidYMax meet"
+            fill="none"
+          >
             <line x1="40" y1="230" x2="1160" y2="230" stroke="#D1D5DB" strokeWidth="2" strokeLinecap="round" />
             <line
               x1="40"
@@ -222,6 +239,7 @@ function JourneyAtmosphere() {
                 walking={aWalking}
                 phase={walkPhase}
                 tone="traveller"
+                size={figureScale}
               />
             </g>
 
@@ -231,16 +249,17 @@ function JourneyAtmosphere() {
               walking={bWalking}
               phase={walkPhase}
               tone="sender"
+              size={figureScale}
             />
             {approaching ? (
-              <circle cx={bWaitX + 26} cy={128} r="3.5" fill="#34D186" className="waitlist-need-pulse" />
+              <circle cx={bWaitX + 26} cy={isMobile ? -24 : 128} r="4.5" fill="#34D186" className="waitlist-need-pulse" />
             ) : null}
 
             <Parcel
               x={parcelX}
               y={parcelY}
               highlight={parcelHighlight}
-              scale={handingOver ? 1.08 : 1}
+              scale={figureScale * (handingOver ? 1.08 : 1)}
             />
           </svg>
         </div>
