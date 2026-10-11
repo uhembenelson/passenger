@@ -84,7 +84,11 @@ export function SystemSettings({ settings, feeConfig, escrowPolicies, cancellati
   const [viewingPrivacy, setViewingPrivacy] = useState<{ id: string; key: string; title: string; version: string; status: "Draft" | "Published"; content: string } | null>(null);
 
   useEffect(() => {
-    function handleClick() { setActiveMenuId(null); }
+    function handleClick(event: MouseEvent) {
+      const target = event.target as Element | null;
+      if (target && target.closest(".figma-settings-menu-wrapper")) return;
+      setActiveMenuId(null);
+    }
     window.addEventListener("click", handleClick);
     return () => window.removeEventListener("click", handleClick);
   }, []);

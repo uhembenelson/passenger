@@ -12,4 +12,6 @@ crons.interval("reconcile wallet deposits", { minutes: 5 }, internal.wallet.swee
 crons.interval("reconcile outgoing payments", { minutes: 5 }, internal.financeState.sweepOperations, {});
 crons.interval("reconcile provider refunds", { hours: 1 }, internal.payments.sweepRefunds, {});
 
+crons.interval("send due admin emails", { minutes: 5 }, internal.adminEmails.processDue, {});
+
 export default crons;

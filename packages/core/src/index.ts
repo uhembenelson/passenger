@@ -75,8 +75,13 @@ export const PERMISSIONS = {
   SECURITY_MANAGE: "security.manage",
   MONITORING_VIEW: "monitoring.view",
   NOTIFICATIONS_VIEW: "notifications.view",
+  NOTIFICATIONS_MANAGE: "notifications.manage",
 } as const;
 export type PermissionKey = typeof PERMISSIONS[keyof typeof PERMISSIONS];
+
+// Built-in audiences selectable when composing a broadcast or seeding an email
+// list. Kept as plain strings so the stored value stays readable.
+export const EMAIL_AUDIENCES = ["All users", "Tier-1 users", "Tier-2 users", "Tier-3 users", "Drivers", "Senders", "Waitlist"] as const;
 
 const CITY_COORDINATES: Record<string, { lat: number; lon: number }> = {
   jos: { lat: 9.8965, lon: 8.8583 },
@@ -287,3 +292,37 @@ export function formatErrorMessage(error: unknown, fallback = "We couldn't finis
 
   return sanitizeErrorMessage(rawMessage, fallback);
 }
+
+// Shared branded email document builder. Used by the Convex backend when it
+// sends mail and by the admin template builder for its live preview, so the
+// two can never drift apart.
+export {
+  DEFAULT_EMAIL_DESIGN,
+  DEFAULT_EMAIL_FOOTER,
+  EMAIL_BLOCK_LABELS,
+  emailShell,
+  escapeHtmlAttribute,
+  renderEmailBlockHtml,
+  renderEmailBlockText,
+  renderEmailDocument,
+} from "./emailTemplate";
+export type {
+  EmailAlign,
+  EmailBlock,
+  EmailBlockType,
+  EmailButtonBlock,
+  EmailButtonVariant,
+  EmailDesign,
+  EmailDividerBlock,
+  EmailFooter,
+  EmailFooterLink,
+  EmailFooterLinkLayout,
+  EmailHeadingBlock,
+  EmailHeadingLevel,
+  EmailImageBlock,
+  EmailImageWidth,
+  EmailParagraphBlock,
+  EmailShellOptions,
+  EmailSpacerBlock,
+  EmailSpacerSize,
+} from "./emailTemplate";

@@ -1,140 +1,15 @@
 import { ConvexError } from "convex/values";
+import { emailShell, escapeHtmlAttribute } from "@passenger/core";
 
 /* Branded Passenger email templates.
  * Mirrors packages/email-templates/templates/base.html (same shell, tokens
  * and tone) so every customer-facing email shares one visual identity:
  * Work Sans, the brand green #34D186 as the single accent, monochrome base,
  * one primary action, no emojis, calm plain-language copy.
+ *
+ * The shared shell and HTML escaper live in @passenger/core so the admin
+ * template builder can preview the exact markup that gets sent.
  */
-
-function escapeHtmlAttribute(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-const LOGO_DATA_URI = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1024' height='1024' viewBox='0 0 1024 1024'%3E%3Crect width='1024' height='1024' rx='224' fill='%23183E32'/%3E%3Cpath d='M302 702 701 303M338 303h363v363' fill='none' stroke='%23D8ED93' stroke-width='88' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='302' cy='702' r='59' fill='%23D8ED93'/%3E%3C/svg%3E";
-
-function emailShell({ microLabel, headline, bodyHtml, cardHtml, ctaHref, ctaLabel, noteHtml, footerReason = "You are receiving this because you use Passenger." }: {
-  microLabel: string;
-  headline: string;
-  bodyHtml: string;
-  cardHtml: string;
-  ctaHref: string;
-  ctaLabel: string;
-  noteHtml: string;
-  footerReason?: string;
-}) {
-  return `<!DOCTYPE html>
-<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="X-UA-Compatible" content="IE=edge">
-<meta name="x-apple-disable-message-reformatting">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-@media only screen and (max-width: 600px) {
-  .container { width: 100% !important; min-width: 100% !important; }
-  .mobile-px { padding-left: 20px !important; padding-right: 20px !important; }
-  .pad { padding-left: 20px !important; padding-right: 20px !important; }
-  .mobile-pt { padding-top: 32px !important; }
-  .mobile-pb { padding-bottom: 40px !important; }
-  .mobile-hero-pt { padding-top: 40px !important; }
-  .mobile-body { font-size: 16px !important; line-height: 1.8 !important; }
-  .mobile-h1 { font-size: 24px !important; line-height: 1.25 !important; }
-  .mobile-btn { width: 100% !important; }
-  .mobile-btn a { display: block !important; width: 100% !important; padding: 16px 20px !important; text-align: center !important; }
-}
-</style>
-</head>
-<body style="margin:0; padding:0; background-color:#F7F7F8; -webkit-text-size-adjust:100%; word-spacing:normal;">
-<!--[if mso]>
-<table role="presentation" align="center" border="0" cellspacing="0" cellpadding="0" width="600"><tr><td width="600">
-<![endif]-->
-<table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" bgcolor="#F7F7F8">
-  <tr>
-    <td align="center" class="mobile-px" style="padding:24px 16px 40px 16px;">
-      <table role="presentation" class="container" width="600" border="0" cellspacing="0" cellpadding="0"
-             style="width:600px; max-width:600px; background-color:#FFFFFF; border-radius:12px; overflow:hidden; margin:0 auto;">
-        <tr>
-          <td class="pad mobile-pt" style="padding:40px 56px 0 56px;" align="left">
-            <table role="presentation" border="0" cellspacing="0" cellpadding="0">
-              <tr>
-                <td style="vertical-align:middle; font-size:0; line-height:0;">
-                  <img src="${LOGO_DATA_URI}" width="36" height="36" alt=""
-                       style="display:block; width:36px; height:36px; border:0;"
-                       data-replace="https://assets.passenger.ng/emails/logo-256.png">
-                </td>
-                <td style="vertical-align:middle; padding-left:12px;">
-                  <span style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:20px; font-weight:600; letter-spacing:-0.01em; color:#2D362F;">Passenger</span>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td class="pad mobile-hero-pt" style="padding:48px 56px 0 56px;" align="left">
-            <p style="margin:0 0 16px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:#248A56;">${microLabel}</p>
-            <h1 class="mobile-h1" style="margin:0 0 20px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:28px; font-weight:600; line-height:1.25; letter-spacing:-0.015em; color:#2D362F;">${headline}</h1>
-            <div class="mobile-body" style="font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.75; color:#4B5563;">
-              ${bodyHtml}
-            </div>
-          </td>
-        </tr>
-        ${cardHtml}
-        <tr>
-          <td class="pad" style="padding:40px 56px 0 56px;" align="left">
-            <table role="presentation" class="mobile-btn" border="0" cellspacing="0" cellpadding="0" width="100%">
-              <tr>
-                <td align="left">
-                  <table role="presentation" border="0" cellspacing="0" cellpadding="0">
-                    <tr>
-                      <td align="center" bgcolor="#34D186" style="border-radius:999px;">
-                        <a href="${ctaHref}" target="_blank"
-                           style="display:inline-block; padding:16px 32px; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:16px; font-weight:600; line-height:1; color:#FFFFFF; background-color:#34D186; border-radius:999px; text-decoration:none; mso-padding-alt:0px;">
-                          ${ctaLabel}
-                        </a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-            <p style="margin:16px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:400; line-height:1.6; color:#7A7F87;">${noteHtml}</p>
-          </td>
-        </tr>
-        <tr>
-          <td class="pad mobile-pb" style="padding:56px 56px 40px 56px;" align="left">
-            <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="width:100%; border-top:1px solid #E5E7EB;">
-              <tr>
-                <td style="padding:32px 0 0 0;">
-                  <p style="margin:0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:600; letter-spacing:0.02em; text-transform:uppercase; color:#4B5563;">Passenger</p>
-                  <p style="margin:6px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:400; color:#7A7F87;">Good things move with people.</p>
-                  <p style="margin:16px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; font-weight:400; color:#7A7F87; line-height:1.7;">
-                    <a href="https://usepassenger.com/help" style="color:#4B5563; text-decoration:none;">Help centre</a>
-                    &nbsp;·&nbsp;
-                    <a href="https://usepassenger.com/privacy" style="color:#4B5563; text-decoration:none;">Privacy</a>
-                  </p>
-                  <p style="margin:16px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:12px; font-weight:400; color:#9CA3AF; line-height:1.6;">
-                    ${escapeHtmlAttribute(footerReason)}<br>
-                    Passenger, Jos, Plateau State, Nigeria.
-                  </p>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
-<!--[if mso]>
-</td></tr></table>
-<![endif]-->
-</body>
-</html>`;
-}
 
 export function renderResetPasswordEmail(args: { email: string; resetUrl: string; code: string }): { html: string; text: string } {
   const href = escapeHtmlAttribute(args.resetUrl);

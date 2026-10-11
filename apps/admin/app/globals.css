@@ -673,12 +673,12 @@
 .figma-notifications-header-row {display:flex;justify-content:space-between;align-items:center;width:100%}
 .figma-notifications-header-left {display:flex;align-items:center;gap:24px}
 .figma-notifications-header-left h1 {margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:24px;line-height:31px;font-weight:500;letter-spacing:-.02em;color:#1F2937}
-.figma-notifications-success-pill {display:inline-flex;align-items:center;gap:8px;padding:8px 18px;border-radius:999px;background:#27AB6B;color:#FFFFFF;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,.05);white-space:nowrap}
+.figma-notifications-success-pill {display:inline-flex;align-items:center;gap:8px;padding:8px 18px;border-radius:999px;background:var(--ds-color-brand-primary);color:#FFFFFF;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,.05);white-space:nowrap}
 .figma-notifications-pill-close {background:transparent;border:none;color:#FFFFFF;cursor:pointer;display:inline-flex;align-items:center;padding:2px;margin-left:4px;opacity:.8;border-radius:999px;transition:opacity .15s}
 .figma-notifications-pill-close:hover {opacity:1}
 .figma-notifications-actions-bar {display:flex;align-items:center;margin-top:4px}
-.figma-notifications-send-btn {display:inline-flex;align-items:center;justify-content:center;padding:10px 24px;border-radius:999px;background:var(--ds-color-action-primary);color:#FFFFFF;border:none;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:500;cursor:pointer;width:fit-content;transition:background-color .15s ease,transform .1s ease}
-.figma-notifications-send-btn:hover {background:var(--ds-color-action-primary-hover)}
+.figma-notifications-send-btn {display:inline-flex;align-items:center;justify-content:center;padding:10px 24px;border-radius:999px;background:var(--ds-color-brand-primary);color:#FFFFFF;border:none;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:500;cursor:pointer;width:fit-content;transition:background-color .15s ease,transform .1s ease}
+.figma-notifications-send-btn:hover {background:var(--ds-color-brand-primary-hover)}
 .figma-notifications-send-btn:active {transform:scale(.98)}
 .figma-notifications-table-card {width:100%;background:#FFFFFF;border:1px solid #F3F3F3;border-radius:12px;overflow:visible;box-shadow:0 1px 3px rgba(0,0,0,.02)}
 .figma-notifications-table {width:100%;border-collapse:collapse}
@@ -705,16 +705,16 @@
 .figma-notifications-field {display:flex;flex-direction:column;gap:8px}
 .figma-notifications-field label {font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;line-height:16px;font-weight:400;color:#374151}
 .figma-notifications-field input,.figma-notifications-field textarea {width:100%;border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1F2937;background:#FFFFFF;outline:none;transition:border-color .15s ease}
-.figma-notifications-field input:focus,.figma-notifications-field textarea:focus {border-color:#27AB6B}
+.figma-notifications-field input:focus,.figma-notifications-field textarea:focus {border-color:var(--ds-color-brand-primary)}
 .figma-notifications-select-wrap {position:relative;width:100%}
 .figma-notifications-select-wrap select {width:100%;border:1px solid #E5E7EB;border-radius:8px;padding:12px 36px 12px 14px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#1F2937;background:#FFFFFF;outline:none;appearance:none;cursor:pointer}
-.figma-notifications-select-wrap select:focus {border-color:#27AB6B}
+.figma-notifications-select-wrap select:focus {border-color:var(--ds-color-brand-primary)}
 .figma-notifications-select-arrow {position:absolute;right:14px;top:50%;transform:translateY(-50%);pointer-events:none;color:#1F2937}
 .figma-notifications-modal-actions {display:flex;align-items:center;justify-content:center;gap:16px;margin-top:16px}
-.figma-notifications-btn-secondary {padding:12px 28px;border-radius:999px;background:#FFFFFF;border:1px solid #BCF0D7;color:var(--ds-color-action-primary);font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:all .15s ease}
+.figma-notifications-btn-secondary {padding:12px 28px;border-radius:999px;background:#FFFFFF;border:1px solid var(--ds-color-border-action);color:var(--ds-color-brand-primary-strong);font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:all .15s ease}
 .figma-notifications-btn-secondary:hover {background:#EAF5F0}
-.figma-notifications-btn-primary {padding:12px 36px;border-radius:999px;background:var(--ds-color-action-primary);border:none;color:#FFFFFF;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:background-color .15s ease}
-.figma-notifications-btn-primary:hover {background:var(--ds-color-action-primary-hover)}
+.figma-notifications-btn-primary {padding:12px 36px;border-radius:999px;background:var(--ds-color-brand-primary);border:none;color:#FFFFFF;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:background-color .15s ease}
+.figma-notifications-btn-primary:hover {background:var(--ds-color-brand-primary-hover)}
 .figma-notifications-view-body {display:flex;flex-direction:column;gap:16px;margin-bottom:20px}
 .figma-notifications-view-row {display:flex;align-items:baseline;gap:12px}
 .figma-notifications-view-row .view-label {font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;font-weight:500;color:#6B7280;min-width:120px}
@@ -1037,3 +1037,162 @@
   font-weight: 600 !important;
   margin-bottom: 12px !important;
 }
+
+/* Notifications: channel tabs */
+.figma-notifications-tabs {display:flex;gap:28px;width:100%;border-bottom:1px solid #F3F3F3}
+.figma-notifications-tabs button {position:relative;padding:0 0 14px;border:none;background:transparent;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:15px;line-height:20px;font-weight:500;color:#7A7F87;cursor:pointer}
+.figma-notifications-tabs button:hover {color:#374151}
+.figma-notifications-tabs button.active {color:var(--ds-color-brand-primary-strong)}
+.figma-notifications-tabs button.active::after {content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;border-radius:2px;background:var(--ds-color-brand-primary)}
+.figma-notifications-tab-panel {display:flex;flex-direction:column;gap:20px;width:100%}
+
+/* Notifications: status banners */
+.figma-notifications-banner {display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;border-radius:10px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;font-weight:500}
+.figma-notifications-banner.success {background:#EAF5F0;color:var(--ds-color-brand-primary-strong)}
+.figma-notifications-banner.error {background:#FEF2F2;color:#C8342B}
+.figma-notifications-banner-close {display:inline-flex;align-items:center;padding:2px;border:none;border-radius:999px;background:transparent;color:inherit;cursor:pointer;opacity:.7}
+.figma-notifications-banner-close:hover {opacity:1}
+
+/* Notifications: small helpers used by the email tab */
+.figma-notifications-field-hint {font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;color:#7A7F87}
+.figma-notifications-check {display:flex;align-items:center;gap:10px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;color:#374151;cursor:pointer}
+.figma-notifications-check input {width:16px;height:16px;accent-color:var(--ds-color-brand-primary)}
+.figma-notifications-view-note {margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#4B5563}
+.figma-notifications-modal-wide {width:720px}
+.figma-notifications-preview {border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;background:#F7F7F8;margin-bottom:20px}
+.figma-notifications-preview iframe {display:block;width:100%;height:420px;border:0;background:#FFFFFF}
+.figma-notifications-btn-primary:disabled,.figma-notifications-btn-secondary:disabled,.figma-notifications-send-btn:disabled {opacity:.55;cursor:not-allowed}
+
+/* Notifications: email sub-tabs (Emails | Templates | Lists) */
+.figma-notifications-subtabs {display:flex;gap:28px;width:100%;border-bottom:1px solid #F3F3F3;padding-top:2px}
+.figma-notifications-subtab {position:relative;padding:0 0 12px;border:none;background:transparent;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;font-weight:500;color:#7A7F87;cursor:pointer}
+.figma-notifications-subtab:hover {color:#374151}
+.figma-notifications-subtab.active {color:var(--ds-color-brand-primary-strong)}
+.figma-notifications-subtab.active::after {content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;border-radius:2px;background:var(--ds-color-brand-primary)}
+
+/* Notifications: visible row actions (used by templates and lists panels) */
+.notif-row-actions {display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.notif-btn-sm {display:inline-flex;align-items:center;gap:6px;padding:8px 14px;font-size:13px}
+.notif-row-btn {display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:1px solid #E5E7EB;border-radius:6px;background:#FFFFFF;color:#6B7280;cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease}
+.notif-row-btn:hover {background:#F3F4F6;color:#1F2937}
+.notif-row-btn.danger:hover {background:#FEF2F2;border-color:#FECACA;color:#C8342B}
+.notif-row-btn:disabled {opacity:.45;cursor:not-allowed}
+
+/* Notifications: search box and toolbar used by the waitlist panel */
+.figma-waitlist-actions {justify-content:space-between;gap:12px;flex-wrap:wrap}
+.figma-notifications-search {display:flex;align-items:center;gap:10px;width:320px;max-width:100%;padding:11px 14px;border:1px solid #F3F3F3;border-radius:12px;background:#FFFFFF}
+.figma-notifications-search svg {color:#9CA3AF;flex-shrink:0}
+.figma-notifications-search input {flex:1;border:0;background:transparent;padding:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:16px;color:#1F2937}
+.figma-notifications-search input::placeholder {color:#9CA3AF;opacity:1}
+.figma-notifications-search input:focus {outline:none}
+
+/* Notifications: one-off recipient field in the email composer audience panel */
+.figma-notifications-single-email {margin-top:10px}
+
+/* Notifications: email lists panel */
+.figma-notifications-modal-lists {width:760px}
+.notif-panel-head {display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 24px;border-bottom:1px solid #F3F3F3}
+.notif-panel-head h3 {margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:16px;font-weight:600;color:#1F2937}
+.notif-panel-head p {margin:4px 0 0 0}
+.email-list-name-cell {display:flex;flex-direction:column;gap:2px}
+.email-list-description {font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;color:#7A7F87}
+.email-list-count {display:inline-flex;align-items:center;gap:6px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;font-weight:500;color:#374151;white-space:nowrap}
+.email-list-count svg {color:var(--ds-color-brand-primary-strong)}
+.email-list-link-tag {display:inline-flex;width:fit-content;margin-top:4px;padding:2px 8px;border-radius:999px;background:#EAF5F0;color:var(--ds-color-brand-primary-strong);font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;white-space:nowrap}
+.email-list-link-tag.is-external {background:#F3F4F6;color:#4B5563}
+.email-lists-manage-section {display:flex;flex-direction:column;gap:12px;padding:18px 24px;border-bottom:1px solid #F3F3F3}
+.email-lists-manage-section h4 {margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#7A7F87}
+.email-lists-single-row {display:flex;align-items:flex-end;gap:12px}
+.email-lists-single-row .figma-notifications-field {flex:1;margin:0}
+.email-lists-import-row {display:flex;align-items:center;gap:10px}
+.email-lists-import-row .figma-notifications-select-wrap {flex:1}
+.email-lists-members-head {display:flex;align-items:center;justify-content:space-between;gap:12px}
+.email-lists-members-scroll {display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto}
+.email-lists-member-row {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #F3F3F3;border-radius:10px;background:#FFFFFF}
+.email-lists-member-row:hover {border-color:#E5E7EB}
+.email-lists-member-main {display:flex;flex-direction:column;gap:0;min-width:0}
+.email-lists-member-main .email-list-description {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.email-lists-manage-section .figma-notifications-banner {margin:0 0 4px 0}
+
+/* Email template builder */
+.email-builder-overlay {position:fixed;inset:0;z-index:1200;display:flex;align-items:stretch;justify-content:center;padding:20px;background:rgba(15,23,42,.55);backdrop-filter:blur(2px)}
+.email-builder {position:relative;display:flex;flex-direction:column;width:100%;max-width:1360px;overflow:hidden;background:var(--ds-color-bg-subtle);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.28)}
+.email-builder-topbar {display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px;background:#FFFFFF;border-bottom:1px solid #E5E7EB}
+.email-builder-topbar-left {display:flex;align-items:center;gap:12px;flex:1;min-width:0}
+.email-builder-topbar-right {display:flex;align-items:center;gap:10px}
+.email-builder-topbar-right .figma-notifications-btn-secondary,.email-builder-topbar-right .figma-notifications-btn-primary {padding:10px 18px;font-size:14px}
+.email-builder-icon-btn {display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid #E5E7EB;border-radius:8px;background:#FFFFFF;color:#4B5563;cursor:pointer}
+.email-builder-icon-btn:hover {background:#F3F4F6}
+.email-builder-titles {display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.email-builder-eyebrow {font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ds-color-brand-primary-strong)}
+.email-builder-subject {width:100%;padding:2px 0;border:none;border-bottom:1px solid transparent;background:transparent;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:18px;font-weight:600;color:#2D362F;outline:none}
+.email-builder-subject:focus {border-bottom-color:var(--ds-color-brand-primary)}
+.email-builder-subject::placeholder {color:#9CA3AF;font-weight:500}
+.email-builder-device {display:inline-flex;overflow:hidden;border:1px solid #E5E7EB;border-radius:999px}
+.email-builder-device button {display:inline-flex;align-items:center;justify-content:center;width:38px;height:34px;border:none;background:#FFFFFF;color:#6B7280;cursor:pointer}
+.email-builder-device button.active {background:var(--ds-color-brand-primary);color:#FFFFFF}
+.email-builder > .figma-notifications-banner {margin:12px 18px 0}
+.email-builder-body {display:grid;grid-template-columns:280px minmax(0,1fr) 320px;flex:1;min-height:0;overflow:hidden}
+.email-builder-library {display:flex;flex-direction:column;gap:16px;padding:16px;overflow-y:auto;background:#FFFFFF;border-right:1px solid #E5E7EB}
+.email-builder-panel {display:flex;flex-direction:column;gap:12px}
+.email-builder-panel h3 {margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#7A7F87}
+.email-builder-panel-grow {flex:1;min-height:0}
+.email-builder-palette {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.email-builder-palette button {display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #E5E7EB;border-radius:10px;background:#FFFFFF;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;font-weight:500;color:#374151;text-align:left;cursor:pointer}
+.email-builder-palette button:hover:not(:disabled) {border-color:var(--ds-color-border-action);background:#F3FBF7;color:var(--ds-color-brand-primary-strong)}
+.email-builder-palette button:disabled {opacity:.5;cursor:not-allowed}
+.email-builder-outline {display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.email-builder-outline li {display:flex;flex-direction:column;gap:6px;padding:10px;border:1px solid #E5E7EB;border-radius:10px;background:#FFFFFF;cursor:grab}
+.email-builder-outline li.selected {border-color:var(--ds-color-brand-primary);box-shadow:0 0 0 2px rgba(52,209,134,.18)}
+.email-builder-outline li.dragging {opacity:.5}
+.email-builder-outline-main {display:flex;flex-direction:column;gap:2px;padding:0;border:none;background:transparent;text-align:left;cursor:pointer}
+.email-builder-outline-index {font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ds-color-brand-primary-strong)}
+.email-builder-outline-text {max-width:100%;overflow:hidden;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;color:#4B5563;text-overflow:ellipsis;white-space:nowrap}
+.email-builder-outline-tools {display:flex;gap:4px}
+.email-builder-outline-tools button {display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border:1px solid #E5E7EB;border-radius:6px;background:#FFFFFF;color:#6B7280;cursor:pointer}
+.email-builder-outline-tools button:hover:not(:disabled) {background:#F3F4F6;color:#1F2937}
+.email-builder-outline-tools button:disabled {opacity:.4;cursor:not-allowed}
+.email-builder-outline-jump {display:flex;align-items:center;gap:8px;width:100%;margin-top:12px;padding:10px 12px;border:1px dashed #D1D5DB;border-radius:8px;background:#FFFFFF;color:#4B5563;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;font-weight:500;cursor:pointer}
+.email-builder-outline-jump:hover {background:#F7F7F8;color:#1F2937}
+.email-builder-outline-jump.active {border-style:solid;border-color:var(--ds-color-brand-primary);color:var(--ds-color-brand-primary-strong)}
+.email-builder-empty {margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;color:#7A7F87}
+.email-builder-canvas {display:flex;justify-content:center;padding:24px;overflow:auto;background:#EEF1F4}
+.email-builder-frame {align-self:flex-start;width:100%;max-width:680px;overflow:hidden;background:#FFFFFF;border-radius:12px;box-shadow:0 8px 24px rgba(17,24,39,.08);transition:max-width .2s ease}
+.email-builder-frame.mobile {max-width:390px}
+.email-builder-frame iframe {display:block;width:100%;min-height:640px;height:100%;border:0;background:#FFFFFF}
+.email-builder-inspector {padding:16px;overflow-y:auto;background:#FFFFFF;border-left:1px solid #E5E7EB}
+.email-builder-inspector-head {display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.email-builder-link {padding:0;border:none;background:transparent;color:var(--ds-color-brand-primary-strong);font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:12px;font-weight:500;text-decoration:underline;cursor:pointer}
+.email-builder-grid-2 {display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.email-builder-color {display:flex;align-items:center;gap:10px}
+.email-builder-color input[type=color] {width:36px;height:36px;padding:0;border:1px solid #E5E7EB;border-radius:8px;background:#FFFFFF;cursor:pointer}
+.email-builder-color span {font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;color:#4B5563;text-transform:uppercase}
+.email-builder-align {display:inline-flex;overflow:hidden;width:fit-content;border:1px solid #E5E7EB;border-radius:8px}
+.email-builder-align button {display:inline-flex;align-items:center;justify-content:center;width:36px;height:34px;border:none;background:#FFFFFF;color:#6B7280;cursor:pointer}
+.email-builder-align button + button {border-left:1px solid #E5E7EB}
+.email-builder-align button.active {background:var(--ds-color-brand-primary);color:#FFFFFF}
+.email-builder-align button:disabled {opacity:.5;cursor:not-allowed}
+.email-builder-footer-editor {margin-top:20px;padding-top:20px;border-top:1px solid #E5E7EB}
+.email-builder-footer-editor h3 {margin:0 0 12px 0}
+.email-builder-footer-links {display:flex;flex-direction:column;gap:8px;margin:0 0 10px 0;padding:0;list-style:none}
+.email-builder-footer-links li {display:flex;align-items:center;gap:8px}
+.email-builder-footer-link-fields {display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
+.email-builder-footer-link-tools {display:flex;flex-direction:column;gap:4px}
+.email-builder-footer-link-tools button {display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border:1px solid #E5E7EB;border-radius:6px;background:#FFFFFF;color:#6B7280;cursor:pointer}
+.email-builder-footer-link-tools button:hover:not(:disabled) {background:#F3F4F6;color:#1F2937}
+.email-builder-footer-link-tools button:disabled {opacity:.4;cursor:not-allowed}
+.email-builder-footer-add {width:100%}
+.email-builder-image-preview {display:flex;align-items:center;justify-content:center;min-height:120px;overflow:hidden;border:1px solid #E5E7EB;border-radius:10px;background:#F7F7F8}
+.email-builder-image-preview img {display:block;max-width:100%;max-height:200px}
+.email-builder-upload-row {display:flex;gap:8px;margin:8px 0}
+.email-builder-upload-row .figma-notifications-btn-secondary {display:inline-flex;align-items:center;gap:8px;padding:10px 16px}
+.email-builder-inspector-foot {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;padding-top:12px;border-top:1px solid #F3F3F3}
+.email-builder-danger {display:inline-flex;align-items:center;gap:6px;padding:0;border:none;background:transparent;color:#C8342B;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:13px;font-weight:500;cursor:pointer}
+.email-builder-danger:disabled {opacity:.5;cursor:not-allowed}
+.email-builder-hint {display:inline-flex;align-items:center;gap:6px;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:12px;color:#7A7F87}
+.email-builder-confirm {position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,23,42,.45)}
+.email-builder-confirm-card {display:flex;flex-direction:column;gap:12px;width:420px;max-width:100%;padding:24px;background:#FFFFFF;border-radius:16px;box-shadow:0 20px 25px -5px rgba(0,0,0,.1)}
+.email-builder-confirm-card h3 {margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:18px;font-weight:600;color:#1F2937}
+.email-builder-confirm-card p {margin:0;font-family:"Work Sans",Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;color:#4B5563}
+.email-builder-confirm-actions {display:flex;justify-content:flex-end;gap:12px;margin-top:8px}
+@media(max-width:1180px) {.email-builder-body {grid-template-columns:240px minmax(0,1fr) 280px}}

@@ -161,6 +161,69 @@ export const securityAssessment = v.object({
   ),
 });
 
+export const emailAlign = v.union(v.literal("left"), v.literal("center"), v.literal("right"));
+
+// Structured blocks the admin template builder composes. Each block carries a
+// client-generated `id` so the builder can select and reorder them.
+export const emailBlock = v.union(
+  v.object({
+    id: v.string(),
+    type: v.literal("heading"),
+    text: v.string(),
+    align: emailAlign,
+    level: v.union(v.literal("h1"), v.literal("h2"), v.literal("h3")),
+  }),
+  v.object({
+    id: v.string(),
+    type: v.literal("paragraph"),
+    text: v.string(),
+    align: emailAlign,
+  }),
+  v.object({
+    id: v.string(),
+    type: v.literal("image"),
+    url: v.string(),
+    alt: v.string(),
+    href: v.optional(v.string()),
+    width: v.union(v.literal("small"), v.literal("medium"), v.literal("large"), v.literal("full")),
+    align: emailAlign,
+  }),
+  v.object({
+    id: v.string(),
+    type: v.literal("button"),
+    label: v.string(),
+    href: v.string(),
+    align: emailAlign,
+    variant: v.union(v.literal("primary"), v.literal("secondary")),
+  }),
+  v.object({
+    id: v.string(),
+    type: v.literal("divider"),
+  }),
+  v.object({
+    id: v.string(),
+    type: v.literal("spacer"),
+    size: v.union(v.literal("small"), v.literal("medium"), v.literal("large")),
+  }),
+);
+
+export const emailDesign = v.object({
+  width: v.number(),
+  background: v.string(),
+  contentBackground: v.string(),
+  padding: v.number(),
+});
+
+export const emailFooter = v.object({
+  brand: v.string(),
+  tagline: v.string(),
+  links: v.array(v.object({ label: v.string(), href: v.string() })),
+  address: v.string(),
+  reason: v.string(),
+  align: emailAlign,
+  linkLayout: v.union(v.literal("inline"), v.literal("stacked")),
+});
+
 export const promotionFields = {
   title: v.string(),
   body: v.string(),
@@ -779,6 +842,84 @@ export default defineSchema({
     updatedAt: v.number(),
     updatedBy: v.optional(v.id("users")),
   }),
+
+  adminEmails: defineTable({
+    subject: v.string(),
+    blocks: v.array(emailBlock),
+    design: v.optional(emailDesign),
+    footer: v.optional(emailFooter),
+    audience: v.string(),
+    listId: v.optional(v.id("emailLists")),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("scheduled"),
+      v.literal("sending"),
+      v.literal("sent"),
+      v.literal("failed"),
+    ),
+    scheduledFor: v.optional(v.number()),
+    sentAt: v.optional(v.number()),
+    recipients: v.optional(v.array(v.object({ email: v.string(), name: v.optional(v.string()) }))),
+    recipientCursor: v.optional(v.number()),
+    recipientCount: v.number(),
+    sentCount: v.number(),
+    failedCount: v.number(),
+    lastError: v.optional(v.string()),
+    createdBy: v.id("users"),
+    createdByName: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_created", ["createdAt"])
+    .index("by_status", ["status"]),
+
+  // Reusable templates an admin can start a new email from. Shared across the
+  // team: anyone with notifications.manage can use, edit or delete any template.
+  emailTemplates: defineTable({
+    name: v.string(),
+    subject: v.string(),
+    blocks: v.array(emailBlock),
+    design: v.optional(emailDesign),
+    footer: v.optional(emailFooter),
+    createdBy: v.id("users"),
+    createdByName: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_created", ["createdAt"]),
+
+  // Named recipient lists. A list can contain Passenger accounts and/or plain
+  // outside addresses, so it is the marketing-style audience option.
+  emailLists: defineTable({
+    name: v.string(),
+    description: v.optional(v.string()),
+    memberCount: v.number(),
+    createdBy: v.id("users"),
+    createdByName: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_created", ["createdAt"]),
+
+  emailListMembers: defineTable({
+    listId: v.id("emailLists"),
+    email: v.string(),
+    name: v.optional(v.string()),
+    userId: v.optional(v.id("users")),
+    addedAt: v.number(),
+  })
+    .index("by_list", ["listId"])
+    .index("by_list_and_email", ["listId", "email"]),
+
+  // Known recipient addresses with their unsubscribe token. A contact starts
+  // as a token holder and becomes a suppression when they opt out of broadcasts.
+  emailContacts: defineTable({
+    email: v.string(),
+    token: v.string(),
+    unsubscribedAt: v.optional(v.number()),
+    unsubscribeSource: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_email", ["email"])
+    .index("by_token", ["token"]),
 
   ...financeTables,
 });

@@ -11,6 +11,8 @@
 import type * as accounts from "../accounts.js";
 import type * as address from "../address.js";
 import type * as admin from "../admin.js";
+import type * as adminEmails from "../adminEmails.js";
+import type * as adminWaitlist from "../adminWaitlist.js";
 import type * as auth from "../auth.js";
 import type * as cancellationPolicies from "../cancellationPolicies.js";
 import type * as captureFixtures from "../captureFixtures.js";
@@ -20,6 +22,9 @@ import type * as deliveries from "../deliveries.js";
 import type * as deliveryCrypto from "../deliveryCrypto.js";
 import type * as deliveryProviders from "../deliveryProviders.js";
 import type * as deliveryState from "../deliveryState.js";
+import type * as emailContacts from "../emailContacts.js";
+import type * as emailLists from "../emailLists.js";
+import type * as emailTemplates from "../emailTemplates.js";
 import type * as emails from "../emails.js";
 import type * as engine from "../engine.js";
 import type * as escrowPolicies from "../escrowPolicies.js";
@@ -78,6 +83,8 @@ const fullApi: ApiFromModules<{
   accounts: typeof accounts;
   address: typeof address;
   admin: typeof admin;
+  adminEmails: typeof adminEmails;
+  adminWaitlist: typeof adminWaitlist;
   auth: typeof auth;
   cancellationPolicies: typeof cancellationPolicies;
   captureFixtures: typeof captureFixtures;
@@ -87,6 +94,9 @@ const fullApi: ApiFromModules<{
   deliveryCrypto: typeof deliveryCrypto;
   deliveryProviders: typeof deliveryProviders;
   deliveryState: typeof deliveryState;
+  emailContacts: typeof emailContacts;
+  emailLists: typeof emailLists;
+  emailTemplates: typeof emailTemplates;
   emails: typeof emails;
   engine: typeof engine;
   escrowPolicies: typeof escrowPolicies;

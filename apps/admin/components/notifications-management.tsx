@@ -2,6 +2,46 @@
 
 import { useState, useEffect } from "react";
 import { CheckCircle2, ChevronDown, MoreVertical, X } from "lucide-react";
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@passenger/backend/convex/_generated/api";
+import type { Id } from "@passenger/backend/convex/_generated/dataModel";
+import { DEFAULT_EMAIL_DESIGN, DEFAULT_EMAIL_FOOTER, EMAIL_AUDIENCES, formatErrorMessage, renderEmailDocument, type EmailBlock, type EmailDesign, type EmailFooter } from "@passenger/core";
+import { EmailTemplateBuilder, starterBlocks, type EmailTemplateDraft } from "./email-template-builder";
+import { EmailTemplatesPanel, type EmailTemplateRow } from "./email-templates-panel";
+import { EmailListsPanel } from "./email-lists-panel";
+import { EmailWaitlistPanel } from "./email-waitlist-panel";
+
+const EMAIL_APP_URL = "https://usepassenger.com";
+
+type AdminEmailStatus = "draft" | "scheduled" | "sending" | "sent" | "failed";
+
+interface AdminEmailRow {
+  id: Id<"adminEmails">;
+  subject: string;
+  blocks: EmailBlock[];
+  design?: EmailDesign;
+  footer?: EmailFooter;
+  audience: string;
+  listId?: Id<"emailLists">;
+  status: AdminEmailStatus;
+  scheduledFor?: number;
+  sentAt?: number;
+  recipientCount: number;
+  sentCount: number;
+  failedCount: number;
+  lastError?: string;
+  createdByName: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+const EMAIL_STATUS_LABELS: Record<AdminEmailStatus, string> = {
+  draft: "Draft",
+  scheduled: "Scheduled",
+  sending: "Sending",
+  sent: "Sent",
+  failed: "Failed",
+};
 
 export interface AdminNotification {
   id: string;
@@ -47,7 +87,43 @@ const INITIAL_NOTIFICATIONS: AdminNotification[] = [
   },
 ];
 
-export function NotificationsManagement() {
+export function NotificationsManagement({ canManage = true }: { canManage?: boolean }) {
+  const [tab, setTab] = useState<"notifications" | "emails">("notifications");
+  return (
+    <div className="figma-notifications-page">
+      <div className="figma-notifications-header-row">
+        <div className="figma-notifications-header-left">
+          <h1>Notifications</h1>
+        </div>
+      </div>
+
+      <div className="figma-notifications-tabs" role="tablist" aria-label="Notification channels">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "notifications"}
+          className={tab === "notifications" ? "active" : ""}
+          onClick={() => setTab("notifications")}
+        >
+          Notifications
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "emails"}
+          className={tab === "emails" ? "active" : ""}
+          onClick={() => setTab("emails")}
+        >
+          Emails
+        </button>
+      </div>
+
+      {tab === "notifications" ? <NotificationsTab /> : <EmailsTab canManage={canManage} />}
+    </div>
+  );
+}
+
+function NotificationsTab() {
   const [notifications, setNotifications] = useState<AdminNotification[]>(INITIAL_NOTIFICATIONS);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
@@ -77,9 +153,15 @@ export function NotificationsManagement() {
   const [editTime, setEditTime] = useState("");
   const [editStatus, setEditStatus] = useState<"Scheduled" | "Sent">("Scheduled");
 
-  // Close menus on outside click
+  // Close menus on outside click. Clicks inside a row's menu wrapper (the
+  // trigger or the open menu itself) must not reset the state, otherwise the
+  // same click that opens the menu would immediately close it again.
   useEffect(() => {
-    const handleDocumentClick = () => setOpenMenuId(null);
+    const handleDocumentClick = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (target && target.closest(".figma-notifications-menu-wrapper")) return;
+      setOpenMenuId(null);
+    };
     document.addEventListener("click", handleDocumentClick);
     return () => document.removeEventListener("click", handleDocumentClick);
   }, []);
@@ -202,11 +284,10 @@ export function NotificationsManagement() {
   };
 
   return (
-    <div className="figma-notifications-page">
-      {/* Top Heading & Success Banner */}
+    <div className="figma-notifications-tab-panel">
+      {/* Success Banner */}
       <div className="figma-notifications-header-row">
         <div className="figma-notifications-header-left">
-          <h1>Notifications</h1>
           {successBanner && (
             <div className="figma-notifications-success-pill" role="status">
               <CheckCircle2 size={18} />
@@ -261,18 +342,18 @@ export function NotificationsManagement() {
                   </span>
                 </td>
                 <td className="td-actions">
-                  <div className="figma-notifications-menu-wrapper" onClick={(e) => e.stopPropagation()}>
+                  <div className="figma-notifications-menu-wrapper">
                     <button
                       type="button"
                       className="figma-notifications-action-trigger"
                       aria-label="Actions"
-                      onClick={() => setOpenMenuId(openMenuId === item.id ? null : item.id)}
+                      onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === item.id ? null : item.id); }}
                     >
                       <MoreVertical size={18} />
                     </button>
 
                     {openMenuId === item.id && (
-                      <div className="figma-notifications-dropdown">
+                      <div className="figma-notifications-dropdown" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           className="figma-notifications-dropdown-item"
@@ -669,6 +750,400 @@ export function NotificationsManagement() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatEmailDate(value?: number): string {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function emailDisplayDate(row: AdminEmailRow): string {
+  if (row.status === "scheduled") return formatEmailDate(row.scheduledFor);
+  if (row.status === "sent" || row.status === "failed") return formatEmailDate(row.sentAt);
+  return formatEmailDate(row.createdAt);
+}
+
+function EmailsTab({ canManage }: { canManage: boolean }) {
+  const emails = useQuery(api.adminEmails.list) as AdminEmailRow[] | undefined;
+  const remove = useMutation(api.adminEmails.remove);
+  const sendNow = useMutation(api.adminEmails.sendNow);
+
+  const [sub, setSub] = useState<"emails" | "templates" | "lists" | "waitlist">("emails");
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [builder, setBuilder] = useState<{ initial: EmailTemplateDraft; mode: "email" | "template" } | null>(null);
+  const [viewEmail, setViewEmail] = useState<AdminEmailRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdminEmailRow | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [banner, setBanner] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    const handleDocumentClick = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (target && target.closest(".figma-notifications-menu-wrapper")) return;
+      setOpenMenuId(null);
+    };
+    document.addEventListener("click", handleDocumentClick);
+    return () => document.removeEventListener("click", handleDocumentClick);
+  }, []);
+
+  const openCompose = () => {
+    setBanner(null);
+    setBuilder({
+      mode: "email",
+      initial: {
+        subject: "",
+        audience: EMAIL_AUDIENCES[0],
+        blocks: starterBlocks(),
+        design: { ...DEFAULT_EMAIL_DESIGN },
+        footer: { ...DEFAULT_EMAIL_FOOTER },
+      },
+    });
+  };
+
+  const openEdit = (row: AdminEmailRow) => {
+    setOpenMenuId(null);
+    if (row.status === "sending" || row.status === "sent") {
+      setBanner({ tone: "error", text: "This email can no longer be edited." });
+      return;
+    }
+    setBanner(null);
+    setBuilder({
+      mode: "email",
+      initial: {
+        id: row.id,
+        subject: row.subject,
+        audience: row.audience,
+        listId: row.listId,
+        blocks: row.blocks,
+        design: { ...DEFAULT_EMAIL_DESIGN, ...(row.design ?? {}) },
+        footer: { ...DEFAULT_EMAIL_FOOTER, ...(row.footer ?? {}) },
+        scheduledFor: row.scheduledFor,
+      },
+    });
+  };
+
+  const openTemplateNew = () => {
+    setBanner(null);
+    setBuilder({
+      mode: "template",
+      initial: {
+        subject: "",
+        name: "",
+        audience: EMAIL_AUDIENCES[0],
+        blocks: starterBlocks(),
+        design: { ...DEFAULT_EMAIL_DESIGN },
+        footer: { ...DEFAULT_EMAIL_FOOTER },
+      },
+    });
+  };
+
+  const openTemplateEdit = (template: EmailTemplateRow) => {
+    setBanner(null);
+    setBuilder({
+      mode: "template",
+      initial: {
+        templateId: template.id,
+        name: template.name,
+        subject: template.subject,
+        audience: EMAIL_AUDIENCES[0],
+        blocks: template.blocks,
+        design: { ...DEFAULT_EMAIL_DESIGN, ...(template.design ?? {}) },
+        footer: { ...DEFAULT_EMAIL_FOOTER, ...(template.footer ?? {}) },
+      },
+    });
+  };
+
+  const useTemplate = (template: EmailTemplateRow) => {
+    setBanner(null);
+    setBuilder({
+      mode: "email",
+      initial: {
+        templateId: template.id,
+        name: template.name,
+        subject: template.subject,
+        audience: EMAIL_AUDIENCES[0],
+        blocks: template.blocks,
+        design: { ...DEFAULT_EMAIL_DESIGN, ...(template.design ?? {}) },
+        footer: { ...DEFAULT_EMAIL_FOOTER, ...(template.footer ?? {}) },
+      },
+    });
+  };
+
+  const handleBuilderSaved = (message: string) => {
+    setBuilder(null);
+    setBanner({ tone: "success", text: message });
+  };
+
+  const handleSendExisting = async (row: AdminEmailRow) => {
+    setOpenMenuId(null);
+    setBusy(true);
+    setBanner(null);
+    try {
+      const result = (await sendNow({ id: row.id })) as { recipientCount: number };
+      const count = result?.recipientCount ?? 0;
+      setBanner({ tone: "success", text: `Email sent to ${count} recipient${count === 1 ? "" : "s"}` });
+    } catch (error) {
+      setBanner({ tone: "error", text: formatErrorMessage(error, "Could not send this email.") });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setBusy(true);
+    setBanner(null);
+    try {
+      await remove({ id: deleteTarget.id });
+      setDeleteTarget(null);
+      setBanner({ tone: "success", text: "Email deleted" });
+    } catch (error) {
+      setBanner({ tone: "error", text: formatErrorMessage(error, "Could not delete this email.") });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rows = emails ?? [];
+  const previewHtml = viewEmail
+    ? renderEmailDocument({ subject: viewEmail.subject, blocks: viewEmail.blocks, design: viewEmail.design, footer: viewEmail.footer, appUrl: EMAIL_APP_URL }).html
+    : "";
+
+  return (
+    <div className="figma-notifications-tab-panel">
+      {banner && (
+        <div className={`figma-notifications-banner ${banner.tone}`} role={banner.tone === "error" ? "alert" : "status"}>
+          <span>{banner.text}</span>
+          <button type="button" className="figma-notifications-banner-close" onClick={() => setBanner(null)} aria-label="Dismiss banner">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      <div className="figma-notifications-subtabs" role="tablist" aria-label="Email tools">
+        <button type="button" role="tab" aria-selected={sub === "emails"} className={`figma-notifications-subtab${sub === "emails" ? " active" : ""}`} onClick={() => setSub("emails")}>
+          Emails
+        </button>
+        <button type="button" role="tab" aria-selected={sub === "templates"} className={`figma-notifications-subtab${sub === "templates" ? " active" : ""}`} onClick={() => setSub("templates")}>
+          Templates
+        </button>
+        <button type="button" role="tab" aria-selected={sub === "lists"} className={`figma-notifications-subtab${sub === "lists" ? " active" : ""}`} onClick={() => setSub("lists")}>
+          Lists
+        </button>
+        <button type="button" role="tab" aria-selected={sub === "waitlist"} className={`figma-notifications-subtab${sub === "waitlist" ? " active" : ""}`} onClick={() => setSub("waitlist")}>
+          Waitlist
+        </button>
+      </div>
+
+      {sub === "emails" && (
+        <>
+          <div className="figma-notifications-actions-bar">
+            <button type="button" className="figma-notifications-send-btn" onClick={openCompose} disabled={!canManage}>
+              Compose email
+            </button>
+          </div>
+
+          {!canManage && (
+            <p className="figma-notifications-view-note" role="status">You can view sent emails, but composing and sending requires the notifications.manage permission.</p>
+          )}
+
+          <div className="figma-notifications-table-card">
+        <table className="figma-notifications-table">
+          <thead>
+            <tr>
+              <th>Subject</th>
+              <th>Audience</th>
+              <th>Recipients</th>
+              <th>Date</th>
+              <th>Status</th>
+              <th className="th-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {emails === undefined ? (
+              <tr>
+                <td colSpan={6} className="figma-empty-row">Loading emails…</td>
+              </tr>
+            ) : rows.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="figma-empty-row">No emails recorded</td>
+              </tr>
+            ) : (
+              rows.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.subject}</td>
+                  <td>{row.audience}</td>
+                  <td>{row.status === "sending" || row.status === "sent" || row.status === "failed" ? `${row.sentCount} of ${row.recipientCount}` : "—"}</td>
+                  <td>{emailDisplayDate(row)}</td>
+                  <td>
+                    <span className={`figma-notifications-status-tag status-${row.status}`}>
+                      {EMAIL_STATUS_LABELS[row.status] ?? row.status}
+                    </span>
+                  </td>
+                  <td className="td-actions">
+                    <div className="figma-notifications-menu-wrapper">
+                      <button
+                        type="button"
+                        className="figma-notifications-action-trigger"
+                        aria-label="Actions"
+                        onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === row.id ? null : row.id); }}
+                      >
+                        <MoreVertical size={18} />
+                      </button>
+
+                      {openMenuId === row.id && (
+                        <div className="figma-notifications-dropdown" onClick={(e) => e.stopPropagation()}>
+                          <button type="button" className="figma-notifications-dropdown-item" onClick={() => { setViewEmail(row); setOpenMenuId(null); }}>
+                            View email
+                          </button>
+                          {canManage && (row.status === "draft" || row.status === "scheduled" || row.status === "failed") && (
+                            <>
+                              <div className="figma-notifications-dropdown-divider" />
+                              <button type="button" className="figma-notifications-dropdown-item" onClick={() => void handleSendExisting(row)} disabled={busy}>
+                                Send now
+                              </button>
+                              <div className="figma-notifications-dropdown-divider" />
+                              <button type="button" className="figma-notifications-dropdown-item" onClick={() => openEdit(row)}>
+                                Edit email
+                              </button>
+                            </>
+                          )}
+                          {canManage && row.status !== "sending" && (
+                            <>
+                              <div className="figma-notifications-dropdown-divider" />
+                              <button type="button" className="figma-notifications-dropdown-item danger" onClick={() => { setDeleteTarget(row); setOpenMenuId(null); }}>
+                                Delete email
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+        </>
+      )}
+
+      {sub === "templates" && (
+        <EmailTemplatesPanel
+          canManage={canManage}
+          onNew={openTemplateNew}
+          onEdit={openTemplateEdit}
+          onUse={useTemplate}
+        />
+      )}
+
+      {sub === "lists" && <EmailListsPanel canManage={canManage} />}
+
+      {sub === "waitlist" && <EmailWaitlistPanel canManage={canManage} />}
+
+      {builder && (
+        <EmailTemplateBuilder
+          initial={builder.initial}
+          mode={builder.mode}
+          canManage={canManage}
+          onClose={() => setBuilder(null)}
+          onSaved={handleBuilderSaved}
+        />
+      )}
+
+      {viewEmail && (
+        <div className="figma-notifications-modal-overlay" role="dialog" aria-modal="true" onClick={() => setViewEmail(null)}>
+          <div className="figma-notifications-modal figma-notifications-modal-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="figma-notifications-modal-header">
+              <h2>View Email</h2>
+              <button type="button" className="figma-notifications-modal-close" onClick={() => setViewEmail(null)} aria-label="Close">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="figma-notifications-view-body">
+              <div className="figma-notifications-view-row">
+                <span className="view-label">Subject:</span>
+                <span className="view-value font-medium">{viewEmail.subject}</span>
+              </div>
+              <div className="figma-notifications-view-row">
+                <span className="view-label">Audience:</span>
+                <span className="view-value">{viewEmail.audience}</span>
+              </div>
+              <div className="figma-notifications-view-row">
+                <span className="view-label">Status:</span>
+                <span className={`figma-notifications-status-tag status-${viewEmail.status}`}>{EMAIL_STATUS_LABELS[viewEmail.status] ?? viewEmail.status}</span>
+              </div>
+              <div className="figma-notifications-view-row">
+                <span className="view-label">Recipients:</span>
+                <span className="view-value">
+                  {viewEmail.status === "draft" ? "Not sent yet" : `${viewEmail.sentCount} of ${viewEmail.recipientCount} delivered${viewEmail.failedCount ? `, ${viewEmail.failedCount} failed` : ""}`}
+                </span>
+              </div>
+              <div className="figma-notifications-view-row">
+                <span className="view-label">Date:</span>
+                <span className="view-value">{emailDisplayDate(viewEmail)}</span>
+              </div>
+              <div className="figma-notifications-view-row">
+                <span className="view-label">Created by:</span>
+                <span className="view-value">{viewEmail.createdByName}</span>
+              </div>
+              {viewEmail.lastError && (
+                <div className="figma-notifications-view-row">
+                  <span className="view-label">Last error:</span>
+                  <span className="view-value">{viewEmail.lastError}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="figma-notifications-preview">
+              <iframe title="Email preview" srcDoc={previewHtml} />
+            </div>
+
+            <div className="figma-notifications-modal-actions">
+              <button type="button" className="figma-notifications-btn-secondary" onClick={() => setViewEmail(null)}>
+                Close
+              </button>
+              {canManage && viewEmail.status !== "sending" && viewEmail.status !== "sent" && (
+                <button
+                  type="button"
+                  className="figma-notifications-btn-primary"
+                  onClick={() => { const row = viewEmail; setViewEmail(null); openEdit(row); }}
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="figma-notifications-modal-overlay" role="dialog" aria-modal="true" onClick={() => setDeleteTarget(null)}>
+          <div className="figma-notifications-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="figma-notifications-modal-header">
+              <h2>Delete Email</h2>
+              <button type="button" className="figma-notifications-modal-close" onClick={() => setDeleteTarget(null)} aria-label="Close">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="figma-notifications-view-note">
+              Delete "{deleteTarget.subject}"? This removes it from the email history and cannot be undone.
+            </p>
+            <div className="figma-notifications-modal-actions">
+              <button type="button" className="figma-notifications-btn-secondary" onClick={() => setDeleteTarget(null)} disabled={busy}>
+                Cancel
+              </button>
+              <button type="button" className="figma-notifications-btn-primary" onClick={() => void handleDelete()} disabled={busy}>
+                {busy ? "Deleting…" : "Delete email"}
+              </button>
+            </div>
           </div>
         </div>
       )}

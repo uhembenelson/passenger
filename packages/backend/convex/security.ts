@@ -4,7 +4,7 @@ import type { PermissionKey } from "@passenger/core";
 import { mutation, action } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
-import { requireUser, isStaff, isAdmin, requireAdmin, requirePermission, audit, fail } from "./lib";
+import { requireUser, isAdmin, requireAdmin, requirePermission, audit, fail } from "./lib";
 import { createAccount, retrieveAccount, modifyAccountCredentials } from "@convex-dev/auth/server";
 import { api } from "./_generated/api";
 
@@ -214,8 +214,7 @@ export const setPermissionGrant = mutation({
 export const recordStaffLogin = mutation({
   args: { deviceInfo: v.optional(v.string()), ipAddress: v.optional(v.string()), location: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
-    if (!isStaff(user)) fail("Administrator access required.");
+    const user = await requireAdmin(ctx);
     await ctx.db.insert("securityEvents", {
       kind: "login",
       actorId: user._id,
@@ -246,6 +245,7 @@ export const ensureSeed = mutation({
       PERMISSIONS.SETTINGS_VIEW, PERMISSIONS.SETTINGS_MANAGE,
       PERMISSIONS.SECURITY_VIEW, PERMISSIONS.SECURITY_MANAGE,
       PERMISSIONS.MONITORING_VIEW, PERMISSIONS.NOTIFICATIONS_VIEW,
+      PERMISSIONS.NOTIFICATIONS_MANAGE,
     ];
     const roleGrantMatrix: Record<PermissionKey, boolean[]> = {
       [PERMISSIONS.USERS_VIEW]:       [true, true, true],
@@ -266,6 +266,7 @@ export const ensureSeed = mutation({
       [PERMISSIONS.SECURITY_MANAGE]:  [false, false, true],
       [PERMISSIONS.MONITORING_VIEW]:  [true, true, true],
       [PERMISSIONS.NOTIFICATIONS_VIEW]: [true, true, true],
+      [PERMISSIONS.NOTIFICATIONS_MANAGE]: [true, true, true],
     };
     const existingRoles = await ctx.db.query("adminRoles").withIndex("by_created").collect();
     if (existingRoles.length) {
