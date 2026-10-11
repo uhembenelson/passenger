@@ -165,6 +165,11 @@ export function EmailTemplateBuilder({ initial, canManage, onClose, onSaved, mod
   const [templatePrompt, setTemplatePrompt] = useState(false);
   const [templatePromptName, setTemplatePromptName] = useState("");
 
+  const subjectInputRef = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const [subjectFieldError, setSubjectFieldError] = useState(false);
+  const [nameFieldError, setNameFieldError] = useState(false);
+
   const dragFrom = useRef<number | null>(null);
 
   const audienceOptions = useMemo(() => {
@@ -304,9 +309,19 @@ export function EmailTemplateBuilder({ initial, canManage, onClose, onSaved, mod
     return value;
   };
 
+  const markSubjectMissing = (message: string) => {
+    setSubjectFieldError(true);
+    setNameFieldError(false);
+    requestAnimationFrame(() => {
+      subjectInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      subjectInputRef.current?.focus({ preventScroll: true });
+    });
+    throw new Error(message);
+  };
+
   const persist = async (): Promise<Id<"adminEmails"> | Id<"emailTemplates">> => {
     if (subject.trim().length < 3) {
-      throw new Error(isTemplate ? "Add a default subject of at least 3 characters." : "Add a subject of at least 3 characters.");
+      markSubjectMissing(isTemplate ? "Add a default subject of at least 3 characters." : "Add a subject of at least 3 characters.");
     }
     if (blocks.length === 0) throw new Error("Add at least one block to the email.");
     if (!isTemplate && singleMode && !isEmailAddress(singleEmail)) {
@@ -314,7 +329,15 @@ export function EmailTemplateBuilder({ initial, canManage, onClose, onSaved, mod
     }
     if (isTemplate) {
       const trimmedName = name.trim();
-      if (!trimmedName) throw new Error("Give the template a name.");
+      if (!trimmedName) {
+        setSubjectFieldError(false);
+        setNameFieldError(true);
+        requestAnimationFrame(() => {
+          nameInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+          nameInputRef.current?.focus({ preventScroll: true });
+        });
+        throw new Error("Give the template a name.");
+      }
       if (initial.templateId) {
         await updateTemplate({ id: initial.templateId, name: trimmedName, subject, blocks, design, footer });
         return initial.templateId;
@@ -333,6 +356,8 @@ export function EmailTemplateBuilder({ initial, canManage, onClose, onSaved, mod
     setBusy("save");
     setError(null);
     setNotice(null);
+    setSubjectFieldError(false);
+    setNameFieldError(false);
     try {
       await persist();
       onSaved(isTemplate ? "Template saved" : "Draft saved");
@@ -347,6 +372,8 @@ export function EmailTemplateBuilder({ initial, canManage, onClose, onSaved, mod
     setBusy("send");
     setError(null);
     setNotice(null);
+    setSubjectFieldError(false);
+    setNameFieldError(false);
     try {
       const id = await persist();
       if (scheduleEnabled) {
@@ -379,8 +406,12 @@ export function EmailTemplateBuilder({ initial, canManage, onClose, onSaved, mod
     setBusy("save");
     setError(null);
     setNotice(null);
+    setSubjectFieldError(false);
+    setNameFieldError(false);
     try {
-      if (subject.trim().length < 3) throw new Error("Add a subject of at least 3 characters, then save it as a template.");
+      if (subject.trim().length < 3) {
+        markSubjectMissing("Add a subject of at least 3 characters, then save it as a template.");
+      }
       if (blocks.length === 0) throw new Error("Add at least one block to the email.");
       const trimmedName = templatePromptName.trim();
       if (!trimmedName) throw new Error("Give the template a name.");
@@ -407,24 +438,44 @@ export function EmailTemplateBuilder({ initial, canManage, onClose, onSaved, mod
               </span>
               {isTemplate ? (
                 <input
-                  className="email-builder-subject"
+                  className={`email-builder-subject${nameFieldError ? " field-invalid" : ""}`}
+                  ref={nameInputRef}
                   type="text"
                   value={name}
                   maxLength={80}
                   placeholder="Template name"
-                  onChange={event => setName(event.target.value)}
+                  aria-invalid={nameFieldError || undefined}
+                  onChange={event => {
+                    setName(event.target.value);
+                    setNameFieldError(false);
+                  }}
                   disabled={!canManage}
                 />
               ) : (
                 <input
-                  className="email-builder-subject"
+                  className={`email-builder-subject${subjectFieldError ? " field-invalid" : ""}`}
+                  ref={subjectInputRef}
                   type="text"
                   value={subject}
                   maxLength={140}
                   placeholder="Subject line"
-                  onChange={event => setSubject(event.target.value)}
+                  aria-invalid={subjectFieldError || undefined}
+                  onChange={event => {
+                    setSubject(event.target.value);
+                    setSubjectFieldError(false);
+                  }}
                   disabled={!canManage}
                 />
+              )}
+              {isTemplate && nameFieldError && (
+                <span className="email-builder-subject-error" role="alert">
+                  Give the template a name.
+                </span>
+              )}
+              {!isTemplate && subjectFieldError && (
+                <span className="email-builder-subject-error" role="alert">
+                  Add a subject of at least 3 characters.
+                </span>
               )}
             </div>
           </div>
@@ -580,15 +631,28 @@ export function EmailTemplateBuilder({ initial, canManage, onClose, onSaved, mod
 
                 {isTemplate ? (
                   <div className="figma-notifications-field">
-                    <label>Default subject</label>
+                    <label>
+                      Default subject <span className="figma-notifications-required">*</span>
+                    </label>
                     <input
+                      className={subjectFieldError ? "field-invalid" : ""}
+                      ref={subjectInputRef}
                       type="text"
                       value={subject}
                       maxLength={140}
                       placeholder="Subject new emails start with"
-                      onChange={event => setSubject(event.target.value)}
+                      aria-invalid={subjectFieldError || undefined}
+                      onChange={event => {
+                        setSubject(event.target.value);
+                        setSubjectFieldError(false);
+                      }}
                       disabled={!canManage}
                     />
+                    {subjectFieldError && (
+                      <span className="figma-notifications-field-error" role="alert">
+                        Add a default subject of at least 3 characters.
+                      </span>
+                    )}
                     <span className="figma-notifications-field-hint">
                       New emails built from this template start with this subject. The sender can change it before sending.
                     </span>
