@@ -105,41 +105,48 @@ export function renderNotificationEmail(args: { name: string; title: string; bod
 export function renderWaitlistEmail(args: { name: string; state: string; siteUrl: string }): { html: string; text: string } {
   const firstName = args.name.trim().split(/\s+/)[0] || "there";
   const htmlBody = `<p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Hi ${escapeHtmlAttribute(firstName)},</p>
-    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Thank you for joining the Passenger waitlist.</p>
-    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Passenger is being built around a simple everyday problem. Someone needs to send a package from one city to another, while someone else is already travelling along that same route.</p>
-    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Most of the time, those two people never find each other. People still depend on friends, WhatsApp updates, transport parks, or whatever option is available at the time.</p>
-    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Passenger is being built to make that process easier.</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Thanks for joining the Passenger waitlist. I read every sign-up myself, so yours reached me directly.</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">I started Passenger because of a problem I kept watching happen. Someone needs to get a package from one city to another, while someone else is already making that exact journey. Most of the time, those two people never find each other. People fall back on friends, WhatsApp threads, transport parks, or whatever option is available that day.</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">We are building the way for them to find each other.</p>
     <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">If you need to send something, you will be able to find a traveller already going in that direction. If you are travelling, you will be able to earn from a journey you were already making.</p>
-    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">We are currently preparing the first version of Passenger and working through the areas that matter most, including identity verification, payments, package handoff, delivery confirmation, and user safety.</p>
-    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Because you joined the waitlist, you will be among the first people to hear from us when Passenger begins opening to users. You will also receive important updates as we get closer to launch.</p>
-    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">You do not need to do anything else at the moment. We will contact you when early access becomes available.</p>
-    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">We appreciate you being here this early.</p>
-    <p style="margin:0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">
-      Passenger<br>
-      Send it with someone already going your way.
-    </p>`;
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Right now, we are preparing the first version of Passenger and working through the areas that matter most: identity verification, payments, package handoff, delivery confirmation, and user safety.</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Because you joined early, you will be among the first people to hear from us when Passenger begins opening to users, and you will get the updates that matter as we get closer to launch.</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">There is nothing else you need to do right now. We will contact you when early access becomes available.</p>
+    <p style="margin:0 0 24px 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:400; line-height:1.7; color:#4B5563;">Thank you for being here this early. It genuinely helps.</p>
+    <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="margin:32px 0 0 0;">
+      <tr>
+        <td valign="top" style="padding:0 14px 0 0;">
+          <img src="https://usepassenger.com/nl.png" width="60" height="60" alt="Uhembe Nelson"
+               style="display:block; width:60px; height:60px; border-radius:50%; object-fit:cover; object-position:center top; border:0;">
+        </td>
+        <td valign="middle" style="padding:0;">
+          <p style="margin:0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:17px; font-weight:600; line-height:1.4; color:#2D362F;">Uhembe Nelson</p>
+          <p style="margin:2px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:14px; font-weight:400; line-height:1.5; color:#7A7F87;">Founder, Passenger</p>
+          <p style="margin:10px 0 0 0; font-family:'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:15px; font-weight:400; line-height:1.6; color:#4B5563;">Send it with someone already going your way.</p>
+        </td>
+      </tr>
+    </table>`;
 
   const text = `Hi ${firstName},
 
-Thank you for joining the Passenger waitlist.
+Thanks for joining the Passenger waitlist. I read every sign-up myself, so yours reached me directly.
 
-Passenger is being built around a simple everyday problem. Someone needs to send a package from one city to another, while someone else is already travelling along that same route.
+I started Passenger because of a problem I kept watching happen. Someone needs to get a package from one city to another, while someone else is already making that exact journey. Most of the time, those two people never find each other. People fall back on friends, WhatsApp threads, transport parks, or whatever option is available that day.
 
-Most of the time, those two people never find each other. People still depend on friends, WhatsApp updates, transport parks, or whatever option is available at the time.
-
-Passenger is being built to make that process easier.
+We are building the way for them to find each other.
 
 If you need to send something, you will be able to find a traveller already going in that direction. If you are travelling, you will be able to earn from a journey you were already making.
 
-We are currently preparing the first version of Passenger and working through the areas that matter most, including identity verification, payments, package handoff, delivery confirmation, and user safety.
+Right now, we are preparing the first version of Passenger and working through the areas that matter most: identity verification, payments, package handoff, delivery confirmation, and user safety.
 
-Because you joined the waitlist, you will be among the first people to hear from us when Passenger begins opening to users. You will also receive important updates as we get closer to launch.
+Because you joined early, you will be among the first people to hear from us when Passenger begins opening to users, and you will get the updates that matter as we get closer to launch.
 
-You do not need to do anything else at the moment. We will contact you when early access becomes available.
+There is nothing else you need to do right now. We will contact you when early access becomes available.
 
-We appreciate you being here this early.
+Thank you for being here this early. It genuinely helps.
 
-Passenger
+Uhembe Nelson
+Founder, Passenger
 Send it with someone already going your way.`;
 
   return {

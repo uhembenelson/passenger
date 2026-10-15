@@ -102,5 +102,5 @@ it("renders a branded waitlist confirmation with an accurate footer", () => {
   expect(html).toContain("&lt;Ada&gt;");
   expect(html).toContain("because you joined the Passenger waitlist");
   expect(html).not.toContain("because you use Passenger");
-  expect(text).toContain("Thank you for joining the Passenger waitlist.");
+  expect(text).toContain("Thanks for joining the Passenger waitlist.");
 });

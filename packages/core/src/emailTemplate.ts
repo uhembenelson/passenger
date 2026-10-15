@@ -121,7 +121,12 @@ export function escapeHtmlAttribute(value: string) {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-const LOGO_DATA_URI = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1024' height='1024' viewBox='0 0 1024 1024'%3E%3Crect width='1024' height='1024' rx='224' fill='%23183E32'/%3E%3Cpath d='M302 702 701 303M338 303h363v363' fill='none' stroke='%23D8ED93' stroke-width='88' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='302' cy='702' r='59' fill='%23D8ED93'/%3E%3C/svg%3E";
+/* Hosted brand logo (wide wordmark, 2844x840 transparent PNG) served from the
+ * website's public folder. Email clients cannot render SVG or data URIs
+ * reliably, so the header uses the real hosted PNG. */
+const LOGO_URL = "https://usepassenger.com/logopp.png";
+const LOGO_WIDTH = 135;
+const LOGO_HEIGHT = 40;
 
 const FONT_STACK = "'Work Sans','Helvetica Neue',Helvetica,Arial,sans-serif";
 
@@ -231,18 +236,8 @@ export function emailShell(options: EmailShellOptions) {
              style="width:${width}px; max-width:${width}px; background-color:${contentBackground}; border-radius:12px; overflow:hidden; margin:0 auto;">
         <tr>
           <td class="pad mobile-pt" style="padding:40px ${padding}px 0 ${padding}px;" align="left">
-            <table role="presentation" border="0" cellspacing="0" cellpadding="0">
-              <tr>
-                <td style="vertical-align:middle; font-size:0; line-height:0;">
-                  <img src="${LOGO_DATA_URI}" width="36" height="36" alt=""
-                       style="display:block; width:36px; height:36px; border:0;"
-                       data-replace="https://assets.passenger.ng/emails/logo-256.png">
-                </td>
-                <td style="vertical-align:middle; padding-left:12px;">
-                  <span style="font-family:${FONT_STACK}; font-size:20px; font-weight:600; letter-spacing:-0.01em; color:#2D362F;">Passenger</span>
-                </td>
-              </tr>
-            </table>
+            <img src="${LOGO_URL}" width="${LOGO_WIDTH}" height="${LOGO_HEIGHT}" alt="Passenger"
+                 style="display:block; width:${LOGO_WIDTH}px; height:${LOGO_HEIGHT}px; border:0;">
           </td>
         </tr>
         <tr>
