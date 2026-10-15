@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Check, ChevronRight, FileText, MapPin, X } from "lucide-react-native";
@@ -9,7 +8,7 @@ import { api } from "@passenger/backend/convex/_generated/api";
 import type { Id } from "@passenger/backend/convex/_generated/dataModel";
 import { usePassenger } from "./data";
 import { EvidenceGallery, EvidencePicker } from "./evidence";
-import { BackButton, Button, colors, errorMessage, Field, fontFamily, Notice, Txt } from "./ui";
+import { BackButton, Button, colors, errorMessage, Field, fontFamily, ModalSafeAreaView, Notice, Txt } from "./ui";
 import { BrandIllustration } from "./illustrations";
 
 type Screen = "intro" | "identity" | "live_photo" | "address" | "proof" | "location" | "review" | "success";
@@ -133,11 +132,11 @@ export function IdentityVerification({ viewer, onClose, onSuccess }: { viewer: P
   }, "review");
   const submit = () => run(async () => { await submitApplication({}); }, "success");
 
-  if (active === undefined || status === undefined) return <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}><SafeAreaView style={styles.screen}><View style={styles.loading}><ActivityIndicator accessibilityLabel="Loading verification" color={colors.text} /></View></SafeAreaView></Modal>;
+  if (active === undefined || status === undefined) return <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}><ModalSafeAreaView style={styles.screen}><View style={styles.loading}><ActivityIndicator accessibilityLabel="Loading verification" color={colors.text} /></View></ModalSafeAreaView></Modal>;
   const title = pending ? "Verification under review" : screen === "intro" ? "Verify your identity and address" : screen === "identity" ? "Your legal identity" : screen === "address" ? "Your current address" : screen === "proof" ? "Proof of address" : screen === "location" ? "Confirm you are at this address" : screen === "review" ? "Review your application" : "Application submitted";
 
   return <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={back}>
-    <SafeAreaView style={styles.screen}>
+    <ModalSafeAreaView style={styles.screen}>
       <View style={styles.header}>{!pending && screen !== "success" ? <BackButton accessibilityLabel="Back" disabled={locked} onPress={back} /> : <View style={styles.headerButton} />}<Txt numberOfLines={2} style={styles.headerLabel}>{title}</Txt><Pressable accessibilityRole="button" accessibilityLabel="Close verification" disabled={locked} onPress={pending || screen === "success" ? onSuccess : onClose} style={styles.headerButton}><X size={22} color={locked ? colors.muted : colors.text} /></Pressable></View>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         {pending ? <><BrandIllustration name="identityVerification" size={164} style={styles.art} /><Notice tone="warning">Your complete Tier 1 application is with the compliance team. You cannot publish parcels, trips or accept offers until it is approved.</Notice></>
@@ -152,7 +151,7 @@ export function IdentityVerification({ viewer, onClose, onSuccess }: { viewer: P
         {!!error && <Notice tone="error">{error}</Notice>}{data.offline && !pending && screen !== "success" && <Notice tone="warning">Reconnect before saving or submitting verification.</Notice>}
       </ScrollView>
       <View style={styles.footer}>{pending ? <Button title="Done" variant="lime" onPress={onSuccess} /> : screen === "intro" ? <Button title={status.identityStatus === "rejected" ? "Update my application" : "Begin verification"} variant="lime" onPress={() => setScreen("identity")} /> : screen === "identity" ? <Button title="Save identity" variant="lime" busy={busy} disabled={locked || data.offline} onPress={() => void saveIdentityScreen()} /> : screen === "live_photo" ? <Button title="Check live photo" variant="lime" busy={busy} disabled={locked || data.offline} onPress={() => void saveLivePhotoScreen()} /> : screen === "address" ? <Button title="Save address" variant="lime" busy={busy} disabled={locked || data.offline} onPress={() => void saveAddressScreen()} /> : screen === "proof" ? <Button title="Save proof of address" variant="lime" busy={busy} disabled={locked || data.offline} onPress={() => void saveProofScreen()} /> : screen === "location" ? <Button title="Verify this location" variant="lime" busy={busy} disabled={locked || data.offline} onPress={() => void verifyLocation()} /> : screen === "review" ? <Button title="Submit for compliance review" variant="lime" busy={busy} disabled={locked || data.offline} onPress={() => void submit()} /> : <Button title="Done" variant="lime" onPress={onSuccess} />}</View>
-    </SafeAreaView>
+    </ModalSafeAreaView>
   </Modal>;
 }
 

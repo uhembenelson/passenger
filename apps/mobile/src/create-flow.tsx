@@ -5,7 +5,7 @@ import * as SecureStore from "expo-secure-store";
 import { X } from "lucide-react-native";
 import { BrandIllustration } from "./illustrations";
 import { HomeTripBackground } from "./home-trip-background";
-import { BackButton, Button, colors, fontFamily, Txt } from "./ui";
+import { BackButton, Button, colors, fontFamily, ModalSafeAreaView, Txt } from "./ui";
 
 type Mode = "sender" | "traveller";
 
@@ -94,7 +94,7 @@ export function CreateFlowFrame({ title, description, onClose, onBack, locked, f
   title: string; description: string; onClose: () => void; onBack?: () => void; locked: boolean; footer: React.ReactNode; screenKey: string;
 }>) {
   return <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => !locked && (onBack ?? onClose)()}>
-    <SafeAreaView style={styles.screen}><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <ModalSafeAreaView style={styles.screen}><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <View style={styles.header}>
         <BackButton accessibilityLabel="Back" disabled={locked} onPress={onBack ?? onClose} />
         <Pressable accessibilityRole="button" accessibilityLabel="Close form" disabled={locked} onPress={onClose} style={styles.iconButton}><X size={22} color={colors.text} /></Pressable>
@@ -105,7 +105,7 @@ export function CreateFlowFrame({ title, description, onClose, onBack, locked, f
         {children}
       </ScrollView>
       <View style={styles.footer}>{footer}</View>
-    </KeyboardAvoidingView></SafeAreaView>
+    </KeyboardAvoidingView></ModalSafeAreaView>
   </Modal>;
 }
 

@@ -486,14 +486,19 @@ describe("wallet funding and holds", () => {
     expect(txns.some(t => t.kind === "top_up" && t.amountNaira === 10000)).toBe(true);
     expect(txns.some(t => t.kind === "parcel_hold" && t.amountNaira === backendCalculatedFeeNaira)).toBe(true);
   });
-  it("does not fund the wallet when Paystack is unconfigured", async () => {
+  it("does not fund the wallet when the deposit provider is unconfigured", async () => {
     const t = convexTest(schema, modules);
     vi.stubEnv("PAYSTACK_SECRET_KEY", "");
+    vi.stubEnv("V4_API_URL", "");
+    vi.stubEnv("V4_VERIFICATION_API_KEY", "");
+    vi.stubEnv("V4_VERIFICATION_API_SECRET", "");
     const member = t.withIdentity(identity("topup"));
     const profile = await member.mutation(api.accounts.ensureProfile, { name: "Topup", phone: "+2348000000099" });
-    await expect(member.action(api.wallet.initializeTopUp, { amountNaira: 7000 })).rejects.toThrow("Payments are not available");
+    await expect(member.action(api.wallet.initializeTopUp, { amountNaira: 7000 })).rejects.toThrow("Wallet funding is not available yet");
     expect((await t.run(ctx => ctx.db.get(profile.id as Id<"users">)))?.walletBalanceNaira ?? 0).toBe(0);
     expect(await t.run(ctx => ctx.db.query("walletTransactions").collect())).toHaveLength(0);
+    // No orphaned pending deposit may block a later attempt once the provider is configured.
+    expect(await t.run(ctx => ctx.db.query("walletDeposits").collect())).toHaveLength(0);
   });
   it("refunds held fee when sender cancels a funded shipment", async () => {
     const f = await fixture();

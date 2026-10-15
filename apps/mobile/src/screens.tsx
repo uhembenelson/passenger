@@ -18,8 +18,8 @@ import { NotificationsScreen } from "./sender-deliveries";
 import { SupportHub } from "./support";
 import { ShipmentForm, TripForm } from "./forms";
 import { getPendingEvidenceResumeKey } from "./evidence";
-import { NavigationIllustration } from "./illustrations";
-import type { NavigationIllustrationName } from "./illustrations";
+import { NavigationIllustration } from "./hairline-icons";
+import type { NavigationIllustrationName } from "./hairline-icons";
 import { BackButton, AppLoadingScreen, Avatar, Badge, Button, Card, colors, Empty, errorMessage, Field, FullScreenState, Notice, RouteLine, s, ScreenSkeleton, SectionTitle, serif, Sheet, shortDate, Status, timeDate, Txt } from "./ui";
 
 type Page = "home" | "routes" | "matches" | "notifications" | "profile";
@@ -148,7 +148,7 @@ function MobileNavigation({ page, onSelect }: { page: Page; onSelect: (page: Pag
   return <View style={x.bottomNav}>{mobileNav.map(item => {
     const active = page === item.id;
     return <Pressable key={item.id} accessibilityRole="tab" accessibilityLabel={item.title} accessibilityState={{ selected: active }} onPress={() => onSelect(item.id)} style={x.bottomNavItem}>
-      <View style={[x.bottomNavIcon, active && x.bottomNavIconActive]}><NavigationIllustration name={item.illustration} size={30} style={!active ? x.bottomNavIconInactive : undefined} /></View>
+      <View style={[x.bottomNavIcon, active && x.bottomNavIconActive]}><NavigationIllustration name={item.illustration} size={30} active={active} /></View>
       <Txt numberOfLines={1} style={[x.bottomNavLabel, active && x.bottomNavLabelActive]}>{item.title}</Txt>
     </Pressable>;
   })}</View>;
@@ -302,7 +302,6 @@ const x = StyleSheet.create({
   bottomNavItem: { flex: 1, alignItems: "center", justifyContent: "center", minHeight: 54, gap: 4 },
   bottomNavIcon: { width: 36, height: 32, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   bottomNavIconActive: { backgroundColor: colors.soft },
-  bottomNavIconInactive: { opacity: 0.62 },
   bottomNavLabel: { color: semantic.color.text.secondary, fontSize: 12, lineHeight: 17, fontFamily: "WorkSansRegular" },
   bottomNavLabelActive: { color: semantic.color.action.primary, fontFamily: "WorkSansMedium" },
   fab: {

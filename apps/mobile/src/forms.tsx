@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { ArrowDown, ArrowRight, ArrowUp, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, MapPin, Minus, Package, Phone, Plus, User } from "lucide-react-native";
+import { ArrowDown, ArrowRight, ArrowUp, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Minus, Package, Phone, Plus, User } from "lucide-react-native";
 import { CATEGORIES, CITIES, calculateDeliveryFee, money, validateShipment, validateTrip } from "@passenger/core";
 import type { CreateShipmentInput, CreateTripInput, Shipment, Trip } from "@passenger/core";
 import { components, primitives, semantic } from "@passenger/design-tokens";
 import { usePassenger } from "./data";
 import { IdentityVerificationCard } from "./identity-verification-card";
 import { EvidenceGallery, EvidencePicker, getPendingEvidenceResumeKey } from "./evidence";
-import { CityIllustration } from "./illustrations";
+import { PlaceIllustration } from "./hairline-icons";
 import { Button, colors, errorMessage, Field, fontFamily, FullScreenState, Notice, PresentationSheet, s, Txt } from "./ui";
 
 import { CreateFlowFrame, CreateFlowLoading, CreateIntro, ReviewSection, useCreateIntro } from "./create-flow";
@@ -34,6 +34,13 @@ const tripCopy: Record<TripScreen, [string, string]> = {
 };
 
 const fallbackServiceArea = { baseLocation: "Jos", destinations: ["Abuja", "Kaduna", "Lagos"] };
+
+// Parcels are collected from, and trips depart from, the service area's base location. That city is
+// fixed, so it is never offered as a destination.
+function destinationsFor(serviceArea: { baseLocation: string; destinations: string[] }) {
+  const base = serviceArea.baseLocation.trim().toLowerCase();
+  return serviceArea.destinations.filter(name => name.trim().toLowerCase() !== base);
+}
 
 const form = StyleSheet.create({
   intro: { marginBottom: primitives.space[4] },
@@ -121,39 +128,46 @@ const form = StyleSheet.create({
 });
 
 // ─── Mobile Route Dropdown ──────────────────────────────────────────────────
-function LocationDropdown({ label, value, placeholder, isOpen, onToggle, disabled }: {
-  label: string; value: string; placeholder: string; isOpen: boolean; onToggle: () => void; disabled: boolean;
+function LocationDropdown({ label, value, placeholder, isOpen, onToggle, disabled, readOnly = false }: {
+  label: string; value: string; placeholder: string; isOpen: boolean; onToggle: () => void; disabled: boolean; readOnly?: boolean;
 }) {
+  const body = <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+    <PlaceIllustration city={value} size={32} />
+    <Txt style={[form.selectText, !value && form.selectPlaceholder]}>{value || placeholder}</Txt>
+  </View>;
   return (
     <View style={{ gap: primitives.space[3] }}>
       <Txt style={form.sectionLabel}>{label}</Txt>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${label}: ${value || placeholder}`}
-        accessibilityState={{ expanded: isOpen, disabled }}
-        disabled={disabled}
-        onPress={onToggle}
-        style={[form.select, isOpen && form.selectActive, disabled && { opacity: primitives.opacity.disabled }]}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-          {value ? <CityIllustration city={value} size={32} /> : <MapPin size={20} color={colors.muted} strokeWidth={2} />}
-          <Txt style={[form.selectText, !value && form.selectPlaceholder]}>{value || placeholder}</Txt>
-        </View>
-        <ChevronDown size={20} color={colors.text} strokeWidth={2} />
-      </Pressable>
+      {readOnly
+        ? <View style={form.select}>{body}</View>
+        : <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${label}: ${value || placeholder}`}
+            accessibilityState={{ expanded: isOpen, disabled }}
+            disabled={disabled}
+            onPress={onToggle}
+            style={[form.select, isOpen && form.selectActive, disabled && { opacity: primitives.opacity.disabled }]}
+          >
+            {body}
+            <ChevronDown size={20} color={colors.text} strokeWidth={2} />
+          </Pressable>}
     </View>
   );
 }
 
-function RouteCityField({ label, value, onChange, options = CITIES, allowCustom = false, disabled }: {
-  label: string; value: string; onChange: (value: string) => void; options?: readonly string[]; allowCustom?: boolean; disabled: boolean;
+function RouteCityField({ label, value, onChange, options = CITIES, allowCustom = false, disabled, readOnly = false, hint }: {
+  label: string; value: string; onChange?: (value: string) => void; options?: readonly string[]; allowCustom?: boolean; disabled: boolean; readOnly?: boolean; hint?: string;
 }) {
   const [open, setOpen] = useState(false);
+  if (readOnly) return <View style={form.sectionCard}>
+    <LocationDropdown label={label} value={value} placeholder="Select a city" isOpen={false} onToggle={() => setOpen(false)} disabled={disabled} readOnly />
+    {hint ? <Txt style={s.hint}>{hint}</Txt> : null}
+  </View>;
   return <View style={form.sectionCard}>
     <LocationDropdown label={label} value={value} placeholder="Select a city" isOpen={open} onToggle={() => setOpen(!open)} disabled={disabled} />
     {open && !disabled && <View style={form.selectOptions}>
-      {options.map(city => <Pressable key={city} accessibilityRole="radio" accessibilityLabel={`${label}: ${city}`} accessibilityState={{ checked: city === value }} onPress={() => { onChange(city); setOpen(false); }} style={[form.selectOption, city === value && form.selectOptionActive]}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}><CityIllustration city={city} size={34} /><Txt style={form.selectOptionText}>{city}</Txt></View>
+      {options.map(city => <Pressable key={city} accessibilityRole="radio" accessibilityLabel={`${label}: ${city}`} accessibilityState={{ checked: city === value }} onPress={() => { onChange?.(city); setOpen(false); }} style={[form.selectOption, city === value && form.selectOptionActive]}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}><PlaceIllustration city={city} size={34} /><Txt style={form.selectOptionText}>{city}</Txt></View>
         {city === value && <Txt style={form.selectOptionSelected}>Selected</Txt>}
       </Pressable>)}
       {allowCustom && <>
@@ -443,8 +457,10 @@ export function ShipmentForm({ onClose, onSuccess, trip, shipment, draft }: { on
     return () => { active = false; };
   }, []);
   const serviceArea = data.snapshot?.serviceArea ?? fallbackServiceArea;
-  const allLocations = useMemo(() => [serviceArea.baseLocation, ...serviceArea.destinations], [serviceArea]);
-  const [origin, setOrigin] = useState(shipment?.origin ?? draft?.origin ?? trip?.origin ?? "");
+  // Parcels are collected from the service area's base location, so the pickup is fixed.
+  // An existing parcel keeps the origin it was created with, so editing never moves it.
+  const origin = shipment?.origin ?? serviceArea.baseLocation;
+  const destinations = useMemo(() => destinationsFor(serviceArea), [serviceArea]);
   const [destination, setDestination] = useState(shipment?.destination ?? draft?.destination ?? trip?.destination ?? "");
   const [category, setCategory] = useState<string>(shipment?.category ?? draft?.category ?? "");
   const [description, setDescription] = useState(shipment?.description ?? draft?.description ?? "");
@@ -538,8 +554,8 @@ export function ShipmentForm({ onClose, onSuccess, trip, shipment, draft }: { on
     {rejected && <View style={form.notice}><Notice tone="warning">{current?.reviewNote ? `Review note: ${current.reviewNote}` : "Update your parcel details, then send them for another review."}</Notice></View>}
     {screen === "route" && <>
     {trip && !shipment && <View style={form.notice}><Notice>We've filled in the route from the trip you chose.</Notice></View>}
-    <RouteCityField label="From" value={origin} onChange={setOrigin} options={allLocations} disabled={disabled} />
-    <RouteCityField label="To" value={destination} onChange={setDestination} options={allLocations} disabled={disabled} />
+    <RouteCityField label="From" value={origin} readOnly disabled={disabled} hint={origin === serviceArea.baseLocation ? "All parcels are collected here for now." : undefined} />
+    <RouteCityField label="To" value={destination} onChange={setDestination} options={destinations} disabled={disabled} />
     <Field label="Pickup instructions" value={pickupInstructions} onChangeText={setPickupInstructions} editable={!disabled} placeholder="Meeting point and how to find you" multiline maxLength={1000} />
     <Field label="Drop-off instructions" value={dropoffInstructions} onChangeText={setDropoffInstructions} editable={!disabled} placeholder="Receiving point and access details" multiline maxLength={1000} />
 
@@ -602,7 +618,11 @@ export function TripForm({ onClose, onSuccess, trip }: { onClose: () => void; on
   const [screen, setScreen] = useState<TripScreen>("route");
   const [failed, setFailed] = useState(false);
   const [returnToReview, setReturnToReview] = useState(false);
-  const [origin, setOrigin] = useState(trip?.origin ?? "");
+  const serviceArea = data.snapshot?.serviceArea ?? fallbackServiceArea;
+  // Trips start from the service area's base location, so the departure city is fixed.
+  // An existing trip keeps the origin it was published with, so editing never moves it.
+  const origin = trip?.origin ?? serviceArea.baseLocation;
+  const destinations = useMemo(() => destinationsFor(serviceArea), [serviceArea]);
   const [destination, setDestination] = useState(trip?.destination ?? "");
   const [stops, setStops] = useState<string[]>(() => [...(trip?.stops ?? [])]);
   const [departure, setDeparture] = useState(() => localDateTime(trip?.departureAt));
@@ -696,8 +716,8 @@ export function TripForm({ onClose, onSuccess, trip }: { onClose: () => void; on
       : <View style={form.notice}><Notice tone="warning">{blocked}</Notice></View>)}
     {trip && !observedCommitment && <View style={form.notice}><Notice>You can change your plans until a delivery is accepted. Existing bookings may prevent these changes.</Notice></View>}
     {screen === "route" && <>
-    <RouteCityField label="From" value={origin} onChange={setOrigin} allowCustom disabled={disabled} />
-    <RouteCityField label="To" value={destination} onChange={setDestination} allowCustom disabled={disabled} />
+    <RouteCityField label="From" value={origin} readOnly disabled={disabled} hint={origin === serviceArea.baseLocation ? "All trips start here for now." : undefined} />
+    <RouteCityField label="To" value={destination} onChange={setDestination} options={destinations} disabled={disabled} />
     <View style={form.stops}>
       <Txt style={[s.label, { marginBottom: 7 }]}>Stops along the way · optional</Txt>
       <Txt style={[s.hint, form.sectionHint]}>Add cities where you can collect or drop off parcels, in travel order. Up to eight stops.</Txt>

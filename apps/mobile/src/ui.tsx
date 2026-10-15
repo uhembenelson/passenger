@@ -1,7 +1,7 @@
 import React from "react";
 import { ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type { StyleProp, TextInputProps, TextStyle, ViewStyle } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChevronLeft, ArrowRight, ArrowUpRight, Check as CheckIcon, X } from "lucide-react-native";
 import { formatErrorMessage, STATUS_LABELS } from "@passenger/core";
 import type { ShipmentStatus } from "@passenger/core";
@@ -318,9 +318,16 @@ export function AuthCheckbox({ checked, onChange, children }: React.PropsWithChi
   return <Pressable accessibilityRole="checkbox" accessibilityState={{ checked }} onPress={() => onChange(!checked)} style={s.authCheckRow}><View style={[s.authCheckbox, checked && s.authCheckboxChecked]}>{checked && <CheckIcon size={14} color="white" strokeWidth={3} />}</View><Txt style={s.authCheckText}>{children}</Txt></Pressable>;
 }
 
+/** Safe area padding for content mounted inside a React Native `Modal`. A modal renders into
+ *  its own native window, so the root `SafeAreaProvider` is not an ancestor of what is inside it
+ *  and `SafeAreaView` reports no insets there. This binds the content to the modal's own window. */
+export function ModalSafeAreaView({ children, ...props }: React.ComponentProps<typeof SafeAreaView>) {
+  return <SafeAreaProvider><SafeAreaView {...props}>{children}</SafeAreaView></SafeAreaProvider>;
+}
+
 function BottomSheetFrame({ title, onClose, onBack, backDisabled, children, footer, titleStyle, bodyStyle, containerStyle }: React.PropsWithChildren<{ title: string; onClose: () => void; onBack?: () => void; backDisabled?: boolean; footer?: React.ReactNode; titleStyle: StyleProp<TextStyle>; bodyStyle: StyleProp<ViewStyle>; containerStyle?: StyleProp<ViewStyle> }>) {
   const insets = useSafeAreaInsets();
-  return <Modal transparent visible animationType="slide" onRequestClose={onClose}><KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[s.presentationOverlay, { paddingTop: insets.top }]}><Pressable accessibilityRole="button" accessibilityLabel="Close sheet" onPress={onClose} style={StyleSheet.absoluteFill} /><SafeAreaView edges={["right", "bottom", "left"]} style={[s.presentationSheet, containerStyle]}><View style={s.presentationHandle} /><View style={s.sheetHeader}>{onBack && <BackButton disabled={backDisabled} onPress={onBack} />}<View style={{ flex: 1 }}><Txt style={titleStyle}>{title}</Txt></View><Pressable accessibilityRole="button" accessibilityLabel="Close sheet" onPress={onClose} style={s.close}><X size={20} color={semantic.color.text.tertiary} /></Pressable></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[bodyStyle, footer ? s.sheetBodyWithFooter : undefined]}>{children}</ScrollView>{footer ? <View style={s.sheetFooter}>{footer}</View> : null}</SafeAreaView></KeyboardAvoidingView></Modal>;
+  return <Modal transparent visible animationType="slide" onRequestClose={onClose}><SafeAreaProvider><KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={[s.presentationOverlay, { paddingTop: insets.top }]}><Pressable accessibilityRole="button" accessibilityLabel="Close sheet" onPress={onClose} style={StyleSheet.absoluteFill} /><SafeAreaView edges={["right", "bottom", "left"]} style={[s.presentationSheet, containerStyle]}><View style={s.presentationHandle} /><View style={s.sheetHeader}>{onBack && <BackButton disabled={backDisabled} onPress={onBack} />}<View style={{ flex: 1 }}><Txt style={titleStyle}>{title}</Txt></View><Pressable accessibilityRole="button" accessibilityLabel="Close sheet" onPress={onClose} style={s.close}><X size={20} color={semantic.color.text.tertiary} /></Pressable></View><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[bodyStyle, footer ? s.sheetBodyWithFooter : undefined]}>{children}</ScrollView>{footer ? <View style={s.sheetFooter}>{footer}</View> : null}</SafeAreaView></KeyboardAvoidingView></SafeAreaProvider></Modal>;
 }
 
 export function Sheet({ title, onClose, onBack, backDisabled, children, wide = false }: React.PropsWithChildren<{ title: string; onClose: () => void; onBack?: () => void; backDisabled?: boolean; wide?: boolean }>) {
@@ -344,7 +351,7 @@ export function FullScreenState({ title, subtitle, primaryAction, secondaryActio
     presentationStyle="fullScreen"
     onRequestClose={onRequestClose ?? secondaryAction?.onPress ?? primaryAction.onPress}
   >
-    <SafeAreaView style={s.takeoverScreen}>
+    <ModalSafeAreaView style={s.takeoverScreen}>
       <View accessibilityViewIsModal style={s.takeoverContent}>
         <View style={s.takeoverCopy}>
           <Txt accessibilityRole="header" style={s.takeoverTitle}>{title}</Txt>
@@ -355,7 +362,7 @@ export function FullScreenState({ title, subtitle, primaryAction, secondaryActio
           {secondaryAction ? <Button title={secondaryAction.label} variant="ghost" onPress={secondaryAction.onPress} /> : null}
         </View>
       </View>
-    </SafeAreaView>
+    </ModalSafeAreaView>
   </Modal>;
 }
 

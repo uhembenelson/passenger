@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 const MOMENTS = [
@@ -218,26 +219,26 @@ export function HowItHappens({ sectionRef: externalRef }: HowItHappensProps) {
               <p className="text-lg font-semibold text-[#1F2937]">
                 You&apos;re sending
               </p>
-              <a
-                href="https://app.usepassenger.com/"
+              <Link
+                href="/waitlist"
                 className="inline-flex items-center gap-1.5 mt-2 text-base font-semibold text-[#248A56] border-b border-[#248A56]/40 hover:border-[#248A56]"
               >
                 Send something
                 <ArrowRight className="w-4 h-4" />
-              </a>
+              </Link>
             </div>
             <div className="sm:pl-10">
               <p className="text-lg font-semibold text-[#1F2937]">
                 You&apos;re travelling
               </p>
               <p className="mt-3 text-[#4B5563] leading-relaxed">Share your route and available space for a parcel going your way.</p>
-              <a
-                href="https://app.usepassenger.com/"
+              <Link
+                href="/waitlist"
                 className="inline-flex items-center gap-1.5 mt-2 text-base font-semibold text-[#248A56] border-b border-[#248A56]/40 hover:border-[#248A56]"
               >
                 I&apos;m travelling
                 <ArrowRight className="w-4 h-4" />
-              </a>
+              </Link>
             </div>
           </div>
         </div>

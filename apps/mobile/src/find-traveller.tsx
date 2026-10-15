@@ -2,14 +2,14 @@ import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ListRenderItem } from "react-native";
-import { ArrowRight, ChevronDown, MapPin, Star } from "lucide-react-native";
+import { ArrowRight, ChevronDown, Star } from "lucide-react-native";
 import { usePaginatedQuery, useQuery } from "convex/react";
 import type { Id } from "@passenger/backend/convex/_generated/dataModel";
 import { api } from "@passenger/backend/convex/_generated/api";
 import { routeMatches } from "@passenger/core";
 import type { CreateShipmentInput, Trip } from "@passenger/core";
 import { usePassenger } from "./data";
-import { CityIllustration } from "./illustrations";
+import { PlaceIllustration } from "./hairline-icons";
 import { BackButton, Avatar, Button, Card, colors, ContentSkeleton, Empty, Notice, Txt } from "./ui";
 
 export type TravellerSearchDraft = Partial<CreateShipmentInput>;
@@ -30,23 +30,22 @@ export function FindTravellerFlow({ onClose, onBookTrip, initialDraft }: Props) 
   const snapshot = data.snapshot;
   const serviceArea = snapshot?.serviceArea ?? fallbackServiceArea;
   const parcelTypes = snapshot?.mobileConfig?.parcelTypes ?? fallbackParcelTypes;
-  const locations = useMemo(() => [serviceArea.baseLocation, ...serviceArea.destinations], [serviceArea.baseLocation, serviceArea.destinations]);
+  // Trips are built out from the service area's base location, so the pickup is fixed
+  // rather than chosen: only the destination is a question.
+  const origin = serviceArea.baseLocation;
+  const destinations = useMemo(() => serviceArea.destinations.filter(name => name.trim().toLowerCase() !== origin.trim().toLowerCase()), [serviceArea.destinations, origin]);
   const [stage, setStage] = useState<Stage>("search");
-  const [origin, setOrigin] = useState(initialDraft?.origin ?? serviceArea.baseLocation);
-  const [destination, setDestination] = useState(initialDraft?.destination ?? serviceArea.destinations[0] ?? "");
+  const [destination, setDestination] = useState(initialDraft?.destination ?? destinations[0] ?? "");
   const [parcelType, setParcelType] = useState(() => parcelTypes.find(type => type.category === initialDraft?.category && type.weightKg === initialDraft?.weightKg) ?? parcelTypes[0]);
   const [typeOpen, setTypeOpen] = useState(false);
-  const [locationOpen, setLocationOpen] = useState<"origin" | "destination" | null>(null);
+  const [destinationOpen, setDestinationOpen] = useState(false);
   const [selected, setSelected] = useState<Trip>();
   const [error, setError] = useState("");
   const { results: availableTrips, status: availableTripsStatus, loadMore: loadMoreAvailableTrips } = usePaginatedQuery(api.marketplace.availableTripsPage, {}, { initialNumItems: 30 });
 
   useEffect(() => {
-    if (!locations.includes(origin) || !locations.includes(destination) || !isServiceRoute(origin, destination, serviceArea)) {
-      setOrigin(serviceArea.baseLocation);
-      setDestination(serviceArea.destinations[0] ?? "");
-    }
-  }, [destination, locations, origin, serviceArea]);
+    if (!isServiceRoute(origin, destination, serviceArea)) setDestination(destinations[0] ?? "");
+  }, [destination, destinations, origin, serviceArea]);
 
   const results = useMemo(() => availableTrips
     .filter(trip => (trip.maxParcelWeightKg ?? trip.capacityKg) >= parcelType.weightKg && (!trip.acceptedCategories?.length || trip.acceptedCategories.includes(parcelType.category)) && routeMatches({ origin, destination }, trip)), [availableTrips, origin, destination, parcelType.category, parcelType.weightKg]);
@@ -61,23 +60,14 @@ export function FindTravellerFlow({ onClose, onBookTrip, initialDraft }: Props) 
 
   const submitSearch = () => {
     setError("");
-    if (!origin.trim() || !destination.trim()) return setError("Enter both pickup and destination cities.");
-    if (origin.trim().toLowerCase() === destination.trim().toLowerCase()) return setError("Choose different pickup and destination cities.");
+    if (!destination.trim()) return setError("Choose a destination city.");
+    if (destination.trim().toLowerCase() === origin.trim().toLowerCase()) return setError("Choose a destination different from your pickup city.");
     if (!isServiceRoute(origin, destination, serviceArea)) return setError(`Trips currently need to start or end in ${serviceArea.baseLocation}.`);
     setStage("results");
   };
-  const selectLocation = (field: "origin" | "destination", value: string) => {
-    const base = serviceArea.baseLocation;
-    if (field === "origin") {
-      setOrigin(value);
-      if (value !== base) setDestination(base);
-      else if (destination === base) setDestination(serviceArea.destinations[0] ?? "");
-    } else {
-      setDestination(value);
-      if (value !== base) setOrigin(base);
-      else if (origin === base) setOrigin(serviceArea.destinations[0] ?? "");
-    }
-    setLocationOpen(null);
+  const selectDestination = (value: string) => {
+    setDestination(value);
+    setDestinationOpen(false);
     setError("");
   };
   const back = () => {
@@ -140,13 +130,13 @@ export function FindTravellerFlow({ onClose, onBookTrip, initialDraft }: Props) 
   return <View style={f.screen}>
     <FlowHeader title="Find Travellers" onBack={back} />
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={f.formScroll}>
-      <LocationSelect label="Pickup city" value={origin} onPress={() => setLocationOpen("origin")} />
-      <LocationSelect label="Destination city" value={destination} onPress={() => setLocationOpen("destination")} />
-      <Txt style={f.label}>Parcel Type</Txt><Pressable accessibilityRole="button" onPress={() => setTypeOpen(true)} style={f.select}><Txt style={f.inputText}>{parcelType.label}</Txt><ChevronDown size={22} color={colors.text} /></Pressable>
+      <LocationSelect label="From" value={origin} hint="All trips start here for now." />
+      <LocationSelect label="To" value={destination} onPress={() => setDestinationOpen(true)} />
+      <View style={f.fieldGroup}><Txt style={f.label}>Parcel Type</Txt><Pressable accessibilityRole="button" onPress={() => setTypeOpen(true)} style={f.select}><Txt style={f.inputText}>{parcelType.label}</Txt><ChevronDown size={22} color={colors.text} /></Pressable></View>
       {error ? <Notice tone="error">{error}</Notice> : null}
     </ScrollView>
     <View style={f.fixedAction}><Button title="Find Travellers" variant="lime" onPress={submitSearch} style={f.primaryButton} /></View>
-    <Modal transparent visible={locationOpen !== null} animationType="fade" onRequestClose={() => setLocationOpen(null)}><Pressable style={[f.modalBackdrop, modalSafeArea]} onPress={() => setLocationOpen(null)}><View style={f.typeSheet}><Txt style={f.sheetTitle}>{locationOpen === "origin" ? "Select pickup location" : "Select destination"}</Txt>{locations.map(location => <Pressable key={location} accessibilityRole="radio" accessibilityState={{ checked: location === (locationOpen === "origin" ? origin : destination) }} onPress={() => selectLocation(locationOpen!, location)} style={f.typeOption}><CityIllustration city={location} size={38} /><View style={{ flex: 1 }}><Txt style={f.inputText}>{location}</Txt>{location === serviceArea.baseLocation ? <Txt style={f.subdued}>Base location</Txt> : null}</View></Pressable>)}</View></Pressable></Modal>
+    <Modal transparent visible={destinationOpen} animationType="fade" onRequestClose={() => setDestinationOpen(false)}><Pressable style={[f.modalBackdrop, modalSafeArea]} onPress={() => setDestinationOpen(false)}><View style={f.typeSheet}><Txt style={f.sheetTitle}>Select destination</Txt>{destinations.map(location => <Pressable key={location} accessibilityRole="radio" accessibilityState={{ checked: location === destination }} onPress={() => selectDestination(location)} style={f.locationOption}><PlaceIllustration city={location} size={38} /><View style={{ flex: 1 }}><Txt style={f.inputText}>{location}</Txt></View></Pressable>)}</View></Pressable></Modal>
     <Modal transparent visible={typeOpen} animationType="fade" onRequestClose={() => setTypeOpen(false)}><Pressable style={[f.modalBackdrop, modalSafeArea]} onPress={() => setTypeOpen(false)}><View style={f.typeSheet}>{parcelTypes.map(type => <Pressable key={type.label} accessibilityRole="radio" accessibilityState={{ checked: type.label === parcelType.label }} onPress={() => { setParcelType(type); setTypeOpen(false); }} style={f.typeOption}><Txt style={f.inputText}>{type.label}</Txt><Txt style={f.subdued}>Up to {type.weightKg} kg</Txt></Pressable>)}</View></Pressable></Modal>
   </View>;
 }
@@ -159,7 +149,16 @@ function tripKey(trip: Trip) { return trip.id; }
 function ResultSeparator() { return <View style={f.resultSeparator} />; }
 
 function FlowHeader({ title, onBack }: { title: string; onBack: () => void }) { return <View style={f.header}><View style={f.back}><BackButton onPress={onBack} /></View><Txt pointerEvents="none" numberOfLines={2} style={f.title}>{title}</Txt><View pointerEvents="none" style={f.headerBalance} /></View>; }
-function LocationSelect({ label, value, onPress }: { label: string; value: string; onPress: () => void }) { return <Pressable accessibilityRole="button" accessibilityLabel={label + ": " + value} onPress={onPress} style={f.locationInput}>{value ? <CityIllustration city={value} size={36} /> : <MapPin size={21} color={colors.text} />}<Txt style={f.locationValue}>{value}</Txt><ChevronDown size={21} color={colors.text} /></Pressable>; }
+function LocationSelect({ label, value, hint, onPress }: { label: string; value: string; hint?: string; onPress?: () => void }) {
+  const body = <><PlaceIllustration city={value} size={36} /><Txt style={f.locationValue}>{value}</Txt>{onPress ? <ChevronDown size={21} color={colors.text} /> : null}</>;
+  return <View style={f.fieldGroup}>
+    <Txt style={f.label}>{label}</Txt>
+    {onPress
+      ? <Pressable accessibilityRole="button" accessibilityLabel={label + ": " + value} onPress={onPress} style={f.locationInput}>{body}</Pressable>
+      : <View style={f.locationInput}>{body}</View>}
+    {hint ? <Txt style={f.subdued}>{hint}</Txt> : null}
+  </View>;
+}
 function Stars({ rating, compact }: { rating: number; compact?: boolean }) { const rounded = Math.round(rating); return <View accessibilityLabel={rating.toFixed(1) + " out of 5 stars"} style={f.stars}>{[1, 2, 3, 4, 5].map(value => <Star key={value} size={compact ? 12 : 15} color={value <= rounded ? "#D89A00" : "#CDD3D0"} fill={value <= rounded ? "#FFC400" : "transparent"} />)}</View>; }
 function InfoCard({ title, children }: React.PropsWithChildren<{ title: string }>) { return <Card style={f.infoCard}><Txt style={f.infoTitle}>{title}</Txt><View style={{ gap: 7 }}>{children}</View></Card>; }
 function dateTime(timestamp: number) { return new Date(timestamp).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }); }
@@ -170,10 +169,10 @@ const f = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg }, header: { minHeight: 76, paddingHorizontal: 17, paddingVertical: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   back: { width: 70, minHeight: 48, justifyContent: "center", zIndex: 1 }, title: { flex: 1, textAlign: "center", fontSize: 17, lineHeight: 23, fontFamily: "WorkSansSemiBold" }, headerBalance: { width: 70 },
   formScroll: { paddingHorizontal: 17, paddingTop: 18, paddingBottom: 120, gap: 14 }, locationInput: { minHeight: 56, borderRadius: 13, backgroundColor: colors.paper, paddingHorizontal: 17, flexDirection: "row", alignItems: "center", gap: 13 },
-  locationValue: { flex: 1, fontSize: 17, lineHeight: 23, color: colors.text }, label: { marginTop: 5, fontSize: 16, lineHeight: 22, color: colors.text },
+  locationValue: { flex: 1, fontSize: 17, lineHeight: 23, color: colors.text }, label: { fontSize: 16, lineHeight: 22, color: colors.text }, fieldGroup: { gap: 8 },
   select: { minHeight: 56, borderRadius: 13, backgroundColor: colors.paper, paddingHorizontal: 17, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, inputText: { fontSize: 16, lineHeight: 22, color: colors.text },
   fixedAction: { paddingHorizontal: 17, paddingTop: 10, paddingBottom: 24, backgroundColor: colors.bg }, primaryButton: { minHeight: 52 },
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(17,24,39,0.52)", justifyContent: "flex-end", padding: 17 }, typeSheet: { borderRadius: 18, backgroundColor: colors.bg, padding: 8 }, sheetTitle: { paddingHorizontal: 14, paddingVertical: 13, fontSize: 17, lineHeight: 23, fontFamily: "WorkSansSemiBold" }, typeOption: { minHeight: 60, paddingHorizontal: 14, paddingVertical: 12, justifyContent: "center", borderBottomWidth: 1, borderBottomColor: colors.border }, subdued: { fontSize: 12, lineHeight: 18, color: colors.muted },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(17,24,39,0.52)", justifyContent: "flex-end", padding: 17 }, typeSheet: { borderRadius: 18, backgroundColor: colors.bg, padding: 8 }, sheetTitle: { paddingHorizontal: 14, paddingVertical: 13, fontSize: 17, lineHeight: 23, fontFamily: "WorkSansSemiBold" }, typeOption: { minHeight: 60, paddingHorizontal: 14, paddingVertical: 12, justifyContent: "center", borderBottomWidth: 1, borderBottomColor: colors.border }, locationOption: { minHeight: 60, paddingHorizontal: 14, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 13, borderBottomWidth: 1, borderBottomColor: colors.border }, subdued: { fontSize: 12, lineHeight: 18, color: colors.muted },
   resultsHeader: { paddingHorizontal: 17, paddingTop: 14, paddingBottom: 12, flexDirection: "row", alignItems: "center", gap: 12 },
   resultsTitle: { flex: 1, fontSize: 26, lineHeight: 32, fontFamily: "WorkSansSemiBold", color: colors.text },
   searchSummary: { paddingBottom: 24, gap: 8 },

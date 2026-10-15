@@ -11,6 +11,8 @@ beforeEach(() => {
   vi.stubEnv("RESEND_API_KEY", "re_test");
   vi.stubEnv("AUTH_EMAIL_FROM", "Passenger <accounts@usepassenger.com>");
   vi.stubEnv("SITE_URL", "https://usepassenger.com");
+  vi.stubEnv("POSTHOG_PROJECT_API_KEY", "");
+  vi.stubEnv("POSTHOG_HOST", "");
   fetchMock.mockReset().mockResolvedValue(new Response(JSON.stringify({ id: "email_waitlist_1" })));
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -39,8 +41,8 @@ it("stores a normalized signup and sends one confirmation email", async () => {
   const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
   expect(payload.from).toBe("Passenger <accounts@usepassenger.com>");
   expect(payload.to).toBe("ada@example.com");
-  expect(payload.subject).toBe("Welcome to the Passenger waitlist");
-  expect(payload.text).toContain("Thanks for joining us from Lagos");
+  expect(payload.subject).toBe("You are on the Passenger waitlist");
+  expect(payload.text).toContain("Thank you for joining the Passenger waitlist.");
 
   await t.action(api.waitlist.join, { name: "Ada Okafor", email: "ada@example.com", state: "Ogun" });
   expect(fetchMock).toHaveBeenCalledTimes(1);

@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Apple, Play } from "lucide-react";
 
 const STORES: { icon: typeof Apple; top: string; bottom: string }[] = [
   {
     icon: Apple,
-    top: "Use in your browser",
-    bottom: "Open Passenger",
+    top: "Get early access",
+    bottom: "Join our wait list",
   },
 ];
 
@@ -60,18 +61,18 @@ export function ClosingCta() {
 
         {/* Two doors */}
         <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
-          <a
-            href="https://app.usepassenger.com/"
+          <Link
+            href="/waitlist"
             className="h-12 px-7 rounded-full bg-[#1F2937] hover:bg-[#111827] text-white font-medium text-base shadow-sm inline-flex items-center justify-center transition-colors"
           >
             Send something
-          </a>
-          <a
-            href="https://app.usepassenger.com/"
+          </Link>
+          <Link
+            href="/waitlist"
             className="h-12 px-7 rounded-full border border-[#D1D5DB] hover:border-[#1F2937] hover:bg-[#F7F7F8] text-[#1F2937] font-medium text-base bg-white inline-flex items-center justify-center transition-colors"
           >
             I&apos;m travelling
-          </a>
+          </Link>
         </div>
 
         {/* Store badges */}
@@ -79,7 +80,7 @@ export function ClosingCta() {
           {STORES.map((s) => (
             <a
               key={s.bottom}
-              href="https://app.usepassenger.com/"
+              href="/waitlist"
               className="inline-flex items-center gap-3 rounded-xl border border-[#D1D5DB] bg-white px-5 py-2.5 text-left shadow-xs transition-colors hover:border-[#1F2937]"
             >
               <s.icon className="w-6 h-6 text-[#1F2937]" />

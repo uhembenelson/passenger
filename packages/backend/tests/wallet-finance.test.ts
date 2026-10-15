@@ -37,19 +37,14 @@ async function fixture() {
   vi.unstubAllGlobals();
   return { t, sender, traveller, userId, shipmentId };
 }
-it("pays a wallet-funded delivery through V4 once after delivery eligibility", async () => {
+it("releases a wallet-funded delivery into the traveller balance once and never calls the provider", async () => {
   const { t, traveller, shipmentId } = await fixture();
-  const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-    expect(String(url)).toContain("/transfers");
-    const request = JSON.parse(String(init?.body));
-    expect(request).toMatchObject({ amount: 4500, bankCode: "001", accountNumber: "0123451234", nameEnquiryReference: "NER_wallet" });
-    expect(new Headers(init?.headers).get("Idempotency-Key")).toMatch(/^passenger-/);
-    return new Response(JSON.stringify({ success: true, data: { transferReference: "V4_TRF_wallet" } }));
-  }); vi.stubGlobal("fetch", fetchMock);
+  const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
   await t.action(internal.finance.automaticPayout, { shipmentId });
   await t.action(internal.finance.automaticPayout, { shipmentId });
-  expect(fetchMock).toHaveBeenCalledTimes(1);
-  expect(await traveller.query(api.finance.earnings)).toMatchObject([{ status: "paid", amountKobo: 450000 }]);
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(await traveller.query(api.finance.earnings)).toMatchObject([{ status: "available", amountKobo: 450000 }]);
+  expect(await traveller.query(api.wallet.balance)).toMatchObject({ balanceNaira: 4500 });
 });
 it("returns an approved wallet refund once without calling the provider", async () => {
   const { t, sender, shipmentId } = await fixture();

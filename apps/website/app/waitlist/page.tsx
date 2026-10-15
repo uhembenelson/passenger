@@ -397,9 +397,16 @@ export default function WaitlistPage() {
       <header className="relative z-10 flex w-full items-center justify-between px-6 py-6 sm:px-10">
         <Link
           href="/"
-          className="text-sm font-medium text-[#6B7280] transition-colors hover:text-[#1F2937]"
+          className="flex items-center"
+          aria-label="Passenger home"
         >
-          Passenger
+          <img
+            src="/logopp.png"
+            alt="Passenger"
+            className="h-7 w-auto"
+            width={2844}
+            height={840}
+          />
         </Link>
         <Link
           href="/"

@@ -5,7 +5,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Slow, Lockers } from "@lucasmarkes/hairline/react";
 import { PassengerPhoneStage } from "./passenger-phone-stage";
 
-const APP = "https://app.usepassenger.com/";
+const APP = "/waitlist";
 
 const HAIRLINE_THEME = {
   "--hairline-plate": "#F0F3ED",
@@ -255,5 +255,5 @@ export function LandingStory() {
 }
 
 export function LandingClosing() {
-  return <section id="download" className="story-closing"><div className="story-closing-copy"><h2>Ready when<br />you are.</h2><p>Use Passenger in your browser. No download needed.</p><a href={APP}>Open Passenger <ArrowRight size={18} /></a></div></section>;
+  return <section id="download" className="story-closing"><div className="story-closing-copy"><h2>Ready when<br />you are.</h2><p>Be first to know when Passenger is ready.</p><a href="/waitlist">Join our wait list <ArrowRight size={18} /></a></div></section>;
 }

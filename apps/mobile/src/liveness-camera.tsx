@@ -1,11 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Linking, Modal, Platform, Pressable, StyleSheet, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Camera, X } from "lucide-react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { WebView } from "react-native-webview";
-import { Button, colors, fontFamily, Txt } from "./ui";
+import { Button, colors, fontFamily, ModalSafeAreaView, Txt } from "./ui";
 
 const isWeb = Platform.OS === "web";
 
@@ -302,7 +301,7 @@ export function LivenessCameraModal({ visible, onClose, onCapture }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
-      <SafeAreaView style={styles.container}>
+      <ModalSafeAreaView style={styles.container}>
         <View style={styles.header}>
           <Pressable accessibilityRole="button" accessibilityLabel="Close live check" onPress={onClose} style={styles.closeBtn}>
             <X size={22} color="#FFFFFF" />
@@ -384,7 +383,7 @@ export function LivenessCameraModal({ visible, onClose, onCapture }: Props) {
             )}
           </View>
         )}
-      </SafeAreaView>
+      </ModalSafeAreaView>
     </Modal>
   );
 }

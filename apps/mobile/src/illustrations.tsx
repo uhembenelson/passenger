@@ -4,7 +4,6 @@ import type { ImageStyle, StyleProp, ViewStyle } from "react-native";
 
 export type IllustrationName = "identityVerification" | "phoneVerification" | "milestonesClear" | "routesEmpty" | "createParcel" | "createTrip";
 export type CityIllustrationName = "Jos" | "Abuja" | "Lagos" | "Kaduna" | "Kano" | "Ibadan" | "Enugu" | "Port Harcourt";
-export type NavigationIllustrationName = "home" | "milestones" | "trips" | "profile";
 
 const sources = {
   identityVerification: require("../assets/illustrations/identity-verification.webp"),
@@ -26,13 +25,6 @@ const citySources = {
   "Port Harcourt": require("../assets/illustrations/city-port-harcourt.webp"),
 } as const;
 
-const navigationSources = {
-  home: require("../assets/navigation/tab-home.webp"),
-  milestones: require("../assets/navigation/tab-milestones.webp"),
-  trips: require("../assets/navigation/tab-trips.webp"),
-  profile: require("../assets/navigation/tab-profile.webp"),
-} as const;
-
 export function BrandIllustration({ name, size = 112, style, imageStyle }: {
   name: IllustrationName;
   size?: number;
@@ -49,12 +41,6 @@ export function CityIllustration({ city, size = 42, style }: { city: string; siz
   if (!canonical) return null;
   return <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.frame, { width: size, height: size }, style]}>
     <Image source={citySources[canonical]} resizeMode="contain" style={styles.image} />
-  </View>;
-}
-
-export function NavigationIllustration({ name, size = 30, style }: { name: NavigationIllustrationName; size?: number; style?: StyleProp<ViewStyle> }) {
-  return <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.frame, { width: size, height: size }, style]}>
-    <Image source={navigationSources[name]} resizeMode="contain" style={styles.image} />
   </View>;
 }
 

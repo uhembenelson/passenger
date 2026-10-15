@@ -26,16 +26,16 @@ async function fixture() {
 test("earnings are private and start only after a paid delivery", async () => {
   const f = await fixture();
   expect(await f.sender.query(api.finance.earnings, {})).toEqual([]);
-  expect(await f.traveller.query(api.finance.earnings, {})).toMatchObject([{ amountKobo: 45000, status: "bank_required" }]);
+  expect(await f.traveller.query(api.finance.earnings, {})).toMatchObject([{ amountKobo: 45000, status: "scheduled" }]);
   await f.t.run(ctx => ctx.db.patch(f.shipmentId, { deliveredAt: undefined, status: "in_transit" }));
   expect(await f.traveller.query(api.finance.earnings, {})).toEqual([]);
 });
 
-test("payout becomes scheduled after bank setup and paid only after release", async () => {
-  const f = await fixture(); await f.addBank();
+test("an earning becomes available in the balance only after release", async () => {
+  const f = await fixture();
   expect(await f.traveller.query(api.finance.earnings, {})).toMatchObject([{ status: "scheduled" }]);
   await f.t.run(ctx => ctx.db.patch(f.shipmentId, { paymentStatus: "released" }));
-  expect(await f.traveller.query(api.finance.earnings, {})).toMatchObject([{ status: "paid", amountKobo: 45000 }]);
+  expect(await f.traveller.query(api.finance.earnings, {})).toMatchObject([{ status: "available", amountKobo: 45000 }]);
 });
 
 test("automatic preparation enforces 24 hours, a verified bank, and idempotent dispatch", async () => {
@@ -63,7 +63,7 @@ test("an open dispute holds earnings and blocks automatic transfer", async () =>
 });
 
 
-test("v4 banking verifies and encrypts an account before an idempotent payout", async () => {
+test("v4 banking verifies and encrypts the payout account while earnings release to the balance", async () => {
   const f = await fixture();
   vi.stubEnv("PAYSTACK_SECRET_KEY", "");
   vi.stubEnv("V4_VERIFICATION_API_KEY", "vk_test_passenger");
@@ -96,8 +96,8 @@ test("v4 banking verifies and encrypts an account before an idempotent payout", 
 
   await f.t.action(internal.finance.automaticPayout, { shipmentId: f.shipmentId });
   await f.t.action(internal.finance.automaticPayout, { shipmentId: f.shipmentId });
-  expect(transferRequests).toHaveLength(1);
-  expect(transferRequests[0]?.body).toMatchObject({ nameEnquiryReference: "NER_test", amount: 450, bankCode: "090286", accountNumber: "0123456789" });
-  expect(transferRequests[0]?.idempotencyKey).toMatch(/^passenger-/);
-  expect(await f.traveller.query(api.finance.earnings, {})).toMatchObject([{ status: "paid", amountKobo: 45000 }]);
+  // Eligible earnings are released into the Passenger balance; no bank transfer is initiated.
+  expect(transferRequests).toHaveLength(0);
+  expect(await f.traveller.query(api.finance.earnings, {})).toMatchObject([{ status: "available", amountKobo: 45000 }]);
+  expect(await f.traveller.query(api.wallet.balance, {})).toMatchObject({ balanceNaira: 450 });
 });

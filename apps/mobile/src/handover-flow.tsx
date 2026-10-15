@@ -1,11 +1,10 @@
 import React, { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Check, PackageCheck } from "lucide-react-native";
 import type { Shipment } from "@passenger/core";
 import { usePassenger } from "./data";
 import { EvidencePicker } from "./evidence";
-import { BackButton, Button, colors, errorMessage, Field, fontFamily, Notice, Txt } from "./ui";
+import { BackButton, Button, colors, errorMessage, Field, fontFamily, ModalSafeAreaView, Notice, Txt } from "./ui";
 
 export type HandoverMode = "sender" | "collect" | "deliver" | "receiver-code";
 export function HandoverFlow({ shipment, mode, onClose }: { shipment: Shipment; mode: HandoverMode; onClose: () => void }) {
@@ -43,7 +42,7 @@ export function HandoverFlow({ shipment, mode, onClose }: { shipment: Shipment; 
   };
   const smsStatus = delivery ? shipment.receiverDeliverySmsStatus : shipment.receiverPickupSmsStatus;
   return <Modal visible presentationStyle="fullScreen" animationType="fade" onRequestClose={back}>
-    <SafeAreaView style={h.screen}>
+    <ModalSafeAreaView style={h.screen}>
       <View style={{ marginLeft: 16 }}><BackButton accessibilityLabel="Back" disabled={locked} onPress={back} /></View>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={h.scroll}>
         <View style={h.content}>
@@ -82,7 +81,7 @@ export function HandoverFlow({ shipment, mode, onClose }: { shipment: Shipment; 
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </ModalSafeAreaView>
   </Modal>;
 }
 const h = StyleSheet.create({

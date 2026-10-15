@@ -2,11 +2,11 @@ import React from "react";
 import Link from "next/link";
 
 const PRODUCT_LINKS = [
-  { label: "Send something", href: "#senders-travellers" },
-  { label: "I'm travelling", href: "#senders-travellers" },
-  { label: "How it works", href: "#how-it-works" },
-  { label: "Trust & safety", href: "#safety" },
-  { label: "FAQ", href: "#faq" },
+  { label: "Send something", href: "#senders-travellers", soon: true },
+  { label: "I'm travelling", href: "#senders-travellers", soon: true },
+  { label: "How it works", href: "#how-it-works", soon: false },
+  { label: "Trust & safety", href: "#safety", soon: false },
+  { label: "FAQ", href: "#faq", soon: false },
 ];
 
 const COMPANY_LINKS = [
@@ -21,13 +21,17 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-10">
           {/* Brand */}
           <div className="md:col-span-5">
-            <Link href="/" className="flex items-center">
-              <span className="text-lg font-bold tracking-tight text-[#1F2937] uppercase">
-                Passenger
-              </span>
+            <Link href="/" className="flex items-center" aria-label="Passenger home">
+              <img
+                src="/logopp.png"
+                alt="Passenger"
+                className="h-8 w-auto"
+                width={2844}
+                height={840}
+              />
             </Link>
             <p className="mt-4 max-w-xs text-sm text-[#7A7F87] leading-relaxed">
-              Good things, going places.
+              Send it with someone going your way.
             </p>
           </div>
 
@@ -38,13 +42,22 @@ export function Footer() {
             </h4>
             <ul className="mt-4 space-y-2.5">
               {PRODUCT_LINKS.map((l) => (
-                <li key={l.label}>
-                  <Link
-                    href={l.href}
-                    className="text-sm text-[#4B5563] hover:text-[#1F2937] transition-colors"
-                  >
-                    {l.label}
-                  </Link>
+                <li key={l.label} className="flex items-center gap-2">
+                  {l.soon ? (
+                    <span className="text-sm text-[#9CA3AF]">{l.label}</span>
+                  ) : (
+                    <Link
+                      href={l.href}
+                      className="text-sm text-[#4B5563] hover:text-[#1F2937] transition-colors"
+                    >
+                      {l.label}
+                    </Link>
+                  )}
+                  {l.soon && (
+                    <span className="inline-flex items-center rounded-full bg-[#EAF5F0] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#248A56]">
+                      Coming soon
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -77,10 +90,10 @@ export function Footer() {
             <ul className="mt-4 space-y-2.5">
               <li>
                 <Link
-                  href="https://app.usepassenger.com/"
+                  href="/waitlist"
                   className="text-sm text-[#4B5563] hover:text-[#1F2937] transition-colors"
                 >
-                  Open Passenger
+                  Join our wait list
                 </Link>
               </li>
               <li>

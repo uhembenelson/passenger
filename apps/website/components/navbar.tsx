@@ -52,10 +52,14 @@ export function Navbar() {
     <header className="sticky top-0 z-50 w-full bg-white/90 backdrop-blur-md border-b border-[#F3F3F3]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         {/* Brand Logo */}
-        <Link href="/" className="flex items-center group">
-          <span className="text-xl font-bold tracking-tight text-[#1F2937] uppercase">
-            Passenger
-          </span>
+        <Link href="/" className="flex items-center group" aria-label="Passenger home">
+          <img
+            src="/logopp.png"
+            alt="Passenger"
+            className="h-9 w-auto"
+            width={2844}
+            height={840}
+          />
         </Link>
 
         {/* Desktop Nav Clusters */}
@@ -109,9 +113,9 @@ export function Navbar() {
             asChild
             className="bg-[#34D186] hover:bg-[#2FA968] text-white font-semibold rounded-full shadow-sm text-sm h-10 px-5"
           >
-            <a href="https://app.usepassenger.com/">
-              Open Passenger
-            </a>
+            <Link href="/waitlist">
+              Join our wait list
+            </Link>
           </Button>
         </div>
 
@@ -156,9 +160,9 @@ export function Navbar() {
               asChild
               className="w-full bg-[#34D186] hover:bg-[#2FA968] text-white font-semibold rounded-full"
             >
-              <a href="#download" onClick={() => setMobileMenuOpen(false)}>
-                Get the app
-              </a>
+              <Link href="/waitlist" onClick={() => setMobileMenuOpen(false)}>
+                Join our wait list
+              </Link>
             </Button>
           </div>
         </div>

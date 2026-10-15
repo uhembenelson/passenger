@@ -1,10 +1,10 @@
 import React, { useRef, useState } from "react";
 import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Check, ChevronRight, ShieldCheck, X } from "lucide-react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import type { IdentityNumberType, Person } from "@passenger/core";
 import { usePassenger } from "./data";
-import { BackButton, Button, Notice, Txt, colors, errorMessage, fontFamily } from "./ui";
+import { BackButton, Button, ModalSafeAreaView, Notice, Txt, colors, errorMessage, fontFamily } from "./ui";
 
 export function IdentityNumberVerification({ viewer, onClose, onSuccess }: { viewer: Person; onClose: () => void; onSuccess?: () => void }) {
   const data = usePassenger();
@@ -79,7 +79,7 @@ export function IdentityNumberVerification({ viewer, onClose, onSuccess }: { vie
   };
 
   return <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => !busy && onClose()}>
-    <SafeAreaView style={styles.screen}>
+    <ModalSafeAreaView style={styles.screen}>
       <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <View style={styles.header}>
             <BackButton accessibilityLabel={identityId ? `Back to ${type} number` : type ? "Choose another verification method" : "Back"} disabled={busy} onPress={goBack} />
@@ -109,7 +109,7 @@ export function IdentityNumberVerification({ viewer, onClose, onSuccess }: { vie
           </ScrollView>}
       </KeyboardAvoidingView>
     <Modal transparent visible={verified} animationType="fade" onRequestClose={finish}>
-      <View style={styles.overlay}>
+      <SafeAreaProvider><View style={styles.overlay}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close confirmation" onPress={finish} style={StyleSheet.absoluteFill} />
         <SafeAreaView edges={["bottom"]} style={styles.successSheet}>
           <Pressable accessibilityRole="button" accessibilityLabel="Close confirmation" onPress={finish} style={styles.close}><X size={28} color={colors.text} /></Pressable>
@@ -118,9 +118,9 @@ export function IdentityNumberVerification({ viewer, onClose, onSuccess }: { vie
           <Txt style={styles.successBody}>Your {type} was verified successfully. You can continue your account verification.</Txt>
           <Button title="Continue" variant="lime" onPress={finish} style={styles.button} />
         </SafeAreaView>
-      </View>
+      </View></SafeAreaProvider>
     </Modal>
-    </SafeAreaView>
+    </ModalSafeAreaView>
   </Modal>;
 }
 

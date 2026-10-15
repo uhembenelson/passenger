@@ -52,6 +52,7 @@ import type * as offers from "../offers.js";
 import type * as parcelMapData from "../parcelMapData.js";
 import type * as paymentState from "../paymentState.js";
 import type * as payments from "../payments.js";
+import type * as posthog from "../posthog.js";
 import type * as productConfig from "../productConfig.js";
 import type * as promotions from "../promotions.js";
 import type * as providerText from "../providerText.js";
@@ -124,6 +125,7 @@ const fullApi: ApiFromModules<{
   parcelMapData: typeof parcelMapData;
   paymentState: typeof paymentState;
   payments: typeof payments;
+  posthog: typeof posthog;
   productConfig: typeof productConfig;
   promotions: typeof promotions;
   providerText: typeof providerText;

@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { renderWaitlistEmail, sendBrandedEmail } from "./emails";
+import { capturePostHogEvent, postHogDistinctId } from "./posthog";
 
 const NIGERIAN_STATES = new Set([
   "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
@@ -34,6 +35,13 @@ export const join = action({
         ...message,
       });
       await ctx.runMutation(internal.waitlistState.recordConfirmation, { signupId: reservation.signupId, status: "sent", emailId: sent.id });
+      if (reservation.created) {
+        await capturePostHogEvent({
+          distinctId: await postHogDistinctId(email),
+          event: "waitlist_joined",
+          properties: { state, confirmation_sent: true },
+        });
+      }
       return { joined: true, confirmationSent: true };
     } catch (error) {
       await ctx.runMutation(internal.waitlistState.recordConfirmation, { signupId: reservation.signupId, status: "failed" });

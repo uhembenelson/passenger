@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { ChevronRight, Headset, MessageCircle, X } from "lucide-react-native";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@passenger/backend/convex/_generated/api";
@@ -8,7 +7,7 @@ import type { Id } from "@passenger/backend/convex/_generated/dataModel";
 import { EvidencePicker } from "./evidence";
 import { usePassengerState } from "./data";
 import { BrandIllustration, type IllustrationName } from "./illustrations";
-import { BackButton, Badge, Button, Card, colors, ContentSkeleton, Empty, errorMessage, Field, Notice, s, timeDate, Txt } from "./ui";
+import { BackButton, Badge, Button, Card, colors, ContentSkeleton, Empty, errorMessage, Field, ModalSafeAreaView, Notice, s, timeDate, Txt } from "./ui";
 
 const guides: { title: string; subtitle: string; art: IllustrationName; sections: { title: string; body: string }[] }[] = [
   { title: "Parcels & delivery", subtitle: "Packing, tracking and handovers", art: "createParcel", sections: [
@@ -44,7 +43,7 @@ export function SupportHub({ onClose, onOpenDelivery, initialContext }: { onClos
   const active = chats?.find(chat => chat.id === chatId);
   const title = chatId ? "Your conversation" : page === "request" ? "Contact support" : page === "history" ? "Your requests" : page === "guide" ? guides[guide].title : "How can we help?";
   return <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => { if (!busy) (page !== "home" || chatId ? back : onClose)(); }}>
-    <SafeAreaView style={h.screen}>
+    <ModalSafeAreaView style={h.screen}>
       <KeyboardAvoidingView style={h.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={h.header}>
           <BackButton disabled={busy} onPress={page !== "home" || chatId ? back : onClose} />
@@ -77,7 +76,7 @@ export function SupportHub({ onClose, onOpenDelivery, initialContext }: { onClos
     </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </ModalSafeAreaView>
   </Modal>;
 }
 

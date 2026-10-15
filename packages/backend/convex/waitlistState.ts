@@ -4,7 +4,7 @@ import type { Id } from "./_generated/dataModel";
 
 export const reserve = internalMutation({
   args: { name: v.string(), email: v.string(), state: v.string() },
-  handler: async (ctx, args): Promise<{ signupId: Id<"waitlistSignups">; shouldSend: boolean }> => {
+  handler: async (ctx, args): Promise<{ signupId: Id<"waitlistSignups">; shouldSend: boolean; created: boolean }> => {
     const now = Date.now();
     const existing = await ctx.db.query("waitlistSignups").withIndex("by_email", query => query.eq("email", args.email)).unique();
     if (existing) {
@@ -12,9 +12,9 @@ export const reserve = internalMutation({
         && typeof existing.lastConfirmationAttemptAt === "number"
         && now - existing.lastConfirmationAttemptAt < 60_000;
       await ctx.db.patch(existing._id, { name: args.name, state: args.state, updatedAt: now });
-      if (existing.confirmationStatus === "sent" || recentlyPending) return { signupId: existing._id, shouldSend: false };
+      if (existing.confirmationStatus === "sent" || recentlyPending) return { signupId: existing._id, shouldSend: false, created: false };
       await ctx.db.patch(existing._id, { confirmationStatus: "pending", lastConfirmationAttemptAt: now });
-      return { signupId: existing._id, shouldSend: true };
+      return { signupId: existing._id, shouldSend: true, created: false };
     }
     const signupId = await ctx.db.insert("waitlistSignups", {
       ...args,
@@ -23,7 +23,7 @@ export const reserve = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
-    return { signupId, shouldSend: true };
+    return { signupId, shouldSend: true, created: true };
   },
 });
 

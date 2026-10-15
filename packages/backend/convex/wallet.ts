@@ -448,6 +448,10 @@ export const initializeTopUp = action({
     }
 
     await ctx.runMutation(internal.wallet.rateLimit, { subject: sub, kind: "initialize" });
+    // Resolve the provider configuration before reserving a deposit row. A deposit
+    // created without a provider call can never receive a webhook, so reserving it
+    // first would permanently block this wallet from trying again.
+    const { baseUrl, key, secret } = v4WalletConfig();
     const reference = `wallet-${crypto.randomUUID()}`;
     const amountKobo = amountNaira * 100;
     const reserved = await ctx.runMutation(internal.wallet.reserveV4TopUp, { userId: user._id, reference, amountKobo });
@@ -456,7 +460,6 @@ export const initializeTopUp = action({
       if (reserved.deposit.externalReference && reserved.deposit.accountNumber && reserved.deposit.accountName && reserved.deposit.expiresAt) return { mode: "virtual_account", reference: reserved.deposit.reference, externalReference: reserved.deposit.externalReference, accountNumber: reserved.deposit.accountNumber, accountName: decodeProviderText(reserved.deposit.accountName), amount: reserved.deposit.amountKobo / 100, expiresAt: reserved.deposit.expiresAt };
       fail("Your existing deposit is being checked. Open your wallet to check its status; another deposit was not created.");
     }
-    const { baseUrl, key, secret } = v4WalletConfig();
     let response: Response;
     try { response = await fetch(`${baseUrl}/wallet/topup`, { method: "POST", headers: { "X-API-Key": key, "X-API-Secret": secret, "Idempotency-Key": reference, "Content-Type": "application/json" }, body: JSON.stringify({ email, name: user.name, phoneNumber: user.phone, amount: amountNaira, metadata: { passengerReference: reference, subject: sub } }), signal: AbortSignal.timeout(15000) }); } catch { fail("We could not connect to the wallet provider. Please try again."); }
     const body = await response.json().catch(() => null) as { success?: boolean; data?: { externalReference?: string; accountNumber?: string; accountName?: string; amount?: number; expiresAt?: string } } | null;

@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Package, UserCheck, CheckCircle2, ArrowRight } from "lucide-react";
 
@@ -20,17 +21,9 @@ export function ReducedMotionHero() {
         <div className="mt-8 flex flex-row items-center justify-center gap-4">
           <Button
             asChild
-            className="h-12 px-7 rounded-full bg-[#1F2937] hover:bg-[#111827] text-white font-medium text-base shadow-sm"
+            className="h-12 px-7 rounded-full bg-[#34D186] hover:bg-[#2FA968] text-white font-medium text-base shadow-sm"
           >
-            <a href="https://app.usepassenger.com/">Send something</a>
-          </Button>
-
-          <Button
-            asChild
-            variant="outline"
-            className="h-12 px-7 rounded-full border-[#D1D5DB] hover:bg-[#F7F7F8] text-[#1F2937] font-medium text-base bg-white"
-          >
-            <a href="#senders-travellers">I&apos;m travelling</a>
+            <Link href="/waitlist">Join our wait list</Link>
           </Button>
         </div>
 

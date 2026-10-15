@@ -6,7 +6,16 @@ import { api, internal } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 const modules = import.meta.glob("../convex/**/*.ts");
 const identity = (subject: string) => ({ subject, email: `${subject}@example.com`, issuer: "https://clerk.test", tokenIdentifier: `https://clerk.test|${subject}` });
-beforeEach(() => { vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_test_example"); vi.stubEnv("PAYSTACK_CALLBACK_URL", ""); });
+const V4_BASE = "https://wallet.test/api/v4";
+const v4json = (data: object) => new Response(JSON.stringify(data), { status: 200 });
+const virtualAccount = (externalReference: string, amount: number) => ({ success: true, data: { externalReference, accountNumber: "0123456789", accountName: "TOPUP MEMBER", amount, expiresAt: "2026-12-31T23:59:59.999Z" } });
+beforeEach(() => {
+  vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_test_example");
+  vi.stubEnv("PAYSTACK_CALLBACK_URL", "");
+  vi.stubEnv("V4_API_URL", V4_BASE);
+  vi.stubEnv("V4_VERIFICATION_API_KEY", "vk_test_passenger");
+  vi.stubEnv("V4_VERIFICATION_API_SECRET", "vs_test_passenger");
+});
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 async function setup() {
   const t = convexTest(schema, modules);
@@ -17,21 +26,28 @@ async function setup() {
   return { t, sender, stranger, userId: profile.id as Id<"users"> };
 }
 const response = (data: object) => new Response(JSON.stringify({ status: true, data }), { status: 200 });
-it("initializes a saved deposit and credits a verified payment exactly once", async () => {
+it("initializes a virtual-account deposit and credits a verified payment exactly once", async () => {
   const { t, sender, stranger } = await setup();
-  const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-    const request = JSON.parse(init.body as string);
-    expect(request.amount).toBe(700000);
-    expect(request.currency).toBe("NGN");
-    return response({ reference: request.reference, authorization_url: "https://checkout.paystack.com/test" });
+  const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const href = String(url);
+    if (href === `${V4_BASE}/wallet/topup`) {
+      const request = JSON.parse(String(init?.body));
+      expect(request.amount).toBe(7000);
+      expect(request.email).toBe("sender@example.com");
+      expect(new Headers(init?.headers).get("Idempotency-Key")).toMatch(/^wallet-/);
+      return v4json(virtualAccount("EXT-once", request.amount));
+    }
+    expect(href).toBe(`${V4_BASE}/wallet/topup/EXT-once`);
+    return v4json({ success: true, data: { externalReference: "EXT-once", amount: 7000, paymentStatus: "completed", paymentReference: "V4_TRF_once" } });
   });
   vi.stubGlobal("fetch", fetchMock);
   const payment = await sender.action(api.wallet.initializeTopUp, { amountNaira: 7000 });
+  expect(payment).toMatchObject({ mode: "virtual_account", amount: 7000, accountNumber: "0123456789", externalReference: "EXT-once" });
+  expect(payment.reference).toMatch(/^wallet-/);
   expect(await sender.query(api.wallet.balance)).toMatchObject({ balanceNaira: 0 });
-  expect(await t.query(internal.wallet.depositByReference, { reference: payment.reference })).toMatchObject({ amountKobo: 700000, status: "pending" });
+  expect(await t.query(internal.wallet.depositByReference, { reference: payment.reference })).toMatchObject({ amountKobo: 700000, status: "pending", provider: "v4" });
   await expect(stranger.action(api.wallet.verifyTopUp, { reference: payment.reference })).rejects.toThrow("Payment not found");
   expect(fetchMock).toHaveBeenCalledTimes(1);
-  vi.stubGlobal("fetch", vi.fn(async () => response({ reference: payment.reference, amount: 700000, currency: "NGN", status: "success", id: 42 })));
   await expect(sender.action(api.wallet.verifyTopUp, { reference: payment.reference })).resolves.toEqual({ success: true, balanceNaira: 7000 });
   await sender.action(api.wallet.verifyTopUp, { reference: payment.reference });
   expect(await sender.query(api.wallet.balance)).toMatchObject({ balanceNaira: 7000 });
@@ -50,15 +66,21 @@ it("rejects unreserved credits and fractional top-ups", async () => {
   await expect(t.mutation(internal.wallet.recordTopUp, { userId, reference: "unknown", amountNaira: 1000, providerTransactionId: "unknown" })).rejects.toThrow("saved payment");
   await expect(sender.action(api.wallet.initializeTopUp, { amountNaira: 1000.5 })).rejects.toThrow("whole-naira");
 });
-it("accepts only Paystack checkout URLs and does not credit pending transactions", async () => {
-  const { t, sender, userId } = await setup();
-  vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => response({ reference: JSON.parse(init.body as string).reference, authorization_url: "https://example.com/checkout" })));
-  await expect(sender.action(api.wallet.initializeTopUp, { amountNaira: 1000 })).rejects.toThrow("Invalid payment checkout URL");
-  const pending = await sender.query(api.wallet.pendingDeposit);
-  expect(pending).not.toBeNull();
-  const reference = pending!.reference;
-  vi.stubGlobal("fetch", vi.fn(async () => response({ reference, amount: 100000, currency: "NGN", status: "pending" })));
-  await expect(sender.action(api.wallet.verifyTopUp, { reference })).resolves.toEqual({ success: false, balanceNaira: 0 });
+it("rejects an unusable provider response and never credits an unpaid virtual account", async () => {
+  const { sender, stranger } = await setup();
+  // A response missing the virtual-account details must not leave a bookable deposit.
+  vi.stubGlobal("fetch", vi.fn(async () => v4json({ success: true, data: { externalReference: "EXT-incomplete" } })));
+  await expect(stranger.action(api.wallet.initializeTopUp, { amountNaira: 1000 })).rejects.toThrow("Could not create a virtual account");
+  expect(await stranger.query(api.wallet.pendingDeposit)).toMatchObject({ amount: 1000 });
+  expect((await stranger.query(api.wallet.pendingDeposit))?.accountNumber).toBeUndefined();
+
+  const payment = await sender.action(api.wallet.initializeTopUp, { amountNaira: 1000 });
+  expect(payment.accountNumber).toBe("0123456789");
+  // A deposit the provider has not completed must not reach the balance.
+  vi.stubGlobal("fetch", vi.fn(async () => v4json({ success: true, data: { externalReference: "EXT-pending", amount: 1000, paymentStatus: "pending" } })));
+  await expect(sender.action(api.wallet.verifyTopUp, { reference: payment.reference })).resolves.toEqual({ success: false, balanceNaira: 0 });
+  expect(await sender.query(api.wallet.balance)).toMatchObject({ balanceNaira: 0 });
+  expect(await sender.query(api.wallet.pendingDeposit)).toMatchObject({ paymentStatus: "pending" });
 });
 
 it("settles signed webhooks against the saved owner and ignores replay", async () => {

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Keyboard, Modal, Pressable, ScrollView, StyleSheet, TextInput, TouchableWithoutFeedback, View } from "react-native";
 import { Bell, Check, Headset, LockKeyhole, Search, X } from "lucide-react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import type { Person } from "@passenger/core";
 import { isPlaceholderPhone, isValidPhone } from "@passenger/core";
 import { components, primitives, semantic } from "@passenger/design-tokens";
@@ -172,7 +172,7 @@ function VerificationScaffold({ title, onBack, disabled, children }: React.Props
 
 function SuccessSheet({ onClose }: { onClose: () => void }) {
   return <Modal transparent visible animationType="fade" onRequestClose={onClose}>
-    <View style={v.successOverlay}>
+    <SafeAreaProvider><View style={v.successOverlay}>
       <Pressable accessibilityRole="button" accessibilityLabel="Close confirmation" onPress={onClose} style={StyleSheet.absoluteFill} />
       <SafeAreaView edges={["bottom"]} style={v.successSheet}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close confirmation" onPress={onClose} style={v.successClose}><X size={30} color={colors.text} strokeWidth={2} /></Pressable>
@@ -180,7 +180,7 @@ function SuccessSheet({ onClose }: { onClose: () => void }) {
         <Txt style={v.successTitle}>Your phone number{`\n`}is verified!</Txt>
         <Button title="Done" variant="lime" onPress={onClose} style={v.successPrimary} />
       </SafeAreaView>
-    </View>
+    </View></SafeAreaProvider>
   </Modal>;
 }
 

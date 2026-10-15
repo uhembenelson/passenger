@@ -27,6 +27,10 @@ export const metadata: Metadata = {
   },
   description: rootDescription,
   applicationName: SITE_NAME,
+  icons: {
+    icon: "/logopp.png",
+    apple: "/logopp.png",
+  },
   keywords: [
     "peer to peer delivery",
     "send package",

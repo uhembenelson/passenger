@@ -1,13 +1,12 @@
 import React, { useState } from "react";
 import { Linking, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Check, Phone, ShieldCheck, ShieldAlert } from "lucide-react-native";
 import { useMutation } from "convex/react";
 import { api } from "@passenger/backend/convex/_generated/api";
 import type { Id } from "@passenger/backend/convex/_generated/dataModel";
 import type { Shipment } from "@passenger/core";
 import { usePassengerState } from "./data";
-import { BackButton, Button, colors, errorMessage, fontFamily, Notice, Txt } from "./ui";
+import { BackButton, Button, colors, errorMessage, fontFamily, ModalSafeAreaView, Notice, Txt } from "./ui";
 
 type TripHelpProps = { shipment: Shipment; onClose: () => void; onProblem: (category?: string) => void };
 
@@ -38,7 +37,7 @@ export function TripCheckIn({ shipment, onClose, onProblem, helpOnly = false }: 
     catch { setError("Dialler unavailable. Call 112 from your phone."); }
   };
   return <Modal visible presentationStyle="fullScreen" animationType="fade" onRequestClose={back}>
-    <SafeAreaView style={c.screen}>
+    <ModalSafeAreaView style={c.screen}>
       <View style={c.header}><BackButton accessibilityLabel={help ? "Back" : "Back to active trip"} disabled={busy} onPress={back} /></View>
       <ScrollView contentContainerStyle={c.content}>
         {help ? <View style={c.center}>
@@ -80,7 +79,7 @@ export function TripCheckIn({ shipment, onClose, onProblem, helpOnly = false }: 
           </View>
         </View>}
       </ScrollView>
-    </SafeAreaView>
+    </ModalSafeAreaView>
   </Modal>;
 }
 

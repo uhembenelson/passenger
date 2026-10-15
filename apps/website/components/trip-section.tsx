@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { RoadStrip } from "./road-strip";
 
 interface TripSectionProps {
@@ -78,12 +79,12 @@ export function TripSection({ nextSectionRef }: TripSectionProps) {
 
         <div className="mx-auto mt-20 md:mt-28 max-w-2xl pt-14 border-t border-[#E5E7EB]">
           <p className="text-[#7A7F87] text-sm">Travelling somewhere soon?</p>
-          <a
-            href="#download"
+          <Link
+            href="/waitlist"
             className="inline-block mt-1.5 text-base font-semibold text-[#248A56] border-b border-[#248A56]/30 hover:border-[#248A56] transition-colors"
           >
             Post your trip
-          </a>
+          </Link>
         </div>
       </div>
 

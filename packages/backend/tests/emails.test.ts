@@ -98,9 +98,9 @@ it("renders a branded waitlist confirmation with an accurate footer", () => {
     state: "Lagos",
     siteUrl: "https://usepassenger.com",
   });
-  expect(html).toContain("You are on the Passenger waitlist.");
+  expect(html).toContain("You are on the Passenger waitlist");
   expect(html).toContain("&lt;Ada&gt;");
   expect(html).toContain("because you joined the Passenger waitlist");
   expect(html).not.toContain("because you use Passenger");
-  expect(text).toContain("Thanks for joining us from Lagos");
+  expect(text).toContain("Thank you for joining the Passenger waitlist.");
 });

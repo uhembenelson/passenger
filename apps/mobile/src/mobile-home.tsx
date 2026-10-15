@@ -7,7 +7,7 @@ import { components, primitives, semantic } from "@passenger/design-tokens";
 import { api } from "@passenger/backend/convex/_generated/api";
 import type { Person, Shipment, Trip } from "@passenger/core";
 import { usePassengerActions, usePassengerState } from "./data";
-import { BrandIllustration } from "./illustrations";
+import { ActionIllustration } from "./hairline-icons";
 import { SupportHub, type SupportRequestContext } from "./support";
 import { HandoverFlow } from "./handover-flow";
 import { TripCheckIn, TripHelp } from "./trip-check-in";
@@ -256,7 +256,7 @@ export function MobileHome({
             onPress={onSendParcel}
             style={h.primaryPathCard}
           >
-            <BrandIllustration name="createParcel" size={72} style={h.primaryPathIllustration} />
+            <ActionIllustration name="sendParcel" size={72} style={h.primaryPathIllustration} />
             <Txt style={h.primaryPathTitle}>Send a parcel</Txt>
             <Txt style={h.primaryPathSubtitle}>Fixed rates · verified routes</Txt>
           </Pressable>
@@ -267,7 +267,7 @@ export function MobileHome({
             onPress={onScheduleTrip}
             style={h.primaryPathCard}
           >
-            <BrandIllustration name="createTrip" size={72} style={h.primaryPathIllustration} />
+            <ActionIllustration name="travelling" size={72} style={h.primaryPathIllustration} />
             <Txt style={h.primaryPathTitle}>I'm travelling</Txt>
             <Txt style={h.primaryPathSubtitle}>Share space · earn extra</Txt>
           </Pressable>
